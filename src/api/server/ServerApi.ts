@@ -3,7 +3,6 @@
 import { join } from 'node:path';
 import { ipcRenderer } from 'electron';
 import {
-  type PathOrFileDescriptor,
   copySync,
   ensureDirSync,
   pathExistsSync,
@@ -11,7 +10,6 @@ import {
   readdirSync,
   removeSync,
   statSync,
-  writeFileSync,
 } from 'fs-extra';
 import ms from 'ms';
 import tar from 'tar';
@@ -25,6 +23,10 @@ import UserModel from '../../models/User';
 
 import sleep from '../../helpers/async-helpers';
 
+import {
+  localRecipePreviews,
+  validRecipeId,
+} from '../../helpers/local-recipes';
 import { SERVER_NOT_LOADED } from '../../config';
 import { userDataRecipesPath } from '../../environment-remote';
 import { asarRecipesPath } from '../../helpers/asar-helpers';
@@ -341,35 +343,11 @@ export default class ServerApi {
 
   // Features
   async getDefaultFeatures() {
-    if (apiBase() === SERVER_NOT_LOADED) {
-      throw new Error('Server not loaded');
-    }
-
-    const request = await sendAuthRequest(`${apiBase()}/features/default`);
-    if (!request.ok) {
-      throw new Error(request.statusText);
-    }
-    const data = await request.json();
-
-    const features = data;
-    debug('ServerApi::getDefaultFeatures resolves', features);
-    return features;
+    return {};
   }
 
   async getFeatures() {
-    if (apiBase() === SERVER_NOT_LOADED) {
-      throw new Error('Server not loaded');
-    }
-
-    const request = await sendAuthRequest(`${apiBase()}/features`);
-    if (!request.ok) {
-      throw new Error(request.statusText);
-    }
-    const data = await request.json();
-
-    const features = data;
-    debug('ServerApi::getFeatures resolves', features);
-    return features;
+    return {};
   }
 
   // Recipes
@@ -382,11 +360,20 @@ export default class ServerApi {
         file !== 'dev',
     );
 
+    const icons = new Map(
+      localRecipePreviews(asarRecipesPath()).map(recipe => [
+        recipe.id,
+        recipe.icons?.svg,
+      ]),
+    );
     this.recipes = paths
       .map(id => {
         // eslint-disable-next-line import/no-dynamic-require
         const Recipe = require(id)(RecipeModel);
-        return new Recipe(loadRecipeConfig(id));
+        const recipe = new Recipe(loadRecipeConfig(id));
+        const icon = icons.get(id);
+        if (icon) recipe.defaultIcon = icon;
+        return recipe;
       })
       .filter(recipe => recipe.id);
 
@@ -413,63 +400,38 @@ export default class ServerApi {
 
   // Recipes Previews
   async getRecipePreviews() {
-    const request = await sendAuthRequest(`${apiBase()}/recipes`);
-    if (!request.ok) throw new Error(request.statusText);
-    const data = await request.json();
-    const recipePreviews = this._mapRecipePreviewModel(data);
-    debug('ServerApi::getRecipes resolves', recipePreviews);
-    return recipePreviews;
+    return this._mapRecipePreviewModel(localRecipePreviews(asarRecipesPath()));
   }
 
   async getFeaturedRecipePreviews() {
-    const request = await sendAuthRequest(`${apiBase()}/recipes/popular`);
-    if (!request.ok) throw new Error(request.statusText);
-
-    const data = await request.json();
-    // data = this._addLocalRecipesToPreviews(data);
-
-    const recipePreviews = this._mapRecipePreviewModel(data);
-    debug('ServerApi::getFeaturedRecipes resolves', recipePreviews);
-    return recipePreviews;
+    const recipes = await this.getRecipePreviews();
+    return recipes.filter(recipe => recipe?.featured);
   }
 
   async searchRecipePreviews(needle: string) {
-    const url = `${apiBase()}/recipes/search?needle=${needle}`;
-    const request = await sendAuthRequest(url);
-    if (!request.ok) throw new Error(request.statusText);
-
-    const data = await request.json();
-    const recipePreviews = this._mapRecipePreviewModel(data);
-    debug('ServerApi::searchRecipePreviews resolves', recipePreviews);
-    return recipePreviews;
+    const query = needle.toLocaleLowerCase();
+    const recipes = await this.getRecipePreviews();
+    return recipes.filter(
+      recipe =>
+        recipe &&
+        [recipe.id, recipe.name, ...(recipe.aliases || [])].some(value =>
+          value.toLocaleLowerCase().includes(query),
+        ),
+    );
   }
 
   async getRecipePackage(recipeId: string) {
+    if (!validRecipeId(recipeId)) throw new Error('无效的服务 ID');
     const recipesDirectory = userDataRecipesPath();
     const recipeTempDirectory = join(recipesDirectory, 'temp', recipeId);
-    const tempArchivePath = join(recipeTempDirectory, 'recipe.tar.gz');
 
     const internalRecipeFile = asarRecipesPath(`${recipeId}.tar.gz`);
 
     ensureDirSync(recipeTempDirectory);
 
-    let archivePath: PathOrFileDescriptor;
-
-    if (pathExistsSync(internalRecipeFile)) {
-      debug('[ServerApi::getRecipePackage] Using internal recipe file');
-      archivePath = internalRecipeFile;
-    } else {
-      debug('[ServerApi::getRecipePackage] Downloading recipe from server');
-      archivePath = tempArchivePath;
-
-      const packageUrl = `${apiBase()}/recipes/download/${recipeId}`;
-
-      const res = await window.fetch(packageUrl);
-      debug('Recipe downloaded', recipeId);
-      const blob = await res.blob();
-      const buffer = await blob.arrayBuffer();
-      writeFileSync(tempArchivePath, Buffer.from(buffer));
-    }
+    if (!pathExistsSync(internalRecipeFile))
+      throw new Error('此服务未包含在本地安装包中，请更新应用后重试');
+    const archivePath = internalRecipeFile;
     debug(archivePath);
 
     await sleep(ms('10ms'));
@@ -477,7 +439,11 @@ export default class ServerApi {
     await tar.x({
       file: archivePath,
       cwd: recipeTempDirectory,
-      preservePaths: true,
+      preservePaths: false,
+      filter: (path, entry) =>
+        !path.startsWith('/') &&
+        !path.split(/[/\\]/).includes('..') &&
+        !['SymbolicLink', 'Link'].includes(String(entry.type)),
       unlink: true,
       preserveOwner: false,
       onwarn: x => debug('warn', recipeId, x),
@@ -488,6 +454,7 @@ export default class ServerApi {
     const { id, defaultIcon } = readJsonSync(
       join(recipeTempDirectory, 'package.json'),
     );
+    if (id !== recipeId) throw new Error('服务包 ID 不匹配');
     const recipeDirectory = join(recipesDirectory, id);
     copySync(recipeTempDirectory, recipeDirectory);
     removeSync(recipeTempDirectory);

@@ -357,11 +357,11 @@ export default observer(function GroupTools({
             {mode === 'join' ? (
               <>
                 <p>
-                  一行一个群链接；每个选中账号加入全部链接，重复链接自动合并。
+                  可粘贴邀请消息或群链接；每个选中账号加入全部链接，重复链接自动合并。
                 </p>
                 <textarea
                   aria-label="群邀请链接"
-                  placeholder="https://chat.whatsapp.com/…\n一行一条"
+                  placeholder="粘贴邀请消息或群链接，支持一行一条"
                   disabled={active}
                   value={links}
                   onChange={e => setLinks(e.target.value)}

@@ -211,6 +211,7 @@ export default class GroupQueue {
         this.notify();
         const result = await this.bounded(this.adapter.check({ ...task }));
         task.groupId = result.groupId || task.groupId;
+        if (result.submitted) task.joinSubmitted = true;
         task.status =
           result.status === 'not-done'
             ? previous === 'approval'
@@ -269,6 +270,7 @@ export default class GroupQueue {
             result = await this.bounded(this.adapter.execute({ ...task }));
           }
           task.groupId = result.groupId || task.groupId;
+          if (result.submitted) task.joinSubmitted = true;
           task.status = result.status === 'not-done' ? 'failed' : result.status;
           task.message = result.message;
           await this.persist();
@@ -301,6 +303,19 @@ export default class GroupQueue {
           await this.pause(batch.interval * 1000);
         }
       }
+      // Let later groups run first, then re-read accepted joins once. This
+      // catches delayed membership without holding every group or resubmitting.
+      if (batch.mode === 'join' && !this.stopped)
+        for (const task of tasks) {
+          if (!task.joinSubmitted || task.status !== 'uncertain') continue;
+          const result = await this.bounded(this.adapter.check({ ...task }));
+          task.groupId = result.groupId || task.groupId;
+          task.message = result.message;
+          task.status =
+            result.status === 'not-done' ? 'uncertain' : result.status;
+          await this.persist();
+          if (result.inFlight || this.stopped) break;
+        }
       for (const task of tasks)
         if (['queued', 'running'].includes(task.status)) {
           task.status = 'stopped';

@@ -58,7 +58,12 @@ class AppLayoutContainer extends Component<IProps> {
 
     const isLoadingSettings = !settings.loaded;
 
-    if (isLoadingSettings || isLoadingFeatures || isLoadingServices) {
+    if (
+      !user.localSessionReady ||
+      isLoadingSettings ||
+      isLoadingFeatures ||
+      isLoadingServices
+    ) {
       return (
         <ThemeProvider theme={ui.theme}>
           <AppLoader theme={ui.theme} />

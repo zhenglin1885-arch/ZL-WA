@@ -161,17 +161,22 @@ export default class SettingsStore extends TypedStore {
 
   @action async _update({ type, data }): Promise<void> {
     const appSettings = this.all;
+    const normalizedData =
+      type === 'app' ? { ...data, server: LOCAL_SERVER } : data;
     if (this.fileSystemSettingsTypes.includes(type)) {
       debug('Update settings on file system', type, data);
       ipcRenderer.send('updateAppSettings', {
         type,
-        data,
+        data: normalizedData,
       });
 
-      Object.assign(this._fileSystemSettingsCache[type], data);
+      Object.assign(this._fileSystemSettingsCache[type], normalizedData);
     } else {
       debug('Update settings', type, data, this.all);
-      localStorage.setItem(type, Object.assign(appSettings[type], data));
+      localStorage.setItem(
+        type,
+        Object.assign(appSettings[type], normalizedData),
+      );
     }
   }
 

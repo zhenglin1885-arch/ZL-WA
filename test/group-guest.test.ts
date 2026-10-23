@@ -152,6 +152,139 @@ describe('native group adapter verification', () => {
     await groupGuest({ ownerId, task: task('join'), execute: true });
     expect(native).not.toHaveBeenCalled();
   });
+  it('bootloads the invite job before the wrapper or native fallback is accessed', async () => {
+    groups = [];
+    let loaded = false;
+    const order: string[] = [];
+    wpp.loader = {
+      ensureLazyModule: jest.fn(async name => {
+        expect(name).toBe('WAWebGroupInviteJob');
+        order.push('load');
+        loaded = true;
+      }),
+    };
+    wpp.group.join.mockImplementation(async () => {
+      order.push('wrapper');
+      if (!loaded) throw new Error('invite bundle not loaded');
+      throw new TypeError('joinGroupViaInvite is not a function');
+    });
+    const native = jest.fn(async () => {
+      order.push('native');
+      groups = [{ id: groupId }];
+      return { gid: groupId };
+    });
+    (window as any).require = name => {
+      if (name === '__debug') return { modulesMap: {} };
+      if (name === 'WAWebGroupInviteJob' && loaded)
+        return { joinGroupViaInvite: native };
+      return null;
+    };
+    expect(
+      await groupGuest({ ownerId, task: task('join'), execute: true }),
+    ).toMatchObject({ status: 'success', submitted: true });
+    expect(order).toEqual(['load', 'wrapper', 'native']);
+    expect(native).toHaveBeenCalledTimes(1);
+  });
+  it('does not bootload or submit when already a member', async () => {
+    wpp.loader = { ensureLazyModule: jest.fn() };
+    expect(
+      await groupGuest({ ownerId, task: task('join'), execute: true }),
+    ).toMatchObject({ status: 'success' });
+    expect(wpp.loader.ensureLazyModule).not.toHaveBeenCalled();
+    expect(wpp.group.join).not.toHaveBeenCalled();
+  });
+  it('does not submit when the owner changes during bootloading', async () => {
+    groups = [];
+    wpp.loader = {
+      ensureLazyModule: jest.fn(async () => {
+        wpp.conn.getMyUserWid = () => '8613800000002@c.us';
+      }),
+    };
+    await groupGuest({ ownerId, task: task('join'), execute: true });
+    expect(wpp.group.join).not.toHaveBeenCalled();
+  });
+  it('does not submit if the invite bundle fails to load', async () => {
+    groups = [];
+    wpp.loader = {
+      ensureLazyModule: jest.fn(async () => {
+        throw new Error('bundle load failed');
+      }),
+    };
+    const result = await groupGuest({
+      ownerId,
+      task: task('join'),
+      execute: true,
+    });
+    expect(result).not.toMatchObject({ status: 'success' });
+    expect(wpp.group.join).not.toHaveBeenCalled();
+  });
+  it('waits only for membership readback after an accepted join, without resubmitting', async () => {
+    jest.useFakeTimers();
+    try {
+      groups = [];
+      let joined = false;
+      let checks = 0;
+      wpp.group.join.mockImplementation(async () => {
+        joined = true;
+        return { id: groupId, pendingApproval: false };
+      });
+      wpp.whatsapp.functions.queryAllGroups.mockImplementation(async () => {
+        if (joined) checks += 1;
+        if (joined && checks >= 3) groups = [{ id: groupId }];
+        return structuredClone(groups);
+      });
+      const execution = groupGuest({
+        ownerId,
+        task: task('join'),
+        execute: true,
+      });
+      await jest.runAllTimersAsync();
+      expect(await execution).toMatchObject({
+        status: 'success',
+        submitted: true,
+      });
+      expect(wpp.group.join).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('persists accepted-but-unsynchronized joins as uncertain and never submits on retry', async () => {
+    jest.useFakeTimers();
+    try {
+      groups = [];
+      wpp.group.join.mockResolvedValue({ id: groupId, pendingApproval: false });
+      const execution = groupGuest({
+        ownerId,
+        task: task('join'),
+        execute: true,
+      });
+      await jest.runAllTimersAsync();
+      expect(await execution).toMatchObject({
+        status: 'uncertain',
+        submitted: true,
+        groupId,
+      });
+      // Simulate a reloaded page without the in-memory operation map.
+      (window as any).__zlGroupOperations = new Map();
+      const persisted = {
+        ...task('join'),
+        groupId,
+        joinSubmitted: true,
+        token: 'retry',
+      };
+      expect(
+        await groupGuest({ ownerId, task: persisted, execute: true }),
+      ).toMatchObject({ status: 'uncertain', submitted: true });
+      expect(wpp.group.join).toHaveBeenCalledTimes(1);
+      groups = [{ id: groupId }];
+      expect(await groupGuest({ ownerId, task: persisted })).toMatchObject({
+        status: 'success',
+        groupId,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('accepts an applied change even when the request later throws', async () => {
     wpp.group.setProperty.mockImplementation(async () => {
       groups[0].announce = true;
@@ -201,6 +334,20 @@ describe('native group adapter verification', () => {
     expect(
       await groupGuest({ ownerId, task: current, execute: true }),
     ).toMatchObject({ status: 'approval' });
+    expect(wpp.group.join).toHaveBeenCalledTimes(1);
+  });
+  it('recognizes the structured approval race response from the WA-JS wrapper', async () => {
+    groups = [];
+    wpp.group.join.mockRejectedValue(
+      Object.assign(new Error('approval mode changed'), {
+        name: 'UnexpectedJoinGroupViaInviteResponse',
+        gid: groupId,
+        membershipApprovalMode: true,
+      }),
+    );
+    expect(
+      await groupGuest({ ownerId, task: task('join'), execute: true }),
+    ).toMatchObject({ status: 'approval', groupId });
     expect(wpp.group.join).toHaveBeenCalledTimes(1);
   });
   it('does not rejoin an existing group', async () => {

@@ -1319,7 +1319,7 @@ class FranzMenu implements StoresProps {
         },
       },
       {
-        label: intl.formatMessage(menuItems.publishDebugInfo),
+        label: '导出本地诊断信息',
         click: () => {
           window['ferdium'].features.publishDebugInfo.state.isModalVisible =
             true;

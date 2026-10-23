@@ -16,20 +16,19 @@ const migrate = require('./migrate');
 
 migrate();
 
-async function validateToken(clientToken, response, next) {
+function tokenMatches(clientToken) {
   const serverToken = process.env.FERDIUM_LOCAL_TOKEN;
-  const valid =
-    serverToken &&
-    clientToken &&
-    timingSafeEqual(
-      Buffer.from(clientToken, 'utf8'),
-      Buffer.from(serverToken, 'utf8'),
-    );
-  if (valid) {
-    await next();
-    return true;
-  }
-  return response.forbidden();
+  return (
+    typeof clientToken === 'string' &&
+    typeof serverToken === 'string' &&
+    Buffer.byteLength(clientToken) === Buffer.byteLength(serverToken) &&
+    timingSafeEqual(Buffer.from(clientToken), Buffer.from(serverToken))
+  );
+}
+
+async function validateToken(clientToken, response, next) {
+  if (!tokenMatches(clientToken)) return response.forbidden();
+  return next();
 }
 
 const OnlyAllowFerdium = async ({ request, response }, next) => {
@@ -102,10 +101,6 @@ Route.group(() => {
   .middleware(RequireTokenInQS);
 
 Route.group(() => {
-  // Franz account import
-  Route.post('import', 'UserController.import');
-  Route.get('import', ({ view }) => view.render('import'));
-
   // Account transfer
   Route.get('export', 'UserController.export');
   Route.post('transfer', 'UserController.importFerdium');
@@ -116,7 +111,7 @@ Route.group(() => {
 }).middleware(RequireAuthenticatedBrowser);
 
 Route.get('token/:token', ({ params: { token }, response }) => {
-  if (validateToken(token)) {
+  if (tokenMatches(token)) {
     response.cookie(FERDIUM_LOCAL_TOKEN_COOKIE, token, {
       httpOnly: true,
       sameSite: true,

@@ -1,6 +1,6 @@
 import { ipcRenderer } from 'electron';
 import jwt from 'jsonwebtoken';
-import { action, computed, makeObservable, observable } from 'mobx';
+import { action, computed, makeObservable, observable, when } from 'mobx';
 import localStorage from 'mobx-localstorage';
 import moment from 'moment';
 
@@ -8,7 +8,6 @@ import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
 import { TODOS_PARTITION_ID } from '../config';
-import { isDevMode } from '../environment-remote';
 import CachedRequest from './lib/CachedRequest';
 import Request from './lib/Request';
 import TypedStore from './lib/TypedStore';
@@ -73,6 +72,8 @@ export default class UserStore extends TypedStore {
 
   @observable id: string | null | undefined;
 
+  @observable localSessionReady = false;
+
   @observable authToken: string | null =
     localStorage.getItem('authToken') || null;
 
@@ -116,8 +117,23 @@ export default class UserStore extends TypedStore {
   }
 
   setup(): void {
-    // Data migration
     this._migrateUserLocale();
+    // Old cloud tokens are never treated as an authenticated local session.
+    this._startLocalSession().catch(error => {
+      console.error('本地数据初始化失败', error);
+    });
+  }
+
+  async _startLocalSession(): Promise<void> {
+    await when(() => Boolean(this.stores.requests.localServerToken));
+    const token = await this.api.user.login('local@localhost', 'LOCAL_SESSION');
+    this._setUserData(token);
+    this._setLocalSessionReady();
+    if (window.location.hash.startsWith('#/auth')) this.stores.router.push('/');
+  }
+
+  @action _setLocalSessionReady(): void {
+    this.localSessionReady = true;
   }
 
   // Routes
@@ -139,7 +155,7 @@ export default class UserStore extends TypedStore {
 
   // Data
   @computed get isLoggedIn(): boolean {
-    return Boolean(localStorage.getItem('authToken'));
+    return this.localSessionReady && Boolean(this.authToken);
   }
 
   @computed get isTokenExpired(): boolean {
@@ -296,34 +312,8 @@ export default class UserStore extends TypedStore {
 
   // This is a mobx autorun which forces the user to login if not authenticated
   _requireAuthenticatedUser = (): void => {
-    if (this.isTokenExpired) {
-      this._logout();
-    }
-
-    const { router } = this.stores;
-    const currentRoute = window.location.hash;
-    if (!this.isLoggedIn && currentRoute.includes('token=')) {
-      router.push(this.WELCOME_ROUTE);
-      const token = currentRoute.split('=')[1];
-
-      const data = this._parseToken(token);
-      if (data) {
-        // Give this some time to sink
-        setTimeout(() => {
-          this._tokenLogin(token);
-        }, 1000);
-      }
-    } else if (!this.isLoggedIn && !currentRoute.includes(this.BASE_ROUTE)) {
-      router.push(this.WELCOME_ROUTE);
-    } else if (this.isLoggedIn && currentRoute === this.LOGOUT_ROUTE) {
-      this.actions.user.logout();
-      router.push(this.LOGIN_ROUTE);
-    } else if (
-      this.isLoggedIn &&
-      currentRoute.includes(this.BASE_ROUTE) &&
-      (this.hasCompletedSignup || this.hasCompletedSignup === null) &&
-      !isDevMode
-    ) {
+    // Cloud signup/login/server selection are not part of local mode.
+    if (this.isLoggedIn && window.location.hash.startsWith('#/auth')) {
       this.stores.router.push('/');
     }
   };

@@ -7,32 +7,18 @@ import {
   Route,
   Routes,
 } from 'react-router-dom';
-import type { StoresProps } from './@types/ferdium-components.types';
 import type { Actions } from './actions/lib/actions';
-import AuthLayoutContainer from './containers/auth/AuthLayoutContainer';
-import AuthReleaseNotesScreen from './containers/auth/AuthReleaseNotesScreen';
-import ChangeServerScreen from './containers/auth/ChangeServerScreen';
-import InviteScreen from './containers/auth/InviteScreen';
-import LoginScreen from './containers/auth/LoginScreen';
-import PasswordScreen from './containers/auth/PasswordScreen';
-import SetupAssistantScreen from './containers/auth/SetupAssistantScreen';
-import SignupScreen from './containers/auth/SignupScreen';
-import WelcomeScreen from './containers/auth/WelcomeScreen';
 import DownloadManagerScreen from './containers/download-manager/DownloadManagerScreen';
 import DownloadManagerWindow from './containers/download-manager/DownloadManagerWindow';
 import AppLayoutContainer from './containers/layout/AppLayoutContainer';
-import AccountScreen from './containers/settings/AccountScreen';
 import EditServiceScreen from './containers/settings/EditServiceScreen';
 import EditSettingsScreen from './containers/settings/EditSettingsScreen';
-import EditUserScreen from './containers/settings/EditUserScreen';
-import InviteSettingsScreen from './containers/settings/InviteScreen';
 import RecipesScreen from './containers/settings/RecipesScreen';
 import ReleaseNotesScreen from './containers/settings/ReleaseNotesScreen';
 import ReleaseNotesWindow from './containers/settings/ReleaseNotesWindow';
 import ServicesScreen from './containers/settings/ServicesScreen';
 import SettingsWindow from './containers/settings/SettingsWindow';
 import SupportFerdiumScreen from './containers/settings/SupportScreen';
-import TeamScreen from './containers/settings/TeamScreen';
 import { WORKSPACES_ROUTES } from './features/workspaces/constants';
 import EditWorkspaceScreen from './features/workspaces/containers/EditWorkspaceScreen';
 import WorkspacesScreen from './features/workspaces/containers/WorkspacesScreen';
@@ -48,66 +34,23 @@ interface IProps {
 @observer
 class FerdiumRoutes extends Component<IProps> {
   render(): ReactElement {
-    const { history, stores, actions } = this.props;
-    const routeProps: StoresProps = { stores: stores!, actions: actions! };
-    const errorProps = { error: routeProps.stores.globalError.error || {} };
+    const { history } = this.props;
 
     return (
       // @ts-expect-error Fix me
       <HistoryRouter history={history}>
         <Routes>
-          <Route path="/auth" element={<AuthLayoutContainer {...routeProps} />}>
-            <Route
-              path="/auth"
-              element={<Navigate to="/auth/welcome" replace />}
-            />
-            <Route
-              path="/auth/welcome"
-              element={<WelcomeScreen {...routeProps} />}
-            />
-            <Route
-              path="/auth/login"
-              element={<LoginScreen {...routeProps} {...errorProps} />}
-            />
-            <Route
-              path="/auth/server"
-              element={<ChangeServerScreen {...routeProps} />}
-            />
-            <Route path="/auth/signup">
-              <Route
-                path="/auth/signup"
-                element={<Navigate to="/auth/signup/form" replace />}
-              />
-              <Route
-                path="/auth/signup/form"
-                element={<SignupScreen {...routeProps} {...errorProps} />}
-              />
-              <Route
-                path="/auth/signup/setup"
-                element={<SetupAssistantScreen {...routeProps} />}
-              />
-              <Route
-                path="/auth/signup/invite"
-                element={<InviteScreen {...routeProps} />}
-              />
-            </Route>
-            <Route
-              path="/auth/password"
-              element={<PasswordScreen {...routeProps} />}
-            />
-            <Route
-              path="/auth/logout"
-              element={<LoginScreen {...routeProps} {...errorProps} />}
-            />
-            <Route
-              path="/auth/releasenotes"
-              element={
-                <AuthReleaseNotesScreen {...routeProps} {...errorProps} />
-              }
-            />
-          </Route>
+          <Route path="/auth/*" element={<Navigate to="/" replace />} />
 
-          <Route path="/" element={<AppLayoutContainer {...routeProps} />}>
+          <Route
+            path="/"
+            element={
+              <AppLayoutContainer
+                stores={this.props.stores!}
+                actions={this.props.actions!}
+              />
+            }
+          >
             <Route
               path="/releasenotes"
               element={<ReleaseNotesWindow {...this.props} />}
@@ -160,18 +103,15 @@ class FerdiumRoutes extends Component<IProps> {
               />
               <Route
                 path="/settings/user"
-                // @ts-expect-error Fix me
-                element={<AccountScreen {...this.props} />}
+                element={<Navigate to="/settings/app" replace />}
               />
               <Route
                 path="/settings/user/edit"
-                // @ts-expect-error Fix me
-                element={<EditUserScreen {...this.props} />}
+                element={<Navigate to="/settings/app" replace />}
               />
               <Route
                 path="/settings/team"
-                // @ts-expect-error Fix me
-                element={<TeamScreen {...this.props} />}
+                element={<Navigate to="/settings/app" replace />}
               />
               <Route
                 path="/settings/app"
@@ -180,8 +120,7 @@ class FerdiumRoutes extends Component<IProps> {
               />
               <Route
                 path="/settings/invite"
-                // @ts-expect-error Fix me
-                element={<InviteSettingsScreen {...this.props} />}
+                element={<Navigate to="/settings/app" replace />}
               />
               <Route
                 path="/settings/support"

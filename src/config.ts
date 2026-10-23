@@ -613,7 +613,7 @@ export const DEFAULT_APP_SETTINGS = {
   enableGlobalHideShortcut: false,
 
   // Ferdium specific options
-  server: LIVE_FERDIUM_API,
+  server: LOCAL_SERVER,
   predefinedTodoServer: TODO_TODOIST_URL,
   autohideMenuBar: false,
   isLockingFeatureEnabled: false,

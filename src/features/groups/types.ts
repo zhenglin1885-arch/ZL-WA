@@ -24,6 +24,7 @@ export interface GroupTask extends GroupTarget {
   message: string;
   token?: string;
   groupId?: string;
+  joinSubmitted?: boolean;
   deleteGroup: boolean;
 }
 export interface GroupBatch {
@@ -44,6 +45,7 @@ export interface GroupResult {
   member?: boolean;
   inFlight?: boolean;
   retryable?: boolean;
+  submitted?: boolean;
 }
 export interface GroupChoice extends GroupTarget {
   admin: boolean;
@@ -58,22 +60,37 @@ export function parseGroupLinks(text: string): string[] {
   const lines = text.split(/\r?\n/);
   for (const [index, value] of lines.entries()) {
     if (!value.trim()) continue;
-    let url: URL;
-    try {
-      url = new URL(value.trim());
-    } catch {
-      throw new Error(`第 ${index + 1} 行不是有效的群链接`);
+    const candidates =
+      value.match(
+        /https?:\/\/[^\s!"();<>‘’“”。！（），；]+|(?<![\w./:@-])chat\.whatsapp\.com\/[^\s!"();<>‘’“”。！（），；]+/gi,
+      ) || [];
+    for (const candidate of candidates) {
+      // Non-invitation prose is allowed, but any pasted URL must be an invite.
+      const normalized = candidate.replace(/[!,.:;?]+$/, '');
+      let url: URL;
+      try {
+        url = new URL(
+          /^https?:\/\//i.test(normalized)
+            ? normalized
+            : `https://${normalized}`,
+        );
+      } catch {
+        throw new Error(`第 ${index + 1} 行不是有效的群链接`);
+      }
+      const match = /^\/(?:invite\/)?([\w-]{16,64})\/?$/.exec(url.pathname);
+      if (
+        url.protocol !== 'https:' ||
+        url.hostname !== 'chat.whatsapp.com' ||
+        url.username ||
+        url.password ||
+        url.port ||
+        !match
+      )
+        throw new Error(`第 ${index + 1} 行不是 WhatsApp 群邀请链接`);
+      links.add(match[1]);
     }
-    if (
-      url.protocol !== 'https:' ||
-      url.hostname !== 'chat.whatsapp.com' ||
-      url.username ||
-      url.password ||
-      url.port ||
-      !/^\/[\w-]{16,64}\/?$/.test(url.pathname)
-    )
-      throw new Error(`第 ${index + 1} 行不是 WhatsApp 群邀请链接`);
-    links.add(url.pathname.replaceAll('/', ''));
+    if (candidates.length === 0 && /https?:|chat\.whatsapp\.com/i.test(value))
+      throw new Error(`第 ${index + 1} 行不是有效的群链接`);
   }
   if (links.size === 0) throw new Error('请填写群邀请链接，一行一条');
   return [...links];
@@ -131,6 +148,8 @@ export function validateGroupState(input: unknown): GroupToolsState {
         task.attempts > 10_000 ||
         !shortString(task.message, 2000) ||
         typeof task.deleteGroup !== 'boolean' ||
+        (task.joinSubmitted !== undefined &&
+          typeof task.joinSubmitted !== 'boolean') ||
         (task.token !== undefined && !shortString(task.token, 100)) ||
         (task.groupId !== undefined &&
           !/^\d{1,40}(?:-\d{1,30})?@g\.us$/.test(task.groupId)) ||

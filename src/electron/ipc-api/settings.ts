@@ -1,4 +1,5 @@
 import { type BrowserWindow, type Settings, ipcMain } from 'electron';
+import { LOCAL_SERVER } from '../../config';
 
 export default (params: { mainWindow: BrowserWindow; settings: Settings }) => {
   ipcMain.on('getAppSettings', (_event, type) => {
@@ -9,6 +10,8 @@ export default (params: { mainWindow: BrowserWindow; settings: Settings }) => {
   });
 
   ipcMain.on('updateAppSettings', (_event, args) => {
-    params.settings[args.type].set(args.data);
+    params.settings[args.type].set(
+      args.type === 'app' ? { ...args.data, server: LOCAL_SERVER } : args.data,
+    );
   });
 };

@@ -151,7 +151,7 @@ export async function verifyGroups({
   );
   await fill(
     '[aria-label="群邀请链接"]',
-    'https://chat.whatsapp.com/AAAAAAAAAAAAAAAAAAAAAA\nhttps://chat.whatsapp.com/BBBBBBBBBBBBBBBBBBBBBB\nhttps://chat.whatsapp.com/AAAAAAAAAAAAAAAAAAAAAA?mode=ac_t',
+    '欢迎加入群组！\nchat.whatsapp.com/invite/AAAAAAAAAAAAAAAAAAAAAA\nhttps://chat.whatsapp.com/BBBBBBBBBBBBBBBBBBBBBB\nhttps://chat.whatsapp.com/AAAAAAAAAAAAAAAAAAAAAA?mode=ac_t',
   );
   await fill('[aria-label="群组执行间隔"]', '1');
   await wait(
@@ -178,6 +178,12 @@ export async function verifyGroups({
       ),
       2,
       'each account joins each unique invite once',
+    );
+  for (const id of [first, second])
+    assert.equal(
+      await guest(id, 'fixture.groupLazyLoads'),
+      2,
+      'each new invitation bootloads the native invite job before submitting',
     );
   await shot('/workspace/ZL-WA-groups-join.png');
   for (const id of [first, second])

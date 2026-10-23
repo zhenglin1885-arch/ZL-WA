@@ -440,6 +440,8 @@ export default class AppStore extends TypedStore {
   @computed get debugInfo() {
     const settings = cleanseJSObject(this.stores.settings.app);
     settings.lockedPassword = '******';
+    // Diagnostic exports must not include account names/remarks or profile data.
+    delete settings.accountSidebar;
 
     return {
       host: {

@@ -64,6 +64,17 @@ const copyManualAssets = () => {
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir);
   }
+  // Bundle catalogue icons instead of fetching the upstream recipe CDN.
+  fs.mkdirSync(`${outDir}/recipes/icons`, { recursive: true });
+  for (const recipe of JSON.parse(
+    fs.readFileSync('recipes/all.json', 'utf8'),
+  )) {
+    if (!/^\w[\w.-]{0,127}$/.test(recipe.id) || recipe.id.includes('..'))
+      throw new Error('Invalid recipe ID');
+    const source = `recipes/recipes/${recipe.id}/icon.svg`;
+    if (fs.existsSync(source))
+      fs.copyFileSync(source, `${outDir}/recipes/icons/${recipe.id}.svg`);
+  }
   fs.copyFileSync('package.json', `${outDir}/package.json`);
   fs.copyFileSync('electron-builder.npmrc', `${outDir}/.npmrc`);
   fs.copyFileSync(

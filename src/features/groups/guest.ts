@@ -124,6 +124,14 @@ export async function groupGuest(request: {
           message: '等待管理员审批，尚未加入群组',
           groupId: id,
         };
+      if (task.joinSubmitted || previous?.result?.submitted)
+        return {
+          status: 'uncertain',
+          message:
+            '进群请求已接受，成员状态同步中；不会重复提交，请稍后刷新执行结果',
+          groupId: id,
+          submitted: true,
+        };
       if (!invite && task.attempts > 0)
         invite = await wpp.group.getGroupInfoFromInviteCode(task.target);
       if (
@@ -239,8 +247,35 @@ export async function groupGuest(request: {
     attempted = true;
     if (task.operation === 'join') {
       let joined: any;
+      const invokeJoin = async (fn: () => Promise<any>) => {
+        try {
+          return await fn();
+        } catch (error: any) {
+          // WhatsApp can throw this structured server response when the
+          // approval mode changes between metadata lookup and submission.
+          if (
+            error?.name === 'UnexpectedJoinGroupViaInviteResponse' &&
+            error.gid &&
+            typeof error.membershipApprovalMode === 'boolean'
+          )
+            return {
+              id: error.gid,
+              pendingApproval: error.membershipApprovalMode,
+            };
+          throw error;
+        }
+      };
+      attempted = false;
+      // WA-JS upstream fix #3736 (issue #3734): the IQ function is lazy-loaded.
+      // Use WhatsApp's own bootloader, never download executable code elsewhere.
+      if (typeof wpp.loader?.ensureLazyModule === 'function')
+        await wpp.loader.ensureLazyModule('WAWebGroupInviteJob');
+      if (!own()) throw new Error('账号身份已变化，进群已取消');
+      const afterLoad = await check();
+      if (afterLoad.status !== 'not-done') return afterLoad;
       try {
-        joined = await wpp.group.join(task.target);
+        attempted = true;
+        joined = await invokeJoin(() => wpp.group.join(task.target));
       } catch (error) {
         // WA-JS 4.7.1 matches joinGroupViaInvite together with resetGroupInviteCode.
         // New WhatsApp builds split these exports; resolve the exact callable
@@ -254,10 +289,12 @@ export async function groupGuest(request: {
         let native: any;
         let host: any;
         const registry = page.require?.('__debug')?.modulesMap;
-        const names =
-          registry instanceof Map
+        const names = new Set([
+          'WAWebGroupInviteJob',
+          ...(registry instanceof Map
             ? [...registry.keys()]
-            : Object.keys(registry || {});
+            : Object.keys(registry || {})),
+        ]);
         for (const name of names) {
           if (!/^waweb.*(?:group.*invite|invite.*group)/i.test(name)) continue;
           try {
@@ -293,7 +330,8 @@ export async function groupGuest(request: {
         } catch (nativeError: any) {
           if (
             nativeError?.name !== 'UnexpectedJoinGroupViaInviteResponse' ||
-            !nativeError.gid
+            !nativeError.gid ||
+            typeof nativeError.membershipApprovalMode !== 'boolean'
           )
             throw nativeError;
           joined = {
@@ -311,6 +349,12 @@ export async function groupGuest(request: {
           groupId: id || before.groupId,
         };
         return current.result;
+      }
+      // An explicit successful response is a submission checkpoint, not proof
+      // that the local membership model has already caught up.
+      if (id && !joined?.pendingApproval) {
+        task.joinSubmitted = true;
+        current.result = { submitted: true };
       }
     } else if (task.operation === 'leave') {
       // A retry after an acknowledged exit only performs the missing deletion.
@@ -334,10 +378,31 @@ export async function groupGuest(request: {
         task.operation === 'mute',
       );
     }
-    const result = await check();
+    let result = await check();
+    if (task.operation === 'join' && task.joinSubmitted) {
+      // Read-only settling checks; never issue a second join during this wait.
+      for (const delay of [200, 400, 800]) {
+        if (result.status === 'success' || result.status === 'approval') break;
+        await new Promise(resolve => {
+          setTimeout(resolve, delay);
+        });
+        if (!own()) throw new Error('账号身份已变化，结果待核验');
+        result = await check();
+      }
+      result = { ...result, submitted: true };
+    }
     current.result = result;
     return result;
   } catch (error) {
+    if (!own())
+      return {
+        status: attempted ? 'uncertain' : 'failed',
+        message: '账号身份已变化，请重新选择账号后核验结果',
+        retryable: false,
+        ...(task.joinSubmitted
+          ? { submitted: true, groupId: task.groupId }
+          : {}),
+      };
     // An exception can arrive after the server applied a change. Read it back
     // before allowing the queue to retry any mutation.
     try {
@@ -345,6 +410,15 @@ export async function groupGuest(request: {
       if (result.status !== 'not-done') {
         current.result = result;
         return result;
+      }
+      if (task.operation === 'join' && attempted) {
+        current.result = {
+          status: 'uncertain',
+          message: `进群请求结果未确认，不自动重复提交：${String(error).slice(0, 500)}`,
+          groupId: task.groupId || result.groupId,
+          ...(task.joinSubmitted ? { submitted: true } : {}),
+        };
+        return current.result;
       }
       return {
         ...result,
@@ -354,6 +428,8 @@ export async function groupGuest(request: {
       return {
         status: 'uncertain',
         message: `请求结果未确认：${String(error).slice(0, 500)}`,
+        groupId: task.groupId,
+        ...(task.joinSubmitted ? { submitted: true } : {}),
       };
     }
   } finally {

@@ -109,6 +109,8 @@ const settings = new Settings('app', DEFAULT_APP_SETTINGS);
 if (!settings.get('telemetryDefaultOffApplied')) {
   settings.set({ sentry: false, telemetryDefaultOffApplied: true });
 }
+// ZL-WA is local-only, including profiles created with a cloud server.
+settings.set({ server: DEFAULT_APP_SETTINGS.server });
 const proxySettings = new Settings('proxy');
 const shortcutSettings = new Settings('shortcuts', DEFAULT_SHORTCUTS);
 

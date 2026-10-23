@@ -593,11 +593,23 @@
         };
         // Exercise the real broken WA-JS join wrapper and the native fallback.
         const nativeJoin = window.WPP.group.join;
+        fixture.groupInviteLoaded = false;
+        fixture.groupLazyLoads = 0;
+        window.WPP.loader = {
+          ...previous.loader,
+          ensureLazyModule: async name => {
+            if (name !== 'WAWebGroupInviteJob') throw Error('wrong lazy module');
+            fixture.groupLazyLoads += 1;
+            fixture.groupInviteLoaded = true;
+            return true;
+          },
+        };
         window.WPP.group.join = async () => {
           throw new TypeError('(0, d.joinGroupViaInvite) is not a function');
         };
         const nativeModule = {
           joinGroupViaInvite: async (code, approval) => {
+            if (!fixture.groupInviteLoaded) throw Error('invite bundle not loaded');
             const result = await nativeJoin(code);
             if (result.pendingApproval !== approval)
               throw Error('approval mode mismatch');
@@ -606,8 +618,8 @@
         };
         window.require = name =>
           name === '__debug'
-            ? { modulesMap: { WAWebFixtureGroupInviteJob: {} } }
-            : name === 'WAWebFixtureGroupInviteJob'
+            ? { modulesMap: fixture.groupInviteLoaded ? { WAWebFixtureGroupInviteJob: {} } : {} }
+            : name === 'WAWebFixtureGroupInviteJob' && fixture.groupInviteLoaded
               ? nativeModule
               : fixture.beforeGroupRequire(name);
         return true;

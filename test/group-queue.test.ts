@@ -269,6 +269,47 @@ describe('verified group queue', () => {
     expect(adapter.execute).toHaveBeenCalledTimes(3);
     expect(queue.state.batches[0].tasks[0].status).toBe('failed');
   });
+  it('rechecks accepted joins at the end without adding them to the retry round', async () => {
+    const { queue, adapter } = setup({
+      check: async task =>
+        task.joinSubmitted
+          ? { status: 'success', message: '已确认加入', groupId: '10001@g.us' }
+          : pending(),
+      execute: async () => ({
+        status: 'uncertain',
+        message: '同步中',
+        groupId: '10001@g.us',
+        submitted: true,
+      }),
+    });
+    await queue.start(
+      'join',
+      [{ ...target, target: 'Abcdefghijklmnopqrstuv' }],
+      5,
+    );
+    expect(adapter.execute).toHaveBeenCalledTimes(1);
+    expect(queue.state.batches[0].tasks[0]).toMatchObject({
+      status: 'success',
+      attempts: 1,
+      joinSubmitted: true,
+    });
+  });
+  it('extracts and deduplicates invites from text, scheme-less URLs and /invite/ links', () => {
+    expect(
+      parseGroupLinks(
+        '欢迎加入我们的群！\n点击这里：https://chat.whatsapp.com/invite/Abcdefghijklmnopqrstuv?mode=ac_t。\n也可以使用 chat.whatsapp.com/Abcdefghijklmnopqrstuv\nhttps://chat.whatsapp.com/BBBBBBBBBBBBBBBBBBBBBB',
+      ),
+    ).toEqual(['Abcdefghijklmnopqrstuv', 'BBBBBBBBBBBBBBBBBBBBBB']);
+  });
+  it.each([
+    'https://chat.whatsapp.com.evil.example/Abcdefghijklmnopqrstuv',
+    'https://evil.example/chat.whatsapp.com/Abcdefghijklmnopqrstuv',
+    'evilchat.whatsapp.com/Abcdefghijklmnopqrstuv',
+    'https://chat.whatsapp.com@evil.example/Abcdefghijklmnopqrstuv',
+    'chat.whatsapp.com/invite/short',
+  ])('rejects malformed or disguised invitation hosts: %s', value => {
+    expect(() => parseGroupLinks(value)).toThrow();
+  });
   it('validates invitation hosts, lines and intervals while merging duplicate links', () => {
     expect(
       parseGroupLinks(
