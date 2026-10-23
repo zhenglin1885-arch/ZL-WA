@@ -495,3 +495,9 @@
   font-weight: 800;
   line-height: 1.2;
 }
+
+// Shared rounded numerals for account and group unread totals.
+.account-card__unread,
+.account-group__toggle .account-group__unread {
+  font-family: 'ZL Unread Rounded', 'Segoe UI', sans-serif;
+}

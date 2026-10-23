@@ -44,6 +44,7 @@ import Settings from './electron/Settings';
 import handleDeepLink, { getDeepLinkFromArgs } from './electron/deepLinking';
 import './electron/exception';
 import ipcApi from './electron/ipc-api';
+import CacheLocation from './electron/CacheLocation';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -72,6 +73,7 @@ app.userAgentFallback = userAgent();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | undefined;
+let cacheLocation: CacheLocation;
 let willQuitApp = false;
 let overrideAppQuitForUpdate = false;
 
@@ -167,6 +169,13 @@ const gotTheLock = liftSingleInstanceLock
   ? true
   : app.requestSingleInstanceLock();
 if (gotTheLock) {
+  try {
+    cacheLocation = new CacheLocation(userDataPath());
+    app.setPath('sessionData', cacheLocation.initialize());
+  } catch (error) {
+    dialog.showErrorBox('无法打开缓存与账号数据', String(error));
+    app.exit(1);
+  }
   app.on('second-instance', (_event, argv) => {
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
@@ -441,6 +450,7 @@ const createWindow = () => {
   // Initialize ipcApi
   ipcApi({
     mainWindow,
+    cacheLocation,
     settings: {
       app: settings,
       proxy: proxySettings,

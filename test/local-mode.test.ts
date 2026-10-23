@@ -106,6 +106,30 @@ describe('bundled service catalogue', () => {
       { id: 'telegram', name: 'Telegram', icons: { svg: '' } },
     ]);
   });
+  it('removes Teams entirely and retains Facebook Business with its own local icon', () => {
+    writeFileSync(join(directory, 'icons/meta-business-suite.svg'), '<svg/>');
+    writeFileSync(
+      join(directory, 'all.json'),
+      JSON.stringify([
+        { id: 'msteams', name: 'Microsoft Teams', featured: true },
+        {
+          id: 'meta-business-suite',
+          name: 'Meta Business Suite',
+          featured: false,
+        },
+      ]),
+    );
+    const catalogue = localRecipePreviews(directory);
+    expect(catalogue.find(r => r.id === 'msteams')).toBeUndefined();
+    expect(catalogue.find(r => r.id === 'meta-business-suite')).toMatchObject({
+      name: 'Facebook Business',
+      featured: true,
+      icons: {
+        svg: pathToFileURL(join(directory, 'icons/meta-business-suite.svg'))
+          .href,
+      },
+    });
+  });
   it.each(['../x', '/tmp/x', 'a\\b', '..', 'a..b', ''])(
     'rejects non-local package ID %s',
     id => {

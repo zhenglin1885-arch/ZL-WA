@@ -1,0 +1,250 @@
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { captureChat } from '../src/features/chatBackup/guest';
+import ChatBackup from '../src/electron/ChatBackup';
+import StartupQueue from '../src/features/accounts/StartupQueue';
+import {
+  backupDay,
+  validateBackupPacket,
+} from '../src/features/chatBackup/types';
+
+const codec = {
+  encrypt: (v: string) => Buffer.from(`wrapped:${v}`),
+  decrypt: (v: Buffer) => v.toString().slice(8),
+};
+const png =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP1sAAAAASUVORK5CYII=';
+let dir: string;
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'zl-backup-test-'));
+});
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+const packet = (time = Date.now()) => ({
+  ownerId: '123456789@c.us',
+  accountName: 'Account',
+  chatId: '987654321@c.us',
+  chatName: '<script>alert(1)</script>',
+  messages: [
+    {
+      id: 'message-one',
+      time,
+      sender: 'Sender',
+      outgoing: false,
+      text: 'private-message<&>',
+      translation: 'private-translation',
+      image: png,
+      hasImage: true,
+    },
+  ],
+});
+function create() {
+  return new ChatBackup(join(dir, 'data'), codec, join(dir, 'exports'));
+}
+test('encrypts text, translations and images; deduplicates and isolates accounts and owners', () => {
+  const store = create();
+  const p = packet();
+  store.ingest('account-a', p);
+  store.ingest('account-a', p);
+  expect(store.state().stats.messages).toBe(1);
+  store.ingest('account-b', p);
+  store.ingest('account-a', { ...p, ownerId: '111111111@c.us' });
+  expect(store.state().stats.messages).toBe(3);
+  for (const name of readdirSync(join(dir, 'data')).filter(
+    n => n.endsWith('.enc') || n.endsWith('.png'),
+  )) {
+    const bytes = readFileSync(join(dir, 'data', name));
+    expect(bytes.includes(Buffer.from('private-message'))).toBe(false);
+    expect(bytes.includes(Buffer.from('private-translation'))).toBe(false);
+    expect(
+      bytes
+        .subarray(0, 8)
+        .equals(Buffer.from(png.split(',')[1], 'base64').subarray(0, 8)),
+    ).toBe(false);
+  }
+  expect(create().state().stats.messages).toBe(3);
+});
+test('exports escaped offline HTML, correct per-chat links, translations and original image bytes', async () => {
+  const store = create();
+  const p = packet();
+  store.ingest('account-a', p);
+  store.ingest('account-a', {
+    ...p,
+    messages: [{ ...p.messages[0], id: 'message-two', text: 'second' }],
+  });
+  const index = await store.export('all');
+  const html = readFileSync(index, 'utf8');
+  expect(html).toContain('目录');
+  const folder = readdirSync(join(dir, 'exports', '全部聊天记录')).find(
+    n => n !== '目录.html',
+  )!;
+  const name = readdirSync(join(dir, 'exports', '全部聊天记录', folder)).find(
+    n => n.endsWith('.html'),
+  )!;
+  const chat = readFileSync(
+    join(dir, 'exports', '全部聊天记录', folder, name),
+    'utf8',
+  );
+  expect(chat).toContain('private-message&lt;&amp;&gt;');
+  expect(chat).toContain('private-translation');
+  expect(chat).not.toContain('<script>');
+  expect(chat).not.toContain('</article>,<article');
+  expect(chat).toContain('../目录.html');
+  const photos = join(dir, 'exports', '全部聊天记录', folder, '图片');
+  expect(readFileSync(join(photos, readdirSync(photos)[0]))).toEqual(
+    Buffer.from(png.split(',')[1], 'base64'),
+  );
+});
+test('never overwrites encrypted data when the OS key cannot be decrypted or index is damaged', () => {
+  const store = create();
+  store.ingest('account', packet());
+  const file = join(dir, 'data', 'index.enc');
+  const original = readFileSync(file);
+  const locked = new ChatBackup(
+    join(dir, 'data'),
+    {
+      ...codec,
+      decrypt: () => {
+        throw new Error('locked');
+      },
+    },
+    join(dir, 'exports'),
+  );
+  expect(locked.state().stats.error).toBeTruthy();
+  expect(() => locked.ingest('account', packet())).toThrow();
+  expect(readFileSync(file)).toEqual(original);
+  writeFileSync(file, Buffer.from('corrupt'));
+  expect(create().state().stats.error).toBeTruthy();
+  expect(readFileSync(file).toString()).toBe('corrupt');
+});
+test('catches up missed daily exports and only prunes local expired messages', async () => {
+  const store = create();
+  const now = new Date(2026, 9, 23, 23, 31).getTime();
+  const old = now - 2 * 86_400_000;
+  store.configure({ ...store.config, retentionDays: 0 });
+  store.ingest('account', packet(old));
+  await store.catchUp(now);
+  const index = join(dir, 'exports', backupDay(old), '目录.html');
+  expect(readFileSync(index, 'utf8')).toContain('聊天记录目录');
+  const first = store.state().stats.lastExport;
+  await store.catchUp(now + 1000);
+  expect(store.state().stats.lastExport).toBe(first);
+  store.configure({ ...store.config, retentionDays: 7 });
+  store.prune(now + 10 * 86_400_000);
+  expect(store.state().stats.messages).toBe(0);
+  expect(readFileSync(index, 'utf8')).toContain('聊天记录目录');
+  expect(create().state().stats.messages).toBe(0);
+});
+test('rejects external image URLs and invalid packet IDs', () => {
+  const p = packet();
+  expect(() => validateBackupPacket({ ...p, chatId: '../bad' })).toThrow();
+  expect(() =>
+    validateBackupPacket({
+      ...p,
+      messages: [
+        { ...p.messages[0], image: 'https://example.test/private.png' },
+      ],
+    }),
+  ).toThrow();
+});
+test('starts at most two accounts in sidebar order, releases one slot per completion, handles removed accounts', () => {
+  const queue = new StartupQueue(() => {});
+  queue.update(['top', 'second', 'third', 'fourth']);
+  expect([...queue.admitted]).toEqual(['top', 'second']);
+  queue.complete('top');
+  expect([...queue.admitted]).toEqual(['top', 'second', 'third']);
+  queue.complete('top');
+  expect(queue.admitted.has('fourth')).toBe(false);
+  queue.update(['top', 'third', 'fourth']);
+  expect(queue.admitted.has('fourth')).toBe(true);
+  queue.complete('third');
+  queue.complete('fourth');
+  queue.update(['top', 'third', 'fourth', 'new']);
+  expect(queue.admitted.has('new')).toBe(true);
+});
+
+// The guest must only acknowledge messages once the host has saved them.
+test('opened-chat capture retries unacknowledged writes, observes translations and rejects owner changes', async () => {
+  const owner = '123456789@c.us';
+  const chatId = '987654321@c.us';
+  const id = `false_${chatId}_fixture`;
+  const model = {
+    id: { _serialized: id },
+    t: Math.floor(Date.now() / 1000),
+    body: 'original',
+    type: 'chat',
+  };
+  let translation = 'translated';
+  let currentOwner = owner;
+  const node = {
+    dataset: { id },
+    cloneNode: () => ({
+      querySelectorAll: () => [],
+      querySelector: () => null,
+    }),
+    querySelector: (selector: string) =>
+      selector === '[data-zl-translation-text]'
+        ? { textContent: translation }
+        : null,
+  };
+  const globals = globalThis as any;
+  globals.window = {
+    location: { hostname: 'web.whatsapp.com' },
+    require: (name: string) =>
+      name === 'WAWebUserPrefsMeUser'
+        ? { getMaybeMePnUser: () => currentOwner }
+        : undefined,
+    WPP: {
+      isReady: true,
+      chat: { getActiveChat: () => ({ id: chatId, name: 'Official name' }) },
+      whatsapp: { MsgStore: { get: () => model } },
+    },
+  };
+  globals.document = {
+    querySelector: () => null,
+    querySelectorAll: () => [node],
+  };
+  const request = {
+    ownerId: owner,
+    accountName: 'Account',
+    mode: 'opened' as const,
+  };
+  try {
+    const first = await captureChat(request);
+    expect(first.packet.messages[0]).toMatchObject({
+      text: 'original',
+      translation: 'translated',
+    });
+    const retried = await captureChat(request);
+    expect(retried.packet.messages).toHaveLength(1);
+    await captureChat({ ...request, mode: 'ack', receipts: first.receipts });
+    const acknowledged = await captureChat(request);
+    expect(acknowledged.packet.messages).toHaveLength(0);
+    translation = 'retranslated';
+    const changed = await captureChat(request);
+    expect(changed.packet.messages[0].translation).toBe('retranslated');
+    currentOwner = '111111111@c.us';
+    await expect(captureChat(request)).rejects.toThrow('账号身份已变化');
+  } finally {
+    delete globals.window;
+    delete globals.document;
+  }
+});
+
+test('does not delete retained data when committing an expiry update fails', () => {
+  const store = create();
+  store.ingest('account', packet());
+  mkdirSync(join(dir, 'data', 'index.enc.tmp'));
+  expect(() => store.prune(Date.now() + 400 * 86_400_000)).toThrow();
+  expect(store.state().stats.messages).toBe(1);
+  expect(create().state().stats.messages).toBe(1);
+});

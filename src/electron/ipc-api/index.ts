@@ -12,6 +12,9 @@ import focusState from './focusState';
 import languageDetect from './languageDetect';
 import localServer from './localServer';
 import localDiagnostics from './localDiagnostics';
+import chatBackup from './chatBackup';
+import cacheLocation from './cacheLocation';
+import type CacheLocation from '../CacheLocation';
 import processManager from './processManager';
 import sessionStorage from './sessionStorage';
 import settings from './settings';
@@ -20,6 +23,7 @@ export default (params: {
   mainWindow: BrowserWindow;
   settings: any;
   trayIcon: TrayIcon;
+  cacheLocation: CacheLocation;
 }) => {
   settings(params);
   accountTools(params);
@@ -32,6 +36,8 @@ export default (params: {
   processManager();
   localServer(params);
   localDiagnostics(params.mainWindow);
+  chatBackup(params.mainWindow);
+  cacheLocation(params.mainWindow, params.cacheLocation);
   languageDetect();
   dnd();
   focusState(params);

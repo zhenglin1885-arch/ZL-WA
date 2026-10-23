@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { verifyTranslationRedraft } from './verify-translation-redraft-ui.mjs';
 import { verifyGroups } from './verify-groups-ui.mjs';
+import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
 import {
   evaluate,
   wait,
@@ -451,6 +453,13 @@ try {
       `!!document.querySelector('.account-tools-panel fieldset')`,
       'translation panel',
     );
+    assert.equal(
+      await evaluate(
+        `(()=>{const t=document.querySelector('.account-tools-panel').textContent;return ['开启接收翻译后，','Google 免 Key 通道为非官方接口','翻译开关立即生效。','手动点击或开启翻译预览后，'].some(s=>t.includes(s))})()`,
+      ),
+      false,
+      'the four marked translation help paragraphs are removed',
+    );
     for (const engine of ['OpenAI', 'Gemini']) {
       await evaluate(
         `(()=>{const select=document.querySelector('#zl-AccountTools-10');select.value=${JSON.stringify(engine)};select.dispatchEvent(new Event('change',{bubbles:true}))})()`,
@@ -520,6 +529,29 @@ try {
       0,
       'translating sent bubbles never resends them',
     );
+    const beforeRetranslate = await vm('globalThis.__zlTranslationCalls');
+    await guest(
+      first,
+      `document.querySelector('.message-in [data-zl-retranslate]').click();true`,
+    );
+    await wait(
+      `(${service(first)}.webview.executeJavaScript('!document.querySelector(".message-in [data-zl-retranslate]").disabled')).then(Boolean)`,
+      'retranslation completed',
+    );
+    assert.equal(
+      await vm('globalThis.__zlTranslationCalls'),
+      beforeRetranslate + 1,
+      'refresh bypasses existing translation cache',
+    );
+    assert.equal(
+      await guest(first, 'fixture.sent.length'),
+      0,
+      'refresh never resends a message',
+    );
+    console.log(
+      'PASS translation refresh requests a new result and never resends the message',
+    );
+
     await vm('globalThis.__zlTranslateFail=true;true');
     await guest(
       first,
@@ -858,6 +890,105 @@ try {
         !report.includes('test-chat'),
       'diagnostics must omit content and attribute values',
     );
+    // Edit-message dialogs use a separate editor and a checkmark, never the chat's send button.
+    const sentBeforeEdit = await guest(first, 'fixture.sent.length');
+    await guest(
+      first,
+      `document.querySelector('#main footer [contenteditable]').textContent='保留后台草稿';fixture.openEdit('修改后的消息');document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#fixture-edit [contenteditable]")?.textContent').then(t=>t==='Hello translated')`,
+      'edited message translation preview',
+    );
+    assert.equal(
+      await guest(first, 'fixture.edited.length'),
+      0,
+      'first save only previews the edited translation',
+    );
+    assert.equal(
+      await guest(
+        first,
+        `document.querySelector('#main footer [contenteditable]').textContent`,
+      ),
+      '保留后台草稿',
+    );
+    await guest(
+      first,
+      `document.querySelector('#fixture-edit [contenteditable]').textContent='Corrected edited message';document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
+    );
+    assert.deepEqual(await guest(first, 'fixture.edited'), [
+      'Corrected edited message',
+    ]);
+    await guest(
+      first,
+      `fixture.openEdit('键盘修改消息',false,'编辑消息');document.querySelector('#fixture-edit [contenteditable]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#fixture-edit [contenteditable]")?.textContent').then(t=>t==='Hello translated')`,
+      'edited message Enter preview without dialog role',
+    );
+    assert.equal(await guest(first, 'fixture.edited.length'), 1);
+    await guest(
+      first,
+      `document.querySelector('#fixture-edit [contenteditable]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));true`,
+    );
+    assert.equal(await guest(first, 'fixture.edited.length'), 2);
+    await vm('globalThis.__zlTranslateFail=true;true');
+    await guest(
+      first,
+      `fixture.openEdit('编辑翻译失败 ${Date.now()}');document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#zl-translation-status")?.textContent.includes("失败")')`,
+      'edit translation failure stays unsaved',
+    );
+    assert.equal(await guest(first, 'fixture.edited.length'), 2);
+    await guest(
+      first,
+      `document.querySelector('[data-testid="fixture-edit-cancel"]').click();true`,
+    );
+    await vm('globalThis.__zlTranslateFail=false;true');
+    await guest(
+      first,
+      `fixture.openEdit('等待翻译的编辑 ${Date.now()}');document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('[...window.__zlTranslation.pending.values()].some(j=>j.direction==="outgoing")')`,
+      'edit translation pending',
+    );
+    await guest(
+      first,
+      `document.querySelector('[data-testid="fixture-edit-cancel"]').click();fixture.openEdit('另一条消息的编辑');true`,
+    );
+    await new Promise(resolve => {
+      setTimeout(resolve, 900);
+    });
+    assert.equal(
+      await guest(
+        first,
+        `document.querySelector('#fixture-edit [contenteditable]').textContent`,
+      ),
+      '另一条消息的编辑',
+      'a cancelled edit cannot overwrite another message',
+    );
+    assert.equal(await guest(first, 'fixture.edited.length'), 2);
+    await guest(
+      first,
+      `document.querySelector('[data-testid="fixture-edit-cancel"]').click();fixture.openEdit('正常备注',true,'Edit profile');document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
+    );
+    assert.equal(
+      await guest(first, 'fixture.edited.at(-1)'),
+      '正常备注',
+      'unrelated forms keep their native confirmation',
+    );
+    assert.equal(
+      await guest(first, 'fixture.sent.length'),
+      sentBeforeEdit,
+      'editing never sends a new message',
+    );
+    console.log(
+      'PASS edit-message click/Enter translation previews, corrected saves, failed translation protection, cancellation isolation and unrelated dialogs',
+    );
     // Media preview caption is outside #main/footer and uses a role=button send control.
     await guest(
       first,
@@ -1152,6 +1283,7 @@ try {
     console.log(
       'PASS received translation, per-account isolation, first-click preview and second-click corrected send',
     );
+    await verifyTranslationRedraft({ first, guest, evaluate, wait, service });
     await vm(`globalThis.__zlTranslateFail=true;true`);
     await guest(
       first,
@@ -1565,6 +1697,16 @@ try {
       'PASS bulk settings persist on immediate close/reopen without carrying over recipient selection',
     );
     await clickText('关闭');
+    await verifyBulkMultitask({
+      first,
+      service,
+      guest,
+      evaluate,
+      wait,
+      clickText,
+      shot,
+      queueExpression,
+    });
   }
   // Customer integration uses local identities and never sends a WhatsApp message.
   await click(`[data-service-id="${first}"] .account-card__select`);

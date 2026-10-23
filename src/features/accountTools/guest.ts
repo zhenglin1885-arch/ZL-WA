@@ -8,6 +8,7 @@ export interface TranslationRequest {
   token: string;
   text: string;
   direction: 'incoming' | 'outgoing';
+  force?: boolean;
 }
 export function translationTick(
   config: TranslationConfig,
@@ -83,6 +84,9 @@ export function translationTick(
     };
     const sendSelector =
       '[aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send-filled"], [data-icon="send-filled"], [data-testid="compose-btn-send"], [data-testid="media-send"]';
+    const editDialogSelector =
+      '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"], [role="dialog"], [data-animate-modal-popup="true"]';
+    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
     const documentSelector =
       '[data-testid="document-preview"], [data-testid="document-thumb"], [data-testid="document-preview-file"], [data-icon="document"], [data-icon="document-filled"], [data-icon^="document-"], [data-icon="wds-ic-document"], [data-icon^="wds-ic-document-"]';
     const visible = (node: HTMLElement) =>
@@ -96,11 +100,52 @@ export function translationTick(
         input: HTMLElement;
         root: HTMLElement;
         key: string;
+        submitSelector?: string;
+        editing?: boolean;
       }[] = [];
       for (const input of document.querySelectorAll<HTMLElement>(
         '[contenteditable="true"][role="textbox"], [contenteditable="true"][data-lexical-editor="true"]',
       )) {
         if (!visible(input)) continue;
+        const editRoot = input.closest<HTMLElement>(editDialogSelector);
+        if (editRoot?.querySelector(editSubmitSelector)) {
+          const explicit = editRoot.matches(
+            '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"]',
+          );
+          // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading lines distinguish the edit-message modal from unrelated dialogs.
+          const heading = (editRoot.innerText || '')
+            .split('\n')
+            .slice(0, 6)
+            .some(line =>
+              /^(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)$/i.test(
+                line.trim(),
+              ),
+            );
+          if (explicit || heading) {
+            if (!state.mediaRoots.has(editRoot)) {
+              state.mediaSequence += 1;
+              state.mediaRoots.set(editRoot, state.mediaSequence);
+            }
+            const preview = editRoot.querySelector<HTMLElement>(
+              '[data-id], .message-out .selectable-text, [data-testid="msg-text"]',
+            );
+            candidates.push({
+              input,
+              root: editRoot,
+              submitSelector: editSubmitSelector,
+              editing: true,
+              key: JSON.stringify([
+                'edit',
+                state.mediaRoots.get(editRoot),
+                preview && !input.contains(preview)
+                  ? preview.dataset.id || preview.textContent
+                  : '',
+              ]),
+            });
+            continue;
+          }
+        }
+
         const caption =
           input.closest(
             '[data-testid="media-caption-input-container"], [data-testid="media-caption-input"], [data-testid="media-editor-caption"]',
@@ -192,7 +237,12 @@ export function translationTick(
         '#main footer [contenteditable="true"][role="textbox"], #main footer [contenteditable="true"][data-lexical-editor="true"]',
       );
       return input && visible(input)
-        ? { input, root: input.closest<HTMLElement>('footer')!, key: 'text' }
+        ? {
+            input,
+            root: input.closest<HTMLElement>('footer')!,
+            key: 'text',
+            editing: false,
+          }
         : undefined;
     };
     const composer = () => composerContext()?.input;
@@ -295,6 +345,7 @@ export function translationTick(
         current.button.disabled = false;
         current.button.hidden = true;
         current.button.style.display = 'none';
+        if (current.refresh) current.refresh.hidden = false;
       });
     };
     state.cancelPending = () => {
@@ -324,8 +375,10 @@ export function translationTick(
         !key.isComposing;
       const target = event.target as Element;
       const control = target?.closest('button, [role="button"]');
+      const submitSelector = context.submitSelector || sendSelector;
       const sendNode =
-        target?.closest(sendSelector) || control?.querySelector(sendSelector);
+        target?.closest(submitSelector) ||
+        control?.querySelector(submitSelector);
       const sendClick =
         event.type === 'click' &&
         Boolean(sendNode && context.root.contains(sendNode));
@@ -382,7 +435,11 @@ export function translationTick(
       event.preventDefault();
       event.stopImmediatePropagation();
       if (state.busy) {
-        notice('正在翻译，请等待；消息尚未发送');
+        notice(
+          context.editing
+            ? '正在翻译，请等待；修改尚未保存'
+            : '正在翻译，请等待；消息尚未发送',
+        );
         return;
       }
       if (text.length > 12_000) {
@@ -397,6 +454,7 @@ export function translationTick(
         text,
         chat: chatKey(),
         context: context.key,
+        editing: context.editing === true,
         direction: 'outgoing',
       });
       state.queue.unshift({
@@ -405,20 +463,60 @@ export function translationTick(
         text,
         direction: 'outgoing',
       });
-      notice('正在翻译，消息尚未发送…');
+      notice(
+        context.editing ? '正在翻译，修改尚未保存…' : '正在翻译，消息尚未发送…',
+      );
     };
     window.addEventListener('keydown', intercept, true);
     window.addEventListener('click', intercept, true);
-    document.addEventListener(
+    const clearApproval = () => {
+      state.approved = null;
+      state.failedReplacement = null;
+      notice('');
+    };
+    // A whole-draft replacement is a new message, even when Chromium emits a
+    // single input event and the editor never has an observable empty value.
+    // Partial corrections still keep the second-click confirmation flow.
+    window.addEventListener(
+      'beforeinput',
+      event => {
+        const input = state.approved?.input as HTMLElement | undefined;
+        if (!input?.contains(event.target as Node)) return;
+        const selection = document.getSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        if (
+          ['historyUndo', 'historyRedo'].includes(event.inputType) ||
+          (range &&
+            !range.collapsed &&
+            input.contains(range.startContainer) &&
+            input.contains(range.endContainer) &&
+            state.normalizeText(state.readText(range.cloneContents())) ===
+              state.normalizeText(state.readText(input)))
+        )
+          clearApproval();
+      },
+      true,
+    );
+    window.addEventListener(
       'input',
-      () => {
-        if (!state.readText(composer() || document.createTextNode('')).trim())
-          state.approved = null;
+      event => {
+        const input = state.approved?.input as HTMLElement | undefined;
+        if (
+          input?.contains(event.target as Node) &&
+          !state.readText(input).trim()
+        )
+          clearApproval();
       },
       true,
     );
     // Changing chats invalidates an approved composer, even if React reuses its node.
     state.observer = new MutationObserver(changes => {
+      if (
+        state.approved &&
+        (!state.approved.input.isConnected ||
+          !state.readText(state.approved.input).trim())
+      )
+        clearApproval();
       if (
         changes.every(
           change =>
@@ -456,6 +554,7 @@ export function translationTick(
     );
     state.observer.observe(document.body, {
       childList: true,
+      characterData: true,
       subtree: true,
       attributes: true,
       attributeFilter: ['title', 'data-id'],
@@ -491,7 +590,7 @@ export function translationTick(
   if (state.color !== textColor) {
     state.color = textColor;
     for (const label of document.querySelectorAll<HTMLElement>(
-      '[data-zl-translation-text]',
+      '[data-zl-translation-text], [data-zl-retranslate]',
     ))
       label.style.color = textColor;
     for (const container of document.querySelectorAll<HTMLElement>(
@@ -589,7 +688,17 @@ export function translationTick(
         button.textContent = '点击翻译';
         button.style.cssText =
           'display:inline-flex;align-items:center;border:0;border-radius:5px;background:#175aff;color:#fff;padding:7px 10px;margin:4px 0;cursor:pointer;font:13px/1.4 sans-serif';
-        container.append(label, button);
+        const refresh = document.createElement('button');
+        refresh.type = 'button';
+        refresh.dataset.zlRetranslate = 'true';
+        refresh.setAttribute('aria-label', '重新翻译');
+        refresh.title = '重新翻译（重新请求，不使用缓存）';
+        refresh.textContent = '⟳';
+        refresh.hidden = true;
+        refresh.style.cssText =
+          'border:0;background:transparent;color:inherit;font:22px/1.2 sans-serif;padding:2px 6px;cursor:pointer';
+        refresh.style.color = state.color;
+        container.append(label, refresh, button);
         const mount = textNode.closest('.copyable-text');
         state.withScroll(textNode, () => {
           if (mount && mount !== textNode) mount.append(container);
@@ -603,12 +712,13 @@ export function translationTick(
           container,
           label,
           button,
+          refresh,
           status: 'idle',
           autoAttempted: false,
         };
         state.incoming.set(textNode, record);
         const current = record;
-        current.request = (manual: boolean) => {
+        current.request = (manual: boolean, force = false) => {
           if (
             !state.config.incoming ||
             current.chat !== state.chatKey() ||
@@ -624,11 +734,13 @@ export function translationTick(
             button.title = '翻译队列繁忙，请稍后点击重试';
             return;
           }
+          if (force) state.memo.delete(current.cacheKey);
           current.status = 'pending';
+          refresh.disabled = true;
           current.autoAttempted = true;
           button.disabled = true;
           button.textContent = '翻译中…';
-          label.textContent = '';
+          if (!force) label.textContent = '';
           state.sequence += 1;
           const id = state.sequence;
           state.pending.set(id, {
@@ -645,10 +757,16 @@ export function translationTick(
             token: state.token,
             text: current.text,
             direction: 'incoming',
+            ...(force ? { force: true } : {}),
           };
           if (manual) state.queue.unshift(request);
           else state.queue.push(request);
         };
+        refresh.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          current.request(true, true);
+        });
         button.addEventListener('click', event => {
           event.preventDefault();
           event.stopPropagation();
@@ -656,7 +774,8 @@ export function translationTick(
         });
       }
       const cached = state.memo.get(record.cacheKey);
-      if (cached && record.status !== 'done') state.restore(record, cached);
+      if (cached && record.status !== 'done' && record.status !== 'pending')
+        state.restore(record, cached);
       if (
         config.preview &&
         state.previewBlockedChat !== state.chatKey() &&
@@ -709,7 +828,11 @@ export function translationResult(
           chat: job.chat,
           context: job.context,
         };
-        state.notice('译文已填入：请校正后再次发送');
+        state.notice(
+          job.editing
+            ? '译文已填入：请校正后再次保存修改'
+            : '译文已填入：请校正后再次发送',
+        );
       } else {
         if (valid)
           state.failedReplacement = {
@@ -747,7 +870,11 @@ export function translationResult(
         chat: job.chat,
         context: job.context,
       };
-      state.notice('内容无需改写，请确认后再次发送');
+      state.notice(
+        job.editing
+          ? '内容无需改写，请确认后再次保存修改'
+          : '内容无需改写，请确认后再次发送',
+      );
       return false;
     }
     if (phase === 'selected') {
@@ -799,6 +926,7 @@ export function translationResult(
   }
   state.pending.delete(id);
   const { record } = job;
+  if (record?.refresh) record.refresh.disabled = false;
   if (!result.error && result.text?.trim() && job.cacheKey)
     state.remember(job.cacheKey, result.text);
   state.dirty = true;

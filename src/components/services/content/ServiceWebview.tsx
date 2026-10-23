@@ -29,6 +29,7 @@ type WebviewElement = ElectronWebView['view'];
 
 interface IProps {
   service: ServiceModel;
+  onStartupReady?: () => void;
   setWebviewReference: (options: {
     serviceId: string;
     webview: ElectronWebView | null;
@@ -46,7 +47,29 @@ class ServiceWebview extends Component<IProps> {
 
   @observable proxyError = '';
 
+  private startupTimer?: ReturnType<typeof setTimeout>;
+
+  private startupDone = false;
+
+  @observable startupError = false;
+
+  finishStartup = () => {
+    if (this.startupDone) return;
+    this.startupDone = true;
+    clearTimeout(this.startupTimer);
+    this.props.onStartupReady?.();
+  };
+
   componentDidMount(): void {
+    this.startupTimer = setTimeout(() => {
+      if (!this.startupDone) {
+        this.webview?.view?.stop();
+        runInAction(() => {
+          this.startupError = true;
+        });
+        this.finishStartup();
+      }
+    }, 45_000);
     this.prepareProxy();
   }
 
@@ -63,6 +86,7 @@ class ServiceWebview extends Component<IProps> {
         });
       })
       .catch(() => {
+        this.finishStartup();
         runInAction(() => {
           this.proxyError =
             '账号代理初始化失败，请检查右侧代理设置后重新打开会话';
@@ -110,6 +134,8 @@ class ServiceWebview extends Component<IProps> {
       const snapshot = await view.executeJavaScript(
         `(${readWhatsAppSnapshot.toString()})()`,
       );
+      if (snapshot.status !== 'loading' && !service.isLoading)
+        this.finishStartup();
       if (this.webview?.view !== view || this.disposed) return;
       runInAction(() => {
         service.accountSnapshot = mergeAccountSnapshot(
@@ -228,6 +254,7 @@ class ServiceWebview extends Component<IProps> {
 
   componentWillUnmount(): void {
     this.disposed = true;
+    this.finishStartup();
     const { service, detachService } = this.props;
     this.webviewReactionDisposer();
     this.removeWebviewEventListeners(this.webview?.view ?? null);
@@ -296,15 +323,25 @@ class ServiceWebview extends Component<IProps> {
     }
   };
 
+  startupFailed = (event: Electron.DidFailLoadEvent): void => {
+    if (event.isMainFrame && event.errorCode !== -3) this.finishStartup();
+  };
+
+  startupStopped = (): void => {
+    if (this.props.service.recipe?.id !== 'whatsapp') this.finishStartup();
+    this.refocusWebview();
+  };
+
   addWebviewEventListeners(webview: WebviewElement | null): void {
     if (!webview) {
       return;
     }
 
+    webview.addEventListener('did-stop-loading', this.startupStopped);
+    webview.addEventListener('did-fail-load', this.startupFailed);
     webview.addEventListener('console-message', this.handleConsoleMessage);
     webview.addEventListener('did-navigate', this.handleDidNavigate);
     webview.addEventListener('page-title-updated', this.handlePageTitleUpdated);
-    webview.addEventListener('did-stop-loading', this.refocusWebview);
     if (this.props.service.recipe?.id === 'whatsapp') {
       webview.addEventListener(
         'did-start-loading',
@@ -327,13 +364,14 @@ class ServiceWebview extends Component<IProps> {
       return;
     }
 
+    webview.removeEventListener('did-stop-loading', this.startupStopped);
+    webview.removeEventListener('did-fail-load', this.startupFailed);
     webview.removeEventListener('console-message', this.handleConsoleMessage);
     webview.removeEventListener('did-navigate', this.handleDidNavigate);
     webview.removeEventListener(
       'page-title-updated',
       this.handlePageTitleUpdated,
     );
-    webview.removeEventListener('did-stop-loading', this.refocusWebview);
     webview.removeEventListener(
       'did-start-loading',
       this.accountNavigationStarted,
@@ -350,6 +388,22 @@ class ServiceWebview extends Component<IProps> {
   render(): ReactElement {
     const { service, isSpellcheckerEnabled, stores } = this.props;
 
+    if (this.startupError)
+      return (
+        <div role="status">
+          账号启动超时，后续账号将继续启动。
+          <button
+            type="button"
+            onClick={() => {
+              runInAction(() => {
+                this.startupError = false;
+              });
+            }}
+          >
+            重试此账号
+          </button>
+        </div>
+      );
     if (service.recipe.id === 'whatsapp' && !this.proxyReady) {
       return (
         <div role="status">

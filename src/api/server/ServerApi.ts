@@ -25,6 +25,7 @@ import sleep from '../../helpers/async-helpers';
 
 import {
   localRecipePreviews,
+  isRemovedRecipe,
   validRecipeId,
 } from '../../helpers/local-recipes';
 import { SERVER_NOT_LOADED } from '../../config';
@@ -215,13 +216,26 @@ export default class ServerApi {
     }
     const data = await request.json();
 
-    const services = await this._mapServiceModels(data);
+    // Retired services are removed before any recipe or webview can load.
+    await Promise.all(
+      data
+        .filter((service: { recipeId: string }) =>
+          isRemovedRecipe(service.recipeId),
+        )
+        .map((service: { id: string }) => this.deleteService(service.id)),
+    );
+    const services = await this._mapServiceModels(
+      data.filter(
+        (service: { recipeId: string }) => !isRemovedRecipe(service.recipeId),
+      ),
+    );
     const filteredServices = services.filter(service => !!service);
     debug('ServerApi::getServices resolves', filteredServices);
     return filteredServices;
   }
 
   async createService(recipeId: string, data: { iconFile: any }) {
+    if (isRemovedRecipe(recipeId)) throw new Error('Teams 服务已移除');
     const request = await sendAuthRequest(`${apiBase()}/service`, {
       method: 'POST',
       body: JSON.stringify({ recipeId, ...data }),
@@ -357,7 +371,8 @@ export default class ServerApi {
       file =>
         statSync(join(recipesDirectory, file)).isDirectory() &&
         file !== 'temp' &&
-        file !== 'dev',
+        file !== 'dev' &&
+        !isRemovedRecipe(file),
     );
 
     const icons = new Map(
@@ -371,6 +386,7 @@ export default class ServerApi {
         // eslint-disable-next-line import/no-dynamic-require
         const Recipe = require(id)(RecipeModel);
         const recipe = new Recipe(loadRecipeConfig(id));
+        if (id === 'meta-business-suite') recipe.name = 'Facebook Business';
         const icon = icons.get(id);
         if (icon) recipe.defaultIcon = icon;
         return recipe;
@@ -421,7 +437,8 @@ export default class ServerApi {
   }
 
   async getRecipePackage(recipeId: string) {
-    if (!validRecipeId(recipeId)) throw new Error('无效的服务 ID');
+    if (!validRecipeId(recipeId) || isRemovedRecipe(recipeId))
+      throw new Error('无效或已移除的服务 ID');
     const recipesDirectory = userDataRecipesPath();
     const recipeTempDirectory = join(recipesDirectory, 'temp', recipeId);
 
@@ -565,7 +582,8 @@ export default class ServerApi {
       const paths = readdirSync(recipesDirectory).filter(
         file =>
           statSync(join(recipesDirectory, file)).isDirectory() &&
-          file !== 'temp',
+          file !== 'temp' &&
+          !isRemovedRecipe(file),
       );
 
       const recipes: IRecipe[] = paths

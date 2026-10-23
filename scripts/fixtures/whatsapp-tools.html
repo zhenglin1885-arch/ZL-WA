@@ -349,6 +349,7 @@
         WAWebSendMsgChatAction: {
           addAndSendMsgToChat: (chat, message) => {
             fixture.bulk.push({ id: chat.id._serialized, text: message.body });
+            if(fixture.holdBulk){fixture.bulkReleases??=[];return [Promise.resolve(message),new Promise(resolve=>{fixture.bulkReleases.push(resolve);})];}
             return [
               Promise.resolve(message),
               fixture.fail
@@ -399,6 +400,25 @@
         return modules[name];
       };
       fixture.mediaSent = [];
+      fixture.edited = [];
+      fixture.openEdit = (text = '修改消息', withRole = true, heading = 'Edit message') => {
+        document.querySelector('#fixture-edit')?.remove();
+        const root = document.createElement('div');
+        root.id = 'fixture-edit';
+        if (withRole) root.setAttribute('role', 'dialog');
+        else root.dataset.animateModalPopup = 'true';
+        root.style.cssText = 'position:fixed;inset:70px;z-index:120;background:#202c33;padding:30px;display:flex;flex-direction:column;gap:20px';
+        const title = document.createElement('h2');title.textContent = heading;
+        const preview = document.createElement('div');preview.dataset.id = 'true_10002@c.us_original';preview.textContent = 'Previously sent message';
+        const input = document.createElement('div');input.contentEditable = 'true';input.setAttribute('role','textbox');input.dataset.lexicalEditor = 'true';input.textContent = text;
+        const save = document.createElement('button');save.dataset.testid = 'fixture-edit-save';save.innerHTML = '<span data-icon="checkmark">✓</span>';
+        const cancel = document.createElement('button');cancel.dataset.testid = 'fixture-edit-cancel';cancel.textContent = '取消编辑';cancel.onclick = () => root.remove();
+        const submit = () => {fixture.edited.push(input.textContent);root.remove();};
+        save.onclick = submit;
+        input.onkeydown = event => {if(event.key === 'Enter' && !event.shiftKey){event.preventDefault();submit();}};
+        input.addEventListener('input', event => {if(event.isTrusted)fixture.nativeInputs++;});
+        root.append(title,preview,input,save,cancel);document.body.append(root);input.focus();
+      };
       fixture.openMedia = (caption = '', withRole = true, kind = 'image') => {
         document.querySelector('#fixture-media')?.remove();
         const root = document.createElement('div');

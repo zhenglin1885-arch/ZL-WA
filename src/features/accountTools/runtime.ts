@@ -84,6 +84,7 @@ export function startTranslations(stores: RealStores): () => void {
               service.id,
               job.text,
               job.direction,
+              Boolean(job.force),
             );
           } catch {
             result = { text: '', error: true };

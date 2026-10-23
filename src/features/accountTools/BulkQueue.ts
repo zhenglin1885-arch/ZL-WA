@@ -73,9 +73,27 @@ export function validateBulkSpec(spec: BulkSpec) {
 export default class BulkQueue {
   records: SendRecord[] = [];
 
-  activeId = '';
+  private operations = new Map<string, 'send' | 'revoke' | 'check' | 'edit'>();
 
-  activeOperation: 'send' | 'revoke' | 'check' | 'edit' = 'send';
+  get activeId() {
+    return (
+      this.operations.keys().next().value ||
+      this.submitting.keys().next().value ||
+      ''
+    );
+  }
+
+  get activeOperation() {
+    return this.operations.get(this.activeId) || 'send';
+  }
+
+  get activeIds(): ReadonlySet<string> {
+    return new Set([...this.operations.keys(), ...this.submitting]);
+  }
+
+  isRunning(id: string) {
+    return this.operations.has(id) || this.submitting.has(id);
+  }
 
   error = '';
 
@@ -87,7 +105,7 @@ export default class BulkQueue {
 
   private ready?: Promise<void>;
 
-  private submitting = false;
+  private submitting = new Set<string>();
 
   constructor(private adapter: BulkAdapter) {}
 
@@ -135,19 +153,19 @@ export default class BulkQueue {
   dispose() {
     clearInterval(this.timer);
     this.timer = undefined;
-    if (this.activeId) this.stopped.add(this.activeId);
+    for (const id of this.activeIds) this.stopped.add(id);
   }
 
   async persist(record: SendRecord) {
-    this.records = [
-      record,
-      ...this.records.filter(r => r.id !== record.id),
-    ].slice(0, 100);
+    // Keep task rows stable while concurrent jobs update their progress.
+    this.records = this.records.some(r => r.id === record.id)
+      ? this.records.map(r => (r.id === record.id ? record : r))
+      : [record, ...this.records].slice(0, 100);
     this.notify();
     await this.adapter.save(record);
   }
 
-  async submit(input: BulkSpec) {
+  async submit(input: BulkSpec, background = false) {
     const spec = {
       ...input,
       text: ['image', 'audio', 'contact'].includes(input.type)
@@ -156,47 +174,56 @@ export default class BulkQueue {
     };
     validateBulkSpec(spec);
     await this.load();
-    if (this.activeId || this.submitting)
-      throw new Error('已有任务在执行，请等待完成或停止');
-    this.submitting = true;
+    if (this.records.length >= 100)
+      throw new Error('记录已满，请先清理完成的任务');
+    const record: SendRecord = {
+      id: crypto.randomUUID(),
+      started: new Date().toISOString(),
+      text: spec.text || spec.media?.name || spec.contactName || '',
+      status: spec.scheduledAt ? '待发送' : '发送中',
+      total: spec.targets.length,
+      success: 0,
+      failed: 0,
+      details: [],
+      deliveries: [],
+      spec: structuredClone(spec),
+    };
+    this.error = '';
+    this.submitting.add(record.id);
     try {
-      if (this.records.length >= 100)
-        throw new Error('记录已满，请先清理完成的任务');
-      const record: SendRecord = {
-        id: crypto.randomUUID(),
-        started: new Date().toISOString(),
-        text: spec.text || spec.media?.name || spec.contactName || '',
-        status: spec.scheduledAt ? '待发送' : '发送中',
-        total: spec.targets.length,
-        success: 0,
-        failed: 0,
-        details: [],
-        deliveries: [],
-        spec: structuredClone(spec),
-      };
-      this.error = '';
       // Persist before any WhatsApp operation, including the first message.
       await this.persist(record);
-      if (!spec.scheduledAt) await this.run(record);
+      if (!spec.scheduledAt) {
+        const action = this.run(record);
+        if (background)
+          void action.catch(error => {
+            this.error = String(error);
+            this.notify();
+          });
+        else await action;
+      }
+      return record.id;
     } finally {
-      this.submitting = false;
+      this.submitting.delete(record.id);
+      this.notify();
     }
   }
 
   async tick() {
     await this.load();
-    if (this.activeId || this.submitting) return;
-    const due = this.records.find(
+    const due = this.records.filter(
       r =>
+        !this.isRunning(r.id) &&
         r.status === '待发送' &&
         Date.parse(r.spec?.scheduledAt ?? '') <= Date.now(),
     );
-    if (due) await this.run(due);
+    await Promise.all(due.map(record => this.run(record)));
   }
 
   async stop(id: string) {
-    this.stopped.add(id);
     const record = this.records.find(r => r.id === id);
+    if (!record || (!this.isRunning(id) && record.status !== '待发送')) return;
+    this.stopped.add(id);
     if (record?.status === '待发送')
       await this.persist({
         ...record,
@@ -209,19 +236,20 @@ export default class BulkQueue {
     if (
       ids.some(
         id =>
-          id === this.activeId ||
+          this.isRunning(id) ||
           this.records.find(r => r.id === id)?.status === '待发送',
       )
     )
       throw new Error('请先停止或取消任务，再删除记录');
-    this.records = await this.adapter.remove(ids);
+    await this.adapter.remove(ids);
+    this.records = this.records.filter(record => !ids.includes(record.id));
+    for (const id of ids) this.stopped.delete(id);
     this.notify();
   }
 
   private async run(initial: SendRecord) {
-    if (this.activeId || !initial.spec) return;
-    this.activeId = initial.id;
-    this.activeOperation = 'send';
+    if (this.operations.has(initial.id) || !initial.spec) return;
+    this.operations.set(initial.id, 'send');
     let record = { ...initial, status: '发送中' };
     const { spec } = initial;
     try {
@@ -325,7 +353,7 @@ export default class BulkQueue {
         r.id === record.id ? { ...record, status: '已中断' } : r,
       );
     } finally {
-      this.activeId = '';
+      this.operations.delete(record.id);
       this.stopped.delete(record.id);
       this.notify();
     }
@@ -346,13 +374,11 @@ export default class BulkQueue {
   }
 
   async reconcile(id: string) {
-    if (this.activeId || this.submitting)
-      throw new Error('请先等待当前任务结束');
+    if (this.isRunning(id)) throw new Error('此任务正在执行，请等待此任务结束');
     let record = this.records.find(r => r.id === id);
     if (!record?.deliveries?.length || !this.adapter.reconcile)
       throw new Error('记录缺少发送对象，无法自动核对');
-    this.activeId = id;
-    this.activeOperation = 'check';
+    this.operations.set(id, 'check');
     this.notify();
     try {
       for (let i = 0; i < record.deliveries!.length; i += 1) {
@@ -425,14 +451,13 @@ export default class BulkQueue {
         await this.persist(record);
       }
     } finally {
-      this.activeId = '';
+      this.operations.delete(record.id);
       this.notify();
     }
   }
 
   async edit(id: string, text: string, targets: string[]) {
-    if (this.activeId || this.submitting)
-      throw new Error('请先等待当前任务结束');
+    if (this.isRunning(id)) throw new Error('此任务正在执行，请等待此任务结束');
     if (!text.trim() || text.length > 12_000 || targets.length === 0)
       throw new Error('请选择对象并填写 1–12000 字符的新内容');
     let record = this.records.find(r => r.id === id);
@@ -452,8 +477,7 @@ export default class BulkQueue {
       selected.some(d => !d.messageId || d.revoked)
     )
       throw new Error('存在无法编辑的消息，请先核对消息编号');
-    this.activeId = id;
-    this.activeOperation = 'edit';
+    this.operations.set(id, 'edit');
     this.notify();
     try {
       record = {
@@ -536,19 +560,17 @@ export default class BulkQueue {
             : undefined,
       });
     } finally {
-      this.activeId = '';
+      this.operations.delete(record.id);
       this.notify();
     }
   }
 
   async revoke(id: string, targets?: string[]) {
-    if (this.activeId || this.submitting)
-      throw new Error('请先等待当前任务结束');
+    if (this.isRunning(id)) throw new Error('此任务正在执行，请等待此任务结束');
     let record = this.records.find(r => r.id === id);
     if (!record?.deliveries?.some(d => d.messageId && !d.revoked))
       throw new Error('没有可撤回的消息编号，旧版记录不支持撤回');
-    this.activeId = id;
-    this.activeOperation = 'revoke';
+    this.operations.set(id, 'revoke');
     this.notify();
     try {
       record = {
@@ -603,7 +625,7 @@ export default class BulkQueue {
       }
       await this.persist({ ...record, revokeEnded: new Date().toISOString() });
     } finally {
-      this.activeId = '';
+      this.operations.delete(record.id);
       this.stopped.delete(id);
       this.notify();
     }

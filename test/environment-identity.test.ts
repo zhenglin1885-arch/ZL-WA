@@ -46,6 +46,24 @@ describe('ZL-WA environment initialization', () => {
     expect(protocolClient).toBe('zl-wa');
   });
 
+  it('renderer imports never overwrite the main process custom session location', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, 'type');
+    Object.defineProperty(process, 'type', {
+      configurable: true,
+      value: 'renderer',
+    });
+    try {
+      const { app } = jest.requireActual('../src/environment-remote');
+      expect(app.setPath).not.toHaveBeenCalledWith(
+        'sessionData',
+        expect.anything(),
+      );
+    } finally {
+      if (descriptor) Object.defineProperty(process, 'type', descriptor);
+      else Reflect.deleteProperty(process, 'type');
+    }
+  });
+
   it('isolates development storage and deep links', () => {
     process.env.ELECTRON_IS_DEV = '1';
     const { app, protocolClient } = jest.requireActual(

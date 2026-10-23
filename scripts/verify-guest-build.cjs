@@ -16,6 +16,7 @@ const {
 } = require('../build/features/accountTools/guest');
 const { defaultTools } = require('../build/features/accountTools/config');
 
+const { captureChat } = require('../build/features/chatBackup/guest');
 const advanced = require('../build/features/accountTools/bulkGuest');
 const customers = require('../build/features/customers/guest');
 const { groupGuest } = require('../build/features/groups/guest');
@@ -41,7 +42,11 @@ const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
     queueMicrotask,
     location: { hostname: 'web.whatsapp.com' },
     navigator: { onLine: true },
-    window: { require: name => modules[name], addEventListener() {} },
+    window: {
+      location: { hostname: 'web.whatsapp.com' },
+      require: name => modules[name],
+      addEventListener() {},
+    },
     document: {
       querySelector: () => null,
       querySelectorAll: () => [],
@@ -66,6 +71,18 @@ const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
   await assert.rejects(
     call(groupGuest, [{ ownerId: '8613800000001@c.us' }]),
     /群组接口尚未就绪/,
+  );
+  assert.equal(
+    await call(captureChat, [
+      { ownerId: '8613800000001@c.us', accountName: 'Fixture', mode: 'opened' },
+    ]),
+    null,
+  );
+  await assert.rejects(
+    call(captureChat, [
+      { ownerId: 'wrong@c.us', accountName: 'Fixture', mode: 'opened' },
+    ]),
+    /账号身份已变化/,
   );
   assert.equal(call(watchWhatsAppUnread), true);
   context.window.__zlWaUnread.dispose();

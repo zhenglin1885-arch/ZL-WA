@@ -12,20 +12,41 @@ import {
 
 let library: Promise<string> | undefined;
 const queues = new WeakMap<RealStores, BulkQueue>();
+const libraryInitializations = new WeakMap<
+  Electron.WebviewTag,
+  Promise<void>
+>();
 export async function ensureBulkLibrary(view: Electron.WebviewTag) {
-  if (await view.executeJavaScript("location.hostname !== 'web.whatsapp.com'"))
-    throw new Error('当前会话不是 WhatsApp');
-  if (!(await view.executeJavaScript('Boolean(window.WPP)'))) {
-    library ??= ipcRenderer.invoke('account-tools-library');
-    await view.executeJavaScript(await library!);
+  const pending = libraryInitializations.get(view);
+  if (pending) {
+    await pending;
+    return;
   }
-  if (
-    !(await view.executeJavaScript(
-      'new Promise(resolve => { const until = Date.now() + 15000; const check = () => { if (window.WPP?.isReady) resolve(true); else if (Date.now() > until) resolve(false); else setTimeout(check, 200); }; check(); })',
-    ))
-  )
-    throw new Error('WhatsApp 接口未就绪，请刷新账号再试');
+  const initialization = (async () => {
+    if (
+      await view.executeJavaScript("location.hostname !== 'web.whatsapp.com'")
+    )
+      throw new Error('当前会话不是 WhatsApp');
+    if (!(await view.executeJavaScript('Boolean(window.WPP)'))) {
+      library ??= ipcRenderer.invoke('account-tools-library');
+      await view.executeJavaScript(await library!);
+    }
+    if (
+      !(await view.executeJavaScript(
+        'new Promise(resolve => { const until = Date.now() + 15000; const check = () => { if (window.WPP?.isReady) resolve(true); else if (Date.now() > until) resolve(false); else setTimeout(check, 200); }; check(); })',
+      ))
+    )
+      throw new Error('WhatsApp 接口未就绪，请刷新账号再试');
+  })();
+  libraryInitializations.set(view, initialization);
+  try {
+    await initialization;
+  } finally {
+    if (libraryInitializations.get(view) === initialization)
+      libraryInitializations.delete(view);
+  }
 }
+
 export function getBulkQueue(stores: RealStores): BulkQueue {
   if (!queues.has(stores)) {
     const viewFor = (target: Recipient) => {

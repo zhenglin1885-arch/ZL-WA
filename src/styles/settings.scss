@@ -712,3 +712,25 @@
     margin-right: auto;
   }
 }
+
+// Local chat backup controls share the existing settings shell.
+.chat-backup-settings {
+  min-width: 0;
+  div { height: auto; }
+  p { font-size: 13px; line-height: 1.65; margin-top: 8px; opacity: .85; }
+  button { border: 1px solid #68727c; border-radius: 7px; padding: 8px 12px; margin: 4px; color: inherit; background: transparent; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type='checkbox'] { width: 17px; height: 17px; vertical-align: middle; accent-color: #7367f0; }
+  select { width: 100%; }
+  option { color: #17212b; background: #fff; }
+}
+
+.local-cache-settings {
+  height: auto;
+  div { height: auto; }
+  &__path { overflow-wrap: anywhere; user-select: text; }
+  &__actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  button { padding: 8px 12px; border: 1px solid #76818e; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  [role='alert'] { color: #e35d5d; overflow-wrap: anywhere; }
+}

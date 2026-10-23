@@ -197,3 +197,13 @@
   pointer-events: none;
   -webkit-app-region: drag;
 }
+
+// A purple title/status bar in light mode, matching the requested accent.
+body:not(.theme__dark) .app-titlebar {
+  background: #7367f0;
+  color: #fff;
+  #electron-app-title-bar { background: #7367f0; color: #fff; }
+  .app-titlebar__brand, .account-network-status { color: #fff; }
+  #electron-app-title-bar .window-controls button { color: #fff; }
+  #electron-app-title-bar .window-controls button:not(.window-close):not(:disabled):hover { background: #ffffff26; }
+}

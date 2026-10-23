@@ -136,8 +136,9 @@ const BulkSend = observer(
     const profiles = normalizeAccountConfig(
       stores.settings.app.accountSidebar,
     ).accounts;
-    const running = Boolean(queue.activeId);
-    const disabled = running || loading || submitting || !preferencesReady;
+    const { activeIds } = queue;
+    const running = activeIds.size > 0;
+    const disabled = loading || submitting || !preferencesReady;
     const online = stores.services.all.filter(
       s =>
         s.recipe.id === 'whatsapp' &&
@@ -267,7 +268,7 @@ const BulkSend = observer(
       setNotice('');
       setCreating(false);
       try {
-        await queue.submit(spec);
+        await queue.submit(spec, true);
       } catch (error) {
         setNotice(String(error));
       } finally {
@@ -304,7 +305,7 @@ const BulkSend = observer(
             {!creating && (
               <Button
                 variant="contained"
-                disabled={running || submitting}
+                disabled={submitting}
                 onClick={() => {
                   setCreating(true);
                   setNotice('');
@@ -705,7 +706,7 @@ const BulkSend = observer(
           ) : (
             <BulkHistory
               records={queue.records}
-              running={running}
+              activeIds={activeIds}
               onCompose={record => {
                 const previous = record.spec;
                 setType(previous?.type ?? 'text');
@@ -745,7 +746,8 @@ const BulkSend = observer(
           )}
           {running && (
             <p role="status">
-              任务执行中，可关闭窗口继续后台执行。停止会等待当前操作返回。
+              当前 {activeIds.size}{' '}
+              个任务执行中，可继续新建群发或关闭窗口；可在对应记录中单独停止。
             </p>
           )}
           <p role="status" className="tools-notice">
@@ -760,17 +762,18 @@ const BulkSend = observer(
           >
             关闭
           </Button>
-          {running && ['send', 'revoke'].includes(queue.activeOperation) && (
-            <Button
-              onClick={() =>
-                void queue
-                  .stop(queue.activeId)
-                  .catch(error => setNotice(String(error)))
-              }
-            >
-              {queue.activeOperation === 'revoke' ? '停止撤回' : '停止发送'}
-            </Button>
-          )}
+          {activeIds.size === 1 &&
+            ['send', 'revoke'].includes(queue.activeOperation) && (
+              <Button
+                onClick={() =>
+                  void queue
+                    .stop(queue.activeId)
+                    .catch(error => setNotice(String(error)))
+                }
+              >
+                {queue.activeOperation === 'revoke' ? '停止撤回' : '停止发送'}
+              </Button>
+            )}
           {creating && (
             <>
               <Button onClick={() => setCreating(false)}>返回记录</Button>

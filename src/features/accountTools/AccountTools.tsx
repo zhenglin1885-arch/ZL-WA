@@ -7,6 +7,7 @@ import {
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
 import { useEffect, useState, useId } from 'react';
+import { startChatBackup } from '../chatBackup/runtime';
 import type { GroupMode } from '../groups/types';
 import GroupTools from '../groups/GroupTools';
 import CustomerPanel, {
@@ -416,9 +417,6 @@ const SettingsPanel = observer(
                     })
                   }
                 />
-                <p className="tools-muted">
-                  开启接收翻译后，收发文字消息下方显示「点击翻译」。翻译预览开启后，从下一个打开的聊天开始，分批翻译可见消息。成功译文保存在本机，返回聊天优先恢复缓存；未翻译的消息可点击按钮手动翻译。译文使用接收翻译通道及目标语言。
-                </p>
                 <label htmlFor="receive-engine">
                   接收翻译通道
                   <select
@@ -554,21 +552,12 @@ const SettingsPanel = observer(
                       </fieldset>
                     </details>
                   ))}
-                <p className="tools-muted">
-                  Google 免 Key 通道为非官方接口，可用性和额度无法保证；DeepL
-                  API Free 需自行申请 Key。OpenAI、Gemini
-                  按各自账号额度或计费规则使用。翻译连接使用当前账号的网络代理。
-                </p>
                 <button type="button" onClick={() => void apply('outgoing')}>
                   应用并测试发送翻译
                 </button>
                 <button type="button" onClick={() => void apply('incoming')}>
                   应用并测试接收翻译
                 </button>
-                <p className="tools-muted">
-                  翻译开关立即生效。修改语言、通道或 Key
-                  后请点击应用。纯表情、数字、贴纸和附件不进入文字翻译。
-                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -592,9 +581,6 @@ const SettingsPanel = observer(
                 )}
                 <p className="tools-info">
                   第一次发送仅替换为译文；请校正后再次发送。翻译失败时保留原文，不发送消息。
-                </p>
-                <p className="tools-muted">
-                  手动点击或开启翻译预览后，消息文字将发送至所选第三方翻译服务。仅处理当前可见聊天的文字，向上查看历史时按需处理。
                 </p>
               </>
             )}
@@ -624,6 +610,7 @@ const AccountTools = observer(({ stores }: StoresProps) => {
   const [bulk, setBulk] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>();
   useEffect(() => startTranslations(stores), [stores]);
+  useEffect(() => startChatBackup(stores), [stores]);
   const customers = getCustomerRuntime(stores);
   useEffect(() => {
     customers.start();

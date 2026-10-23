@@ -809,7 +809,7 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                         className="account-group__unread"
                         aria-label={`${group.name}有${unreadTotal}条未读消息`}
                       >
-                        {unreadTotal}
+                        {unreadTotal > 99 ? '99+' : unreadTotal}
                       </span>
                     )}
                   </button>

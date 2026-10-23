@@ -11,6 +11,7 @@ import {
   injectIntl,
 } from 'react-intl';
 import tinycolor from 'tinycolor2';
+import CacheLocationPanel from '../../../features/localSettings/CacheLocationPanel';
 import GitHubUpdatesPanel from '../../../features/updates/GitHubUpdatesPanel';
 import {
   DEFAULT_APP_SETTINGS,
@@ -1266,6 +1267,8 @@ class EditSettingsForm extends Component<IProps, IState> {
                   <Hr />
 
                   <div className="settings__settings-group">
+                    <CacheLocationPanel />
+                    <Hr />
                     <H3>{intl.formatMessage(messages.subheadlineCache)}</H3>
                     <p>
                       {intl.formatMessage(messages.cacheInfo, {

@@ -396,8 +396,13 @@
   overflow-wrap: anywhere;
   min-width: 150px;
   max-width: 280px;
-  max-height: 90px;
-  overflow: auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
 }
 .bulk-history__actions {
   display: flex;

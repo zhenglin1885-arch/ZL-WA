@@ -8,12 +8,19 @@ import {
 } from '@mui/material';
 import type { SendRecord } from './config';
 
+// Keep the actionable cause, omitting Electron's transport wrapper.
+const errorText = (value: string) =>
+  value.replace(
+    /^(?:Error:\s*|Error invoking remote method ['"][^'"]+['"]:\s*)+/u,
+    '',
+  );
+
 const time = (value?: string) =>
   value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
 
 export default function BulkHistory({
   records,
-  running,
+  activeIds,
   onCompose,
   onDelete,
   onReconcile,
@@ -22,7 +29,7 @@ export default function BulkHistory({
   onRevoke,
 }: {
   records: SendRecord[];
-  running: boolean;
+  activeIds: ReadonlySet<string>;
   onCompose: (record: SendRecord) => void;
   onStop: (id: string) => Promise<void>;
   onRevoke: (id: string, targets?: string[]) => Promise<void>;
@@ -30,6 +37,7 @@ export default function BulkHistory({
   onReconcile: (id: string) => Promise<void>;
   onEdit: (id: string, text: string, targets: string[]) => Promise<void>;
 }) {
+  const running = activeIds.size > 0;
   const empty = { text: '', status: 'all', from: '', to: '' };
   const [draft, setDraft] = useState(empty);
   const [filters, setFilters] = useState(empty);
@@ -47,7 +55,7 @@ export default function BulkHistory({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const status = (r: SendRecord) =>
-    r.status === '发送中' && !running ? '已中断' : r.status;
+    r.status === '发送中' && !activeIds.has(r.id) ? '已中断' : r.status;
   const filtered = records.filter(r => {
     if (
       tab === 'revoke' &&
@@ -253,15 +261,28 @@ export default function BulkHistory({
                   <td>
                     <div className="bulk-history__actions">
                       <Button onClick={() => setDetailId(r.id)}>详情</Button>
-                      <Button disabled={running} onClick={() => onCompose(r)}>
-                        再发一条
-                      </Button>
+                      {activeIds.has(r.id) &&
+                        (r.status === '发送中' ||
+                          (r.revokeStarted && !r.revokeEnded)) && (
+                          <Button
+                            onClick={async () => {
+                              try {
+                                await onStop(r.id);
+                              } catch (error_) {
+                                setError(String(error_));
+                              }
+                            }}
+                          >
+                            {r.status === '发送中' ? '停止发送' : '停止撤回'}
+                          </Button>
+                        )}
+                      <Button onClick={() => onCompose(r)}>再发一条</Button>
                       <details className="bulk-history__more">
                         <summary>更多</summary>
                         <div>
                           {r.status === '待发送' && (
                             <Button
-                              disabled={running}
+                              disabled={activeIds.has(r.id)}
                               onClick={async () => {
                                 try {
                                   await onStop(r.id);
@@ -274,7 +295,11 @@ export default function BulkHistory({
                             </Button>
                           )}
                           <Button
-                            disabled={running || busy || !r.deliveries?.length}
+                            disabled={
+                              activeIds.has(r.id) ||
+                              busy ||
+                              !r.deliveries?.length
+                            }
                             onClick={async () => {
                               setBusy(true);
                               setError('');
@@ -292,7 +317,7 @@ export default function BulkHistory({
                           </Button>
                           <Button
                             disabled={
-                              running ||
+                              activeIds.has(r.id) ||
                               !r.deliveries?.some(
                                 d => d.messageId && !d.revoked,
                               )
@@ -313,7 +338,7 @@ export default function BulkHistory({
                           </Button>
                           <Button
                             disabled={
-                              running ||
+                              activeIds.has(r.id) ||
                               busy ||
                               ![
                                 'text',
@@ -401,18 +426,6 @@ export default function BulkHistory({
       >
         <DialogTitle>发送详情</DialogTitle>
         <DialogContent>
-          <p className="bulk-record-text">{detail?.text}</p>
-          <p>
-            {detail && status(detail)} · 成功 {detail?.success} / 待确认{' '}
-            {detail?.deliveries?.filter(d =>
-              ['uncertain', 'sending'].includes(d.status),
-            ).length || 0}{' '}
-            / 失败{' '}
-            {detail?.deliveries
-              ? detail.deliveries.filter(d => d.status === 'failed').length
-              : detail?.failed}{' '}
-            / 共 {detail?.total}
-          </p>
           {detail?.deliveries?.map(d => (
             <div
               className="bulk-delivery"
@@ -420,33 +433,35 @@ export default function BulkHistory({
             >
               <p>
                 {d.target.name} ·{' '}
-                {d.status === 'sent'
-                  ? '服务器已接受'
-                  : ['sending', 'uncertain'].includes(d.status)
-                    ? '结果待确认'
-                    : '发送失败'}
-                {d.messageId ? ` · 消息编号 ${d.messageId}` : ''}
+                {d.revoked
+                  ? '已撤回'
+                  : d.status === 'sent'
+                    ? '成功'
+                    : d.status === 'failed'
+                      ? '失败'
+                      : d.status === 'sending' && activeIds.has(detail.id)
+                        ? '执行中'
+                        : '结果待确认'}
               </p>
-              {d.error && <p>{d.error}</p>}
-              {d.checkedAt && <p>核对时间：{time(d.checkedAt)}</p>}
-              {d.checkError && <p role="alert">核对结果：{d.checkError}</p>}
-              {d.editedAt && (
-                <p>
-                  已编辑 · {time(d.editedAt)}
-                  <br />
-                  {d.editedText}
+              {d.status === 'failed' && (
+                <p role="alert">
+                  失败原因：{errorText(d.error || '发送未成功，未返回具体原因')}
                 </p>
               )}
-              {d.editRequestedAt &&
-                !d.editError &&
-                (!d.editedAt || d.editRequestedAt > d.editedAt) && (
-                  <p>编辑请求结果待确认，请在 WhatsApp 中核查。</p>
-                )}
-              {d.editError && (
-                <p role="alert">编辑未成功或结果待确认：{d.editError}</p>
+              {d.status === 'uncertain' && (
+                <p>
+                  {errorText(d.error || '未能确认发送结果，请核对后再操作')}
+                </p>
               )}
-              {d.revoked && <p>已撤回 · {time(d.revokedAt)}</p>}
-              {d.revokeError && <p role="alert">撤回失败：{d.revokeError}</p>}
+              {d.checkError && (
+                <p role="alert">核对失败：{errorText(d.checkError)}</p>
+              )}
+              {d.editError && (
+                <p role="alert">修改失败：{errorText(d.editError)}</p>
+              )}
+              {d.revokeError && (
+                <p role="alert">撤回失败：{errorText(d.revokeError)}</p>
+              )}
             </div>
           ))}
           {!detail?.deliveries &&
@@ -507,7 +522,11 @@ export default function BulkHistory({
             取消
           </Button>
           <Button
-            disabled={busy || running || revokeTargets.length === 0}
+            disabled={
+              busy ||
+              (!!revoking && activeIds.has(revoking.id)) ||
+              revokeTargets.length === 0
+            }
             color="error"
             onClick={async () => {
               if (!revoking) return;
@@ -594,7 +613,10 @@ export default function BulkHistory({
           <Button
             variant="contained"
             disabled={
-              busy || running || !editText.trim() || editTargets.length === 0
+              busy ||
+              (!!editing && activeIds.has(editing.id)) ||
+              !editText.trim() ||
+              editTargets.length === 0
             }
             onClick={async () => {
               if (!editing) return;
@@ -638,7 +660,7 @@ export default function BulkHistory({
             取消
           </Button>
           <Button
-            disabled={busy || running}
+            disabled={busy || deleting.some(id => activeIds.has(id))}
             color="error"
             onClick={async () => {
               setBusy(true);

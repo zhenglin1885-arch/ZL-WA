@@ -90,6 +90,7 @@ class AppLayoutContainer extends Component<IProps> {
     const servicesContainer = (
       <Services
         services={services.allDisplayedUnordered}
+        accountSidebar={settings.app.accountSidebar}
         // handleIPCMessage={handleIPCMessage} // TODO: [TECH DEBT] check it later
         setWebviewReference={setWebviewReference}
         detachService={detachService}

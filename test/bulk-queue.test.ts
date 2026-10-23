@@ -317,4 +317,109 @@ describe('persistent bulk queue without live WhatsApp', () => {
     ])
       expect(() => validateBulkSpec(item)).toThrow();
   });
+  it('starts multiple jobs immediately and stops only the selected job while the other finishes', async () => {
+    const pending: {
+      target: string;
+      text: string;
+      resolve: (id: string) => void;
+    }[] = [];
+    (adapter.send as jest.Mock).mockImplementation(
+      (target, value) =>
+        new Promise(resolve => {
+          pending.push({ target: target.id, text: value.text, resolve });
+        }),
+    );
+    const first = await queue.submit(spec({ text: 'job A' }), true);
+    const second = await queue.submit(spec({ text: 'job B' }), true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(queue.activeIds).toEqual(new Set([first, second]));
+    expect(pending.map(p => p.text)).toEqual(['job A', 'job B']);
+    await queue.stop(first);
+    pending[0].resolve('A-first');
+    pending[1].resolve('B-first');
+    await jest.advanceTimersByTimeAsync(600);
+    expect(pending.map(p => p.text)).toEqual(['job A', 'job B', 'job B']);
+    pending[2].resolve('B-second');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(queue.records.find(r => r.id === first)).toMatchObject({
+      status: '已停止',
+      success: 1,
+      deliveries: [{ messageId: 'A-first' }],
+    });
+    expect(queue.records.find(r => r.id === second)).toMatchObject({
+      status: '已完成',
+      success: 2,
+      deliveries: [{ messageId: 'B-first' }, { messageId: 'B-second' }],
+    });
+    expect(queue.activeIds.size).toBe(0);
+  });
+  it('launches all due scheduled jobs without waiting for other jobs and does not dispatch twice', async () => {
+    const pending: ((id: string) => void)[] = [];
+    (adapter.send as jest.Mock).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          pending.push(resolve);
+        }),
+    );
+    const scheduledAt = new Date(Date.now() + 1000).toISOString();
+    await queue.submit(
+      spec({ text: 'scheduled A', targets: [spec().targets[0]], scheduledAt }),
+    );
+    await queue.submit(
+      spec({ text: 'scheduled B', targets: [spec().targets[1]], scheduledAt }),
+    );
+    await jest.advanceTimersByTimeAsync(1100);
+    const running = queue.tick();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(pending).toHaveLength(2);
+    expect(queue.activeIds.size).toBe(2);
+    await queue.tick();
+    expect(pending).toHaveLength(2);
+    pending.forEach((resolve, index) => resolve(`scheduled-${index}`));
+    await running;
+    expect(queue.records.every(r => r.status === '已完成')).toBe(true);
+  });
+  it('deleting an idle record cannot overwrite another job completion with a stale adapter snapshot', async () => {
+    (adapter.load as jest.Mock).mockResolvedValue([
+      saved({ id: 'old', status: '已完成' }),
+    ]);
+    await queue.load();
+    let completeSend!: (id: string) => void;
+    let completeRemove!: (records: SendRecord[]) => void;
+    (adapter.send as jest.Mock).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          completeSend = resolve;
+        }),
+    );
+    (adapter.remove as jest.Mock).mockImplementation(
+      () =>
+        new Promise(resolve => {
+          completeRemove = resolve;
+        }),
+    );
+    const id = await queue.submit(spec({ targets: [spec().targets[0]] }), true);
+    await jest.advanceTimersByTimeAsync(0);
+    const snapshot = structuredClone(queue.records.filter(r => r.id !== 'old'));
+    const removing = queue.remove(['old']);
+    await expect(queue.remove([id])).rejects.toThrow('停止');
+    completeSend('message');
+    await jest.advanceTimersByTimeAsync(0);
+    completeRemove(snapshot);
+    await removing;
+    expect(queue.records).toHaveLength(1);
+    expect(queue.records[0]).toMatchObject({
+      id,
+      status: '已完成',
+      success: 1,
+    });
+  });
+  it('a late stop click on a completed job cannot cancel a later revoke operation', async () => {
+    await finish(queue.submit(spec()));
+    const { id } = queue.records[0];
+    await queue.stop(id);
+    await queue.revoke(id);
+    expect(adapter.revoke).toHaveBeenCalledTimes(2);
+    expect(queue.records[0].deliveries?.every(d => d.revoked)).toBe(true);
+  });
 });

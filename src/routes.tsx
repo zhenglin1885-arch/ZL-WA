@@ -22,6 +22,7 @@ import SupportFerdiumScreen from './containers/settings/SupportScreen';
 import { WORKSPACES_ROUTES } from './features/workspaces/constants';
 import EditWorkspaceScreen from './features/workspaces/containers/EditWorkspaceScreen';
 import WorkspacesScreen from './features/workspaces/containers/WorkspacesScreen';
+import ChatBackupPage from './features/chatBackup/ChatBackupPage';
 import type { RealStores } from './stores';
 
 interface IProps {
@@ -112,6 +113,10 @@ class FerdiumRoutes extends Component<IProps> {
               <Route
                 path="/settings/team"
                 element={<Navigate to="/settings/app" replace />}
+              />
+              <Route
+                path="/settings/chat-backup"
+                element={<ChatBackupPage {...this.props} />}
               />
               <Route
                 path="/settings/app"

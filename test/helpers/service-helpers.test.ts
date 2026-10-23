@@ -10,6 +10,9 @@ jest.mock('fs-extra', () => ({
 
 jest.mock('../../src/environment-remote', () => ({
   userDataPath: jest.fn((...segments: string[]) => segments.join('/')),
+  sessionDataPath: jest.fn((...segments: string[]) =>
+    ['browser', ...segments].join('/'),
+  ),
 }));
 
 const mockPreloadSafeDebug = () => jest.fn();
@@ -43,14 +46,16 @@ describe('service_helpers', () => {
 
   it('builds paths inside the Partitions directory', () => {
     expect(getServicePartitionsDirectory('service-id', 'Cache')).toBe(
-      'Partitions/service-id/Cache',
+      'browser/Partitions/service-id/Cache',
     );
   });
 
   it('removes a service partition immediately when it is not locked', () => {
     removeServicePartitionDirectory('abc123', true);
 
-    expect(mockedRemoveSync).toHaveBeenCalledWith('Partitions/service-abc123');
+    expect(mockedRemoveSync).toHaveBeenCalledWith(
+      'browser/Partitions/service-abc123',
+    );
     expect(mockedWriteJsonSync).not.toHaveBeenCalled();
   });
 
@@ -64,7 +69,9 @@ describe('service_helpers', () => {
 
     removeServicePartitionDirectory('abc123', true);
 
-    expect(mockedRemoveSync).toHaveBeenCalledWith('Partitions/service-abc123');
+    expect(mockedRemoveSync).toHaveBeenCalledWith(
+      'browser/Partitions/service-abc123',
+    );
     expect(mockedWriteJsonSync).toHaveBeenCalledWith(pendingRemovalsFile, [
       'service-abc123',
     ]);
@@ -109,7 +116,7 @@ describe('service_helpers', () => {
 
     expect(mockedRemoveSync).toHaveBeenNthCalledWith(
       1,
-      'Partitions/service-abc123',
+      'browser/Partitions/service-abc123',
     );
     expect(mockedRemoveSync).toHaveBeenNthCalledWith(2, pendingRemovalsFile);
     expect(mockedWriteJsonSync).not.toHaveBeenCalled();

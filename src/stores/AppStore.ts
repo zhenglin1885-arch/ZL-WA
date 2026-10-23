@@ -10,7 +10,12 @@ import {
 } from '@electron/remote';
 import AutoLaunch from 'auto-launch';
 import { ipcRenderer } from 'electron';
-import { readJsonSync, readdirSync, writeJsonSync } from 'fs-extra';
+import {
+  pathExistsSync,
+  readJsonSync,
+  readdirSync,
+  writeJsonSync,
+} from 'fs-extra';
 import {
   action,
   computed,
@@ -42,6 +47,7 @@ import sleep from '../helpers/async-helpers';
 import { getLocale, getTranslatedText } from '../helpers/i18n-helpers';
 import {
   getServiceIdsFromPartitions,
+  getServicePartitionsDirectory,
   removeServicePartitionDirectory,
 } from '../helpers/service-helpers';
 import { openExternalUrl } from '../helpers/url-helpers';
@@ -374,7 +380,8 @@ export default class AppStore extends TypedStore {
     this._readSandboxes();
 
     // Check partitions of the sandboxes that no longer exist
-    const dir = readdirSync(userDataPath('Partitions'));
+    const directory = getServicePartitionsDirectory();
+    const dir = pathExistsSync(directory) ? readdirSync(directory) : [];
     dir
       .filter(d => d.startsWith('sandbox-'))
       .forEach(d => {

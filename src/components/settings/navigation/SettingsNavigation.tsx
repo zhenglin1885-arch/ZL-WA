@@ -103,6 +103,16 @@ class SettingsNavigation extends Component<IProps> {
               <span className="update-available">•</span>
             )}
         </NavLink>
+        <NavLink
+          to="/settings/chat-backup"
+          className={({ isActive }) =>
+            isActive
+              ? 'settings-navigation__link is-active'
+              : 'settings-navigation__link'
+          }
+        >
+          聊天备份
+        </NavLink>
         <span className="settings-navigation__expander" />
         <span className="settings-navigation__link">本地模式</span>
       </div>

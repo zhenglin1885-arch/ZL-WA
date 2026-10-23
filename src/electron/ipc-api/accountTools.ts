@@ -451,6 +451,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       id: string,
       text: string,
       direction: 'incoming' | 'outgoing',
+      force = false,
     ) => {
       check(event, id);
       if (
@@ -474,7 +475,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         text,
       ]);
       const cached = translationCache.get(key);
-      if (cached !== undefined) return { text: cached, error: false };
+      if (!force && cached !== undefined) return { text: cached, error: false };
       return translations.enqueue(id, direction === 'outgoing', async () => {
         if (
           JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
@@ -497,7 +498,8 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           return { text: '', error: true };
         const s = session.fromPartition(`persist:service-${id}`);
         const repeated = translationCache.get(key);
-        if (repeated !== undefined) return { text: repeated, error: false };
+        if (!force && repeated !== undefined)
+          return { text: repeated, error: false };
         const result = await translateAccount(
           accountTransport(s, config.proxy, () =>
             decrypt(config.encryptedPassword),

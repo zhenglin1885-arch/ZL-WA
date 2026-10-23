@@ -33,6 +33,8 @@ const messages = defineMessages({
 
 interface IProps extends WrappedComponentProps {
   service: ServiceModel;
+  startupAllowed?: boolean;
+  onStartupReady?: () => void;
   setWebviewRef: () => void;
   detachService: () => void;
   reload: () => void;
@@ -188,13 +190,20 @@ class ServiceView extends Component<IProps, IState> {
               <>
                 {showNavBar && <WebControlsScreen service={service} />}
                 <MediaSource service={service} />
-                <ServiceWebview
-                  service={service}
-                  setWebviewReference={setWebviewRef}
-                  detachService={detachService}
-                  isSpellcheckerEnabled={isSpellcheckerEnabled}
-                  stores={stores}
-                />
+                {this.props.startupAllowed === false ? (
+                  <div role="status" className="account-startup-wait">
+                    等待前面的账号启动…
+                  </div>
+                ) : (
+                  <ServiceWebview
+                    service={service}
+                    onStartupReady={this.props.onStartupReady}
+                    setWebviewReference={setWebviewRef}
+                    detachService={detachService}
+                    isSpellcheckerEnabled={isSpellcheckerEnabled}
+                    stores={stores}
+                  />
+                )}
               </>
             )}
           </>

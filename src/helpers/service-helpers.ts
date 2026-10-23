@@ -5,7 +5,7 @@ import {
   removeSync,
   writeJsonSync,
 } from 'fs-extra';
-import { userDataPath } from '../environment-remote';
+import { sessionDataPath, userDataPath } from '../environment-remote';
 
 const RETRYABLE_PARTITION_REMOVAL_ERROR_CODES = new Set([
   'EACCES',
@@ -18,7 +18,7 @@ const debug = require('../preload-safe-debug')('Ferdium:ServiceHelpers');
 type FileSystemError = Error & { code?: string };
 
 export const getServicePartitionsDirectory = (...segments) => {
-  return userDataPath('Partitions', ...[segments].flat());
+  return sessionDataPath('Partitions', ...[segments].flat());
 };
 
 const getPendingPartitionRemovalsFile = () =>
@@ -140,7 +140,8 @@ export const removeServicePartitionDirectory = (
 };
 
 export async function getServiceIdsFromPartitions(): Promise<string[]> {
-  const files = readdirSync(getServicePartitionsDirectory());
+  const directory = getServicePartitionsDirectory();
+  const files = pathExistsSync(directory) ? readdirSync(directory) : [];
   return files.filter(n => n !== '__chrome_extension');
 }
 

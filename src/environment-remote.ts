@@ -32,11 +32,15 @@ const profilePath = getProfilePath(
   isDevMode,
 );
 app.setPath('userData', profilePath);
-app.setPath('sessionData', profilePath);
+// Renderer imports must not undo the main process's chosen browser-data directory.
+if (process.type !== 'renderer') app.setPath('sessionData', profilePath);
 
 export const userDataPath = (...segments: string[]): string => {
   return join(app.getPath('userData'), ...[segments].flat());
 };
+
+export const sessionDataPath = (...segments: string[]): string =>
+  join(app.getPath('sessionData'), ...segments);
 
 export const userDataRecipesPath = (...segments: string[]): string => {
   return userDataPath('recipes', ...[segments].flat());

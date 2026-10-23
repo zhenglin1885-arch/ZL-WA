@@ -12,6 +12,12 @@ import { Link } from 'react-router-dom';
 import type Service from '../../../models/Service';
 import Appear from '../../ui/effects/Appear';
 import ServiceView from './ServiceView';
+import StartupQueue from '../../../features/accounts/StartupQueue';
+import {
+  normalizeAccountConfig,
+  orderedAccountIds,
+} from '../../../features/accounts/state';
+import type { AccountSidebarConfig } from '../../../features/accounts/state';
 
 const messages = defineMessages({
   getStarted: {
@@ -44,6 +50,7 @@ const styles = {
 
 interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
   services?: Service[];
+  accountSidebar?: AccountSidebarConfig;
   setWebviewReference: () => void;
   detachService: () => void;
   // handleIPCMessage: () => void; // TODO: [TECH DEBT] later check it
@@ -67,6 +74,31 @@ interface IState {
 class Services extends Component<IProps, IState> {
   confettiTimeout: number | null = null;
 
+  private startupMounted = false;
+
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- Callback belongs to this component instance.
+  startup = new StartupQueue(() => {
+    if (this.startupMounted) this.forceUpdate();
+  });
+
+  syncStartup = () => {
+    const config = normalizeAccountConfig(this.props.accountSidebar);
+    const services = (this.props.services || []).filter(
+      s => s.isEnabled && !s.isHibernating && !s.isTodosService,
+    );
+    const order = orderedAccountIds(
+      config,
+      services.map(s => s.id),
+    );
+    const rank = new Map(config.groups.map((g, index) => [g.id, index]));
+    const ids = [...order].sort(
+      (a, b) =>
+        (rank.get(config.accounts[a]?.groupId || 'default') ?? 0) -
+        (rank.get(config.accounts[b]?.groupId || 'default') ?? 0),
+    );
+    this.startup.update(ids);
+  };
+
   constructor(props: IProps) {
     super(props);
 
@@ -76,6 +108,8 @@ class Services extends Component<IProps, IState> {
   }
 
   componentDidMount(): void {
+    this.startupMounted = true;
+    this.syncStartup();
     this.confettiTimeout = window.setTimeout(() => {
       this.setState({
         showConfetti: false,
@@ -83,7 +117,12 @@ class Services extends Component<IProps, IState> {
     }, ms('8s'));
   }
 
+  componentDidUpdate(): void {
+    this.syncStartup();
+  }
+
   componentWillUnmount(): void {
+    this.startupMounted = false;
     if (this.confettiTimeout) {
       clearTimeout(this.confettiTimeout);
     }
@@ -140,6 +179,8 @@ class Services extends Component<IProps, IState> {
             <ServiceView
               key={service.id}
               service={service}
+              startupAllowed={this.startup.admitted.has(service.id)}
+              onStartupReady={() => this.startup.complete(service.id)}
               // handleIPCMessage={handleIPCMessage} //  TODO: [TECH DEBT][PROPS NOT EXIST IN COMPONENT] later check it
               setWebviewRef={setWebviewReference}
               detachService={detachService}
