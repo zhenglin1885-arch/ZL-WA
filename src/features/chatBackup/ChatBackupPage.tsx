@@ -144,7 +144,7 @@ export default inject('stores')(
                 }}
               />
               <p>
-                到时间自动导出当天记录；软件未运行时，下次启动后补导出。HTML
+                到时间按当天日期导出截至当天已保存的全部历史记录；软件未运行时，下次启动后补导出最近一次完整记录。HTML
                 和已导出的图片可离线查看，导出文件为未加密文件。
               </p>
             </div>
@@ -271,7 +271,9 @@ export default inject('stores')(
                   全部（每个对话一个文件，共 {stats.days.length} 天）
                 </option>
                 {stats.days.map(day => (
-                  <option key={day}>{day}</option>
+                  <option key={day} value={day}>
+                    截至 {day} 的全部记录
+                  </option>
                 ))}
               </select>{' '}
               <button
@@ -290,7 +292,7 @@ export default inject('stores')(
                 导出
               </button>
               <p>
-                先按账号分文件夹，再按全部记录或日期分类。图片嵌入对话
+                先按账号分文件夹；每个日期文件夹包含截至该日期的全部已保存历史，不再只包含当天消息。图片嵌入对话
                 HTML，复制 HTML
                 即可离线查看。“全部”每次更新为当前已保存的完整记录。
               </p>

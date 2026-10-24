@@ -97,3 +97,27 @@ it('fails closed on unavailable or malformed providers', async () => {
     ),
   ).toMatchObject({ error: true, text: '' });
 });
+
+it('keeps every translated segment of a multiline Google caption', async () => {
+  const caption =
+    'Lucas Henrique Varella\nCEO | Oravion Capital\n\nGestão de riscos de portfólios de investimentos.';
+  const transport = jest.fn(async (_url: string, init: RequestInit) => {
+    expect(new URLSearchParams(init.body as string).get('q')).toBe(caption);
+    return response([
+      [
+        ['卢卡斯\n', 'Lucas Henrique Varella\n'],
+        ['首席执行官 | 欧瑞维资本\n\n', 'CEO | Oravion Capital\n\n'],
+        [
+          '投资组合风险管理。',
+          'Gestão de riscos de portfólios de investimentos.',
+        ],
+      ],
+    ]);
+  });
+  expect(
+    await translateAccount(transport, caption, 'zh-CN', 'Google', 'auto'),
+  ).toEqual({
+    text: '卢卡斯\n首席执行官 | 欧瑞维资本\n\n投资组合风险管理。',
+    error: false,
+  });
+});

@@ -46,6 +46,7 @@ export interface CustomerBundle {
   unpinned?: string[];
 }
 export interface CustomerContext {
+  needsLibrary?: boolean;
   token: string;
   owners: string[];
   chat?: {

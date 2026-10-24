@@ -37,6 +37,11 @@ export class CustomerRuntime {
 
   private contextKey = '';
 
+  private libraryAttempts = new WeakMap<
+    Electron.WebviewTag,
+    { token: string; at: number }
+  >();
+
   private serviceId = '';
 
   private actions = new Set<string>();
@@ -244,7 +249,7 @@ export class CustomerRuntime {
       return;
     this.busy = true;
     try {
-      const context: CustomerContext = await view.executeJavaScript(
+      let context: CustomerContext = await view.executeJavaScript(
         `(${readCustomerContext.toString()})()`,
       );
       if (
@@ -253,6 +258,34 @@ export class CustomerRuntime {
         service.webview !== view
       )
         return;
+      const attempt = this.libraryAttempts.get(view);
+      if (
+        context.needsLibrary &&
+        service.accountSnapshot.status === 'online' &&
+        (!attempt ||
+          attempt.token !== context.token ||
+          Date.now() - attempt.at > 30_000)
+      ) {
+        this.libraryAttempts.set(view, {
+          token: context.token,
+          at: Date.now(),
+        });
+        try {
+          await ensureBulkLibrary(view);
+          context = await view.executeJavaScript(
+            `(${readCustomerContext.toString()})()`,
+          );
+        } catch {
+          this.error = '客户功能接口尚未就绪，正在自动重试；请保持账号在线';
+          this.notify();
+        }
+        if (
+          this.stopped ||
+          this.stores.services.active !== service ||
+          service.webview !== view
+        )
+          return;
+      }
       const key = JSON.stringify([
         service.id,
         context.token,

@@ -31,6 +31,8 @@ try {
     `document.querySelector('#qa-backup-options').textContent`,
   );
   assert(text.includes('图片嵌入对话'));
+  assert(text.includes('每个日期文件夹包含截至该日期的全部已保存历史'));
+  assert(text.includes('补导出最近一次完整记录'));
   assert(!text.includes('图片文件夹'));
   await evaluate(
     `(()=>{const select=document.querySelector('#qa-backup-options select[aria-label="备份同步账号"]');select.value='all';select.dispatchEvent(new Event('change',{bubbles:true}));return true})()`,

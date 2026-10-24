@@ -13,28 +13,115 @@ export function readCustomerContext(): CustomerContext {
       return undefined;
     }
   };
-  const wid = (id: any): string =>
-    id?._serialized ||
-    (id?.user && id?.server
-      ? `${id.user}@${id.server}`
-      : typeof id === 'string'
-        ? id
-        : '');
-  const prefs = module('WAWebUserPrefsMeUser');
-  const owners = [
-    ...new Set<string>(
-      [
-        wid(prefs?.getMaybeMePnUser?.()),
-        wid(prefs?.getMaybeMeLidUser?.()),
-        wid(module('WAWebConnModel')?.Conn?.wid),
-      ].filter(id => /^\d{5,30}@(c\.us|lid)$/.test(id)),
-    ),
-  ].slice(0, 2);
+  const wid = (id: any): string => {
+    const value =
+      id?._serialized ||
+      (id?.user && id?.server
+        ? `${id.user}@${id.server}`
+        : typeof id === 'string'
+          ? id
+          : '');
+    return String(value).replace(/^(\d+):\d+@/, '$1@');
+  };
+  const call = (object: any, key: string) => {
+    try {
+      return object?.[key]?.();
+    } catch {
+      return undefined;
+    }
+  };
+  const optional = (read: () => any) => {
+    try {
+      return read();
+    } catch {
+      return undefined;
+    }
+  };
+  // Resolve current native ownership on every use. Never borrow identity from
+  // another account card, a chat title or previously saved login metadata.
+  const readOwners = () => {
+    if (
+      ['UNPAIRED', 'UNPAIRED_IDLE'].includes(
+        module('WAWebSocketModel')?.Socket?.state,
+      ) ||
+      document.querySelector('[data-ref] canvas, [data-testid="qrcode"]')
+    )
+      return [];
+    const prefs = module('WAWebUserPrefsMeUser');
+    const valid = (values: any[]) =>
+      values
+        .map(value => wid(value))
+        .filter(id => /^\d{5,30}@(c\.us|lid)$/.test(id));
+    const preferred = valid([
+      call(prefs, 'getMaybeMePnUser'),
+      call(prefs, 'getMaybeMeLidUser'),
+      call(prefs, 'getMeUser'),
+    ]);
+    // During relogin Conn/helper metadata may lag behind the current prefs.
+    // Never bind two different telephone owners together through that fallback.
+    const ids =
+      preferred.length > 0
+        ? preferred
+        : valid([
+            module('WAWebConnModel')?.Conn?.wid,
+            ...(page.WPP?.isReady
+              ? [
+                  call(page.WPP.conn, 'getMyUserId'),
+                  optional(() => page.WPP.whatsapp?.Conn?.wid),
+                ]
+              : []),
+          ]);
+    return [
+      ids.find(id => id.endsWith('@c.us')),
+      ids.find(id => id.endsWith('@lid')),
+    ].filter((id): id is string => id !== undefined);
+  };
+  const readModels = (): any[] => {
+    const direct = module('WAWebChatCollection');
+    const candidates = [
+      module('WAWebCollections')?.Chat,
+      direct?.Chat,
+      direct?.ChatCollection,
+      direct?.default,
+      page.WPP?.isReady
+        ? optional(() => page.WPP.whatsapp?.ChatStore)
+        : undefined,
+    ];
+    for (const collection of candidates) {
+      try {
+        const value =
+          collection?.getModelsArray?.() ??
+          collection?.models ??
+          collection?._models;
+        const models = Array.isArray(value)
+          ? value
+          : value && typeof value === 'object'
+            ? Object.values(value)
+            : [];
+        const valid = models.filter(model =>
+          /^\d{1,40}(?:-\d{1,30})?@(c\.us|lid|g\.us)$/.test(wid(model?.id)),
+        );
+        if (valid.length > 0) return valid;
+      } catch {
+        /* A collection may still be synchronizing; try the next adapter. */
+      }
+    }
+    return [];
+  };
+  page.__zlCustomerAdapter = { owners: readOwners, models: readModels, wid };
+  const owners = readOwners();
+  const models = readModels();
+  const needsLibrary =
+    owners.length === 0 ||
+    (models.length === 0 &&
+      Boolean(
+        document.querySelector(
+          '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
+        ),
+      ));
+  const base = { token: page.__zlCustomerToken, owners, needsLibrary };
   const header = document.querySelector('#main header');
-  if (!header) return { token: page.__zlCustomerToken, owners };
-  const collection = module('WAWebCollections')?.Chat;
-  const models: any[] =
-    collection?.getModelsArray?.() ?? collection?.models ?? [];
+  if (!header) return base;
   let chat: any;
   try {
     chat = page.WPP?.isReady ? page.WPP.chat?.getActiveChat?.() : undefined;
@@ -92,7 +179,7 @@ export function readCustomerContext(): CustomerContext {
     !document.querySelector('#main header') ||
     !/^\d{1,40}(?:-\d{1,30})?@(c\.us|lid|g\.us)$/.test(id)
   )
-    return { token: page.__zlCustomerToken, owners };
+    return base;
   const { contact } = chat;
   const aliases = [
     ...new Set(
@@ -102,8 +189,7 @@ export function readCustomerContext(): CustomerContext {
     ),
   ].slice(0, 2);
   return {
-    token: page.__zlCustomerToken,
-    owners,
+    ...base,
     chat: {
       id,
       aliases,
@@ -233,19 +319,8 @@ export function customerTick(
     };
     // All entry points use one local transaction. Never invoke the native
     // server action for desktop pins, including UI commands bypassing the DOM.
-    state.pinOwnerMatches = () => {
-      try {
-        const prefs = page.require?.('WAWebUserPrefsMeUser');
-        return [prefs?.getMaybeMePnUser?.(), prefs?.getMaybeMeLidUser?.()].some(
-          id =>
-            (id?._serialized ||
-              (id?.user && id?.server ? `${id.user}@${id.server}` : '')) ===
-            state.data?.owner,
-        );
-      } catch {
-        return false;
-      }
-    };
+    state.pinOwnerMatches = () =>
+      Boolean(page.__zlCustomerAdapter?.owners().includes(state.data?.owner));
     state.changePin = (id: string, remove: boolean) => {
       if (
         !state.data ||
@@ -555,16 +630,8 @@ export function customerTick(
   };
   // Native row identifiers are preferred. Title matching is used only for a
   // unique exact name, never for two contacts sharing the same display name.
-  let models: any[] = [];
-  try {
-    const collection =
-      page.require?.('WAWebCollections')?.Chat || page.WPP?.whatsapp?.ChatStore;
-    models = collection?.getModelsArray?.() ?? collection?.models ?? [];
-  } catch {
-    /* Await the native collection. */
-  }
-  const idOf = (model: any) =>
-    model.id?._serialized || (typeof model.id === 'string' ? model.id : '');
+  const models: any[] = page.__zlCustomerAdapter?.models() || [];
+  const idOf = (model: any) => page.__zlCustomerAdapter?.wid(model?.id) || '';
   const nameOf = (model: any) =>
     String(
       model.formattedTitle ||
@@ -577,8 +644,11 @@ export function customerTick(
   const names = new Map<string, string[]>();
   for (const model of models) {
     const name = nameOf(model);
-    names.set(name, [...(names.get(name) || []), idOf(model)]);
+    const matches = names.get(name);
+    if (matches) matches.push(idOf(model));
+    else names.set(name, [idOf(model)]);
   }
+  const modelIds = new Set(models.map(model => idOf(model)));
   state.models = models;
   state.idOf = idOf;
   state.resolveRow = (row: HTMLElement) => {
@@ -597,15 +667,16 @@ export function customerTick(
         props?.model,
       ]) {
         const id = idOf(candidate || {});
-        if (id && models.some(m => idOf(m) === id)) return id;
+        if (id && modelIds.has(id)) return id;
       }
     }
-    const possible =
+    const possible = page.__zlCustomerAdapter?.wid(
       row.dataset.id ||
-      row.dataset.jid ||
-      row.querySelector('[data-id]')?.getAttribute('data-id') ||
-      '';
-    if (models.some(m => idOf(m) === possible)) return possible;
+        row.dataset.jid ||
+        row.querySelector('[data-id]')?.getAttribute('data-id') ||
+        '',
+    );
+    if (modelIds.has(possible)) return possible;
     const markers = [
       ...row.querySelectorAll<HTMLElement>(
         '[data-testid="cell-frame-title"] [title], [title]:not([data-zl-customers])',

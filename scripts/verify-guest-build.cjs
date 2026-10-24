@@ -21,6 +21,9 @@ const advanced = require('../build/features/accountTools/bulkGuest');
 const customers = require('../build/features/customers/guest');
 const { groupGuest } = require('../build/features/groups/guest');
 const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
+const {
+  configureWhatsAppLayout,
+} = require('../build/features/accounts/layout');
 
 (async () => {
   const modules = {
@@ -63,7 +66,11 @@ const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
     vm.runInContext(`(${fn.toString()})(...${JSON.stringify(args)})`, context);
   assert.deepEqual(
     JSON.parse(JSON.stringify(call(customers.readCustomerContext))),
-    { token: 'synthetic-document', owners: ['8613800000001@c.us'] },
+    {
+      token: 'synthetic-document',
+      owners: ['8613800000001@c.us'],
+      needsLibrary: false,
+    },
   );
   context.window.__zlCustomers = { queue: [], data: undefined };
   assert.equal(call(customers.customerTick).length, 0);
@@ -144,6 +151,61 @@ const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
   ]);
   const contacts = await call(advanced.listBulkContacts);
   assert.equal(contacts.length, 0);
+  const handlers = {};
+  const styles = {};
+  const element = {
+    dataset: {},
+    style: {
+      setProperty: (key, value) => {
+        styles[key] = value;
+      },
+    },
+    addEventListener() {},
+    setAttribute() {},
+    getBoundingClientRect: () => ({ width: 320, left: 0 }),
+  };
+  const header = { dataset: {}, querySelector: () => null, append() {} };
+  const side = { ...element, querySelector: () => header, parentElement: null };
+  const stored = {};
+  const layoutPage = vm.createContext({
+    location: { hostname: 'web.whatsapp.com' },
+    localStorage: {
+      getItem: () => null,
+      setItem: (key, value) => {
+        stored[key] = value;
+      },
+    },
+    window: {
+      innerWidth: 1000,
+      addEventListener: (name, fn) => {
+        handlers[name] = fn;
+      },
+    },
+    document: {
+      querySelector: () => side,
+      createElement: () => ({ ...element }),
+      head: { append() {} },
+      documentElement: { style: { cursor: '', userSelect: '' } },
+    },
+  });
+  assert.equal(
+    vm.runInContext(`(${configureWhatsAppLayout.toString()})()`, layoutPage),
+    true,
+  );
+  const gesture = {
+    target: { closest: () => element },
+    button: 0,
+    pointerId: 1,
+    clientX: 320,
+    preventDefault() {},
+    stopImmediatePropagation() {},
+  };
+  handlers.click(gesture);
+  assert.equal(styles['--zl-chat-list-width'], '560px');
+  handlers.pointerdown(gesture);
+  handlers.pointermove({ ...gesture, clientX: 390 });
+  handlers.pointerup(gesture);
+  assert.equal(stored['zl-chat-list-width'], '390');
   console.log(
     'PASS compiled guest functions execute independently of their host module',
   );

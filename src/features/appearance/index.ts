@@ -3,6 +3,7 @@ import { reaction } from 'mobx';
 import TopBarProgress from 'react-topbar-progress-indicator';
 
 import { pathExistsSync, readFileSync } from 'fs-extra';
+import { appAccentColor, lightThemeText } from './theme';
 import {
   DEFAULT_APP_SETTINGS,
   SERVICE_WEBVIEW_BORDER_RADIUS_DEFAULT,
@@ -596,6 +597,16 @@ const generateStyle = (settings, app) => {
     style += generateAccentStyle(accentColor);
   }
 
+  const lightAccent = appAccentColor(settings, false);
+  // Native CSS scope keeps all generated accent rules out of dark mode.
+  style += `@scope (body:not(.theme__dark)) { ${generateAccentStyle(lightAccent)} }
+    body:not(.theme__dark) { --zl-light-theme: ${lightAccent}; --zl-light-theme-text: ${lightThemeText(lightAccent)}; }
+    body:not(.theme__dark) .settings__header,
+    body:not(.theme__dark) .settings__close,
+    body:not(.theme__dark) .settings-navigation__link.is-active,
+    body:not(.theme__dark) .franz-form__button:not(.franz-form__button--secondary):not(.franz-form__button--inverted) { color: var(--zl-light-theme-text); }
+  `;
+
   style += generateServiceRibbonWidthStyle(
     serviceRibbonWidth,
     iconSize,
@@ -706,6 +717,7 @@ export default function initAppearance(stores) {
   reaction(
     () => [
       settings.all.app.accentColor,
+      settings.all.app.lightThemeColor,
       settings.all.app.progressbarAccentColor,
       settings.all.app.iconSize,
       settings.all.app.showDragArea,

@@ -336,11 +336,13 @@ export default class ChatBackup {
   }
 
   private revision(day: string) {
-    return `account-html-v2:${JSON.stringify(
-      Object.entries(this.metas)
-        .filter(([, m]) => m.day === day)
-        .map(([id, m]) => [id, m.revision])
-        .sort((a, b) => String(a).localeCompare(String(b))),
+    return `account-html-cumulative-v3:${digest(
+      JSON.stringify(
+        Object.entries(this.metas)
+          .filter(([, m]) => day === 'all' || m.day <= day)
+          .map(([id, m]) => [id, m.revision])
+          .sort((a, b) => String(a).localeCompare(String(b))),
+      ),
     )}`;
   }
 
@@ -376,13 +378,15 @@ export default class ChatBackup {
     const revision = this.revision(selection);
     const target = this.config.directory;
     const period = selection === 'all' ? '全部聊天记录' : selection;
+    const label =
+      selection === 'all' ? period : `截至 ${selection} 的全部聊天记录`;
     mkdirSync(target, { recursive: true });
     const chats = new Map<
       string,
       { shard: Shard; messages: BackupMessage[] }
     >();
     for (const [key, meta] of Object.entries(this.metas)) {
-      if (selection !== 'all' && meta.day !== selection) continue;
+      if (selection !== 'all' && meta.day > selection) continue;
       const shard: Shard = JSON.parse(
         this.unseal(readFileSync(join(this.root, `${key}.enc`))).toString(),
       );
@@ -438,7 +442,7 @@ export default class ChatBackup {
         join(target, folder, period, '目录.html'),
         page(
           '聊天记录目录',
-          `<header><a href="../目录.html">← 账号目录</a><h1>${escape(account.name)}</h1><p>${escape(period)} · ${account.links.length} 个对话</p><small>文字、译文和图片均嵌入 HTML，可离线查看。</small></header><ul>${account.links.join('')}</ul>`,
+          `<header><a href="../目录.html">← 账号目录</a><h1>${escape(account.name)}</h1><p>${escape(label)} · ${account.links.length} 个对话</p><small>文字、译文和图片均嵌入 HTML，可离线查看。</small></header><ul>${account.links.join('')}</ul>`,
         ),
       );
       const periods = readdirSync(join(target, folder), { withFileTypes: true })
@@ -455,7 +459,7 @@ export default class ChatBackup {
         join(target, folder, '目录.html'),
         page(
           account.name,
-          `<header><a href="../目录.html">← 全部账号</a><h1>${escape(account.name)}</h1></header><ul>${periods.map(day => `<li><a href="${encodeURIComponent(day)}/目录.html">${escape(day)}</a></li>`).join('')}</ul>`,
+          `<header><a href="../目录.html">← 全部账号</a><h1>${escape(account.name)}</h1></header><ul>${periods.map(day => `<li><a href="${encodeURIComponent(day)}/目录.html">${escape(day === '全部聊天记录' ? day : `截至 ${day} 的全部记录`)}</a></li>`).join('')}</ul>`,
         ),
       );
     }
@@ -489,15 +493,15 @@ export default class ChatBackup {
     this.load();
     this.prune(now);
     const d = new Date(now);
-    const today = backupDay(now);
     const clock = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    for (const day of [
-      ...new Set(Object.values(this.metas).map(m => m.day)),
-    ].sort((a, b) => String(a).localeCompare(String(b))))
-      if (
-        (day < today || (day === today && clock >= this.config.time)) &&
-        this.exported[day] !== this.revision(day)
-      )
-        await this.export(day, true, now);
+    // A dated folder is a complete snapshot as of the latest scheduled day,
+    // rather than a separate export for each historical message date.
+    if (clock < this.config.time) d.setDate(d.getDate() - 1);
+    const day = backupDay(d.getTime());
+    if (
+      Object.values(this.metas).some(meta => meta.day <= day) &&
+      this.exported[day] !== this.revision(day)
+    )
+      await this.export(day, true, now);
   }
 }

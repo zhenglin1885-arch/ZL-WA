@@ -509,6 +509,7 @@ class EditSettingsScreen extends Component<
       hideAllServicesWorkspace: Boolean(settingsData.hideAllServicesWorkspace),
       translationTextColor: settingsData.translationTextColor,
       accentColor: settingsData.accentColor,
+      lightThemeColor: settingsData.lightThemeColor,
       progressbarAccentColor: settingsData.progressbarAccentColor,
       showMessageBadgeWhenMuted: Boolean(
         settingsData.showMessageBadgeWhenMuted,
@@ -1349,6 +1350,14 @@ class EditSettingsScreen extends Component<
             DEFAULT_APP_SETTINGS.translationTextColor,
           ),
           default: DEFAULT_APP_SETTINGS.translationTextColor,
+        },
+        lightThemeColor: {
+          label: '浅色模式主题色',
+          value: ifUndefined<string>(
+            settings.all.app.lightThemeColor,
+            DEFAULT_APP_SETTINGS.lightThemeColor,
+          ),
+          default: DEFAULT_APP_SETTINGS.lightThemeColor,
         },
         accentColor: {
           label: intl.formatMessage(messages.accentColor),

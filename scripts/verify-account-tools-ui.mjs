@@ -6,7 +6,9 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { verifyWhatsAppLayout } from './verify-whatsapp-layout-ui.mjs';
 import { verifyTranslationRedraft } from './verify-translation-redraft-ui.mjs';
+import { verifyTranslationContexts } from './verify-translation-contexts-ui.mjs';
 import { verifyGroups } from './verify-groups-ui.mjs';
+import { verifyCustomerCompatibility } from './verify-customer-compatibility-ui.mjs';
 import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
 import {
   evaluate,
@@ -124,7 +126,7 @@ try {
     'window.ferdium.stores.services.all.map(s=>s.id)',
   );
   await vm(
-    `globalThis.__zlSessionPrototype = Object.getPrototypeOf(process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').session.defaultSession);globalThis.__zlToolsFetch=globalThis.__zlSessionPrototype.fetch;globalThis.__zlSessionPrototype.fetch=async function(url,options){if(String(url).startsWith('https://translate.googleapis.com/')){globalThis.__zlTranslationCalls=(globalThis.__zlTranslationCalls||0)+1;if(globalThis.__zlTranslateFail) throw Error('synthetic translation failure');await new Promise(r=>setTimeout(r,350));return new Response(JSON.stringify([[[new URLSearchParams(options.body).get('tl')==='zh-CN'?'你好，这是本地测试消息。':new URLSearchParams(options.body).get('q')==='你好🐭'?'Hello 🐭':'Hello translated']]]),{status:200,headers:{'Content-Type':'application/json'}})}return globalThis.__zlToolsFetch.call(this,url,options)};true`,
+    `globalThis.__zlSessionPrototype = Object.getPrototypeOf(process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').session.defaultSession);globalThis.__zlToolsFetch=globalThis.__zlSessionPrototype.fetch;globalThis.__zlSessionPrototype.fetch=async function(url,options){if(String(url).startsWith('https://translate.googleapis.com/')){globalThis.__zlTranslationCalls=(globalThis.__zlTranslationCalls||0)+1;globalThis.__zlLastTranslationInput=new URLSearchParams(options.body).get('q');if(globalThis.__zlTranslateFail) throw Error('synthetic translation failure');await new Promise(r=>setTimeout(r,350));return new Response(JSON.stringify([[[new URLSearchParams(options.body).get('tl')==='zh-CN'?'你好，这是本地测试消息。':new URLSearchParams(options.body).get('q')==='你好🐭'?'Hello 🐭':'Hello translated']]]),{status:200,headers:{'Content-Type':'application/json'}})}return globalThis.__zlToolsFetch.call(this,url,options)};true`,
   );
   mainPatched = true;
   for (let i = 0; i < 2; i += 1) {
@@ -534,7 +536,7 @@ try {
     // Simulate an interrupted refresh restored from cache, then use real mouse input.
     await guest(
       first,
-      `(()=>{const state=window.__zlTranslation;const nested=document.createElement('span');nested.innerHTML='Original<div data-zl-translation>Decoration</div>';if(state.readText(nested)!=='Original')throw Error('Translation decoration changed source text');const node=document.querySelector('.message-in .selectable-text');const record=state.incoming.get(node);if(!record)throw Error('Missing translation');record.request(true,true);state.cancelPending();state.restore(record,'你好');if(record.refresh.disabled)throw Error('Cancelled refresh remained disabled');return true})()`,
+      `(()=>{const state=window.__zlTranslation;const nested=document.createElement('span');nested.innerHTML='Original<div data-zl-translation>Decoration</div>';if(state.readText(nested)!=='Original')throw Error('Translation decoration changed source text');const node=document.querySelector('.message-in .selectable-text');const record=state.controls.get(document.querySelector('.message-in [data-zl-translation]'));if(!record)throw Error('Missing translation');record.request(true,true);state.cancelPending();state.restore(record,'你好');if(record.refresh.disabled)throw Error('Cancelled refresh remained disabled');return true})()`,
     );
     const beforeRetranslate = await vm('globalThis.__zlTranslationCalls');
     const refreshPoint = await guest(
@@ -565,6 +567,107 @@ try {
     );
     console.log(
       'PASS translation refresh requests a new result and never resends the message',
+    );
+
+    // Media captions are split across formatted spans; React consumes clicks at
+    // the bubble root, and may rebuild the inner caption while a request runs.
+    await guest(
+      first,
+      `(()=>{
+      const bubble=document.createElement('div');bubble.className='message-in';bubble.id='formatted-caption';
+      bubble.innerHTML='<div class="copyable-text" data-pre-plain-text="caption"><img alt="photo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><div><b class="selectable-text">Lucas Henrique Varella</b><br><span class="selectable-text">CEO | Oravion Capital</span></div><p class="selectable-text">Com mais de 27 anos de experiência em tecnologia financeira e gestão corporativa.</p><p><span class="selectable-text">Áreas de Especialização</span><br><span class="selectable-text">Mercados globais de ações</span><br><span class="selectable-text">Gestão de riscos de portfólios de investimentos.</span></p><span data-testid="msg-meta">21:14</span></div>';
+      bubble.addEventListener('click',event=>event.stopImmediatePropagation(),true);
+      document.querySelector('#messages').append(bubble);bubble.scrollIntoView({block:'center'});return true;
+    })()`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('!!document.querySelector("#formatted-caption [data-zl-translate]")')`,
+      'formatted caption ready',
+    );
+    const caption = await guest(
+      first,
+      `(()=>{const root=document.querySelector('#formatted-caption .copyable-text');const text=window.__zlTranslation.readText(root);if(!text.includes('Lucas Henrique')||!text.includes('Gestão de riscos')||text.includes('21:14')||text.includes('photo'))throw Error('Incomplete caption extraction');return text})()`,
+    );
+    await guest(
+      first,
+      `document.querySelector('#formatted-caption [data-zl-translate]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translation-text]").textContent.includes("你好")')`,
+      'whole caption translated',
+    );
+    assert.equal(
+      await vm('globalThis.__zlLastTranslationInput'),
+      caption,
+      'provider receives every caption paragraph, without timestamp or image alt',
+    );
+    assert.equal(
+      await guest(
+        first,
+        'document.querySelectorAll("#formatted-caption [data-zl-translation]").length',
+      ),
+      1,
+      'one translation for the whole formatted caption',
+    );
+    await guest(
+      first,
+      `(()=>{const root=document.querySelector('#formatted-caption .copyable-text');root.querySelector('b').innerHTML='<span class="selectable-text">Lucas Henrique Varella</span>';return true})()`,
+    );
+    const captionPoint = await guest(
+      first,
+      `(()=>{const b=document.querySelector('#formatted-caption [data-zl-retranslate]');b.scrollIntoView({block:'center'});const r=b.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+    );
+    const captionCalls = await vm('globalThis.__zlTranslationCalls');
+    for (const type of ['mouseDown', 'mouseUp'])
+      await vm(
+        `process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').webContents.fromId(${refreshContents}).sendInputEvent(${JSON.stringify({ type, ...captionPoint, button: 'left', clickCount: 1 })});true`,
+      );
+    assert.equal(
+      await guest(
+        first,
+        'document.querySelector("#formatted-caption [data-zl-translate]").textContent',
+      ),
+      '重新翻译中…',
+      'native click immediately shows progress before provider responds',
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translate]").hidden && !document.querySelector("#formatted-caption [data-zl-retranslate]").disabled')`,
+      'caption refresh completes despite ancestor event capture',
+    );
+    assert.equal(
+      await vm('globalThis.__zlTranslationCalls'),
+      captionCalls + 1,
+      'caption refresh bypasses both caches',
+    );
+    assert.equal(
+      await vm('globalThis.__zlLastTranslationInput'),
+      caption,
+      'refresh includes the complete caption after inner DOM rebuild',
+    );
+    await vm('globalThis.__zlTranslateFail=true;true');
+    await guest(
+      first,
+      `document.querySelector('#formatted-caption [data-zl-retranslate]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translation-text]").textContent.includes("重试") && !document.querySelector("#formatted-caption [data-zl-retranslate]").disabled')`,
+      'refresh failure is visible and retry stays enabled',
+    );
+    await vm('globalThis.__zlTranslateFail=false;true');
+    await guest(
+      first,
+      `document.querySelector('#formatted-caption [data-zl-retranslate]').click();true`,
+    );
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translate]").hidden')`,
+      'failed refresh can retry',
+    );
+    await guest(
+      first,
+      `document.querySelector('#formatted-caption').remove();document.querySelector('.message-in').scrollIntoView({block:'center'});true`,
+    );
+    console.log(
+      'PASS complete formatted media caption, native refresh across React capture, immediate progress, visible failure and retry',
     );
 
     await vm('globalThis.__zlTranslateFail=true;true');
@@ -665,8 +768,12 @@ try {
       'translation color picker',
     );
     const editColor = async value => {
+      await wait(
+        `document.querySelector('.settings').getAnimations({subtree:true}).every(animation=>animation.playState==='finished'||animation.effect?.getTiming().iterations===Infinity)`,
+        'settings transition completed before native color click',
+      );
       const point = await evaluate(
-        `(()=>{const input=document.querySelector('input[name="translationTextColor"]');input.scrollIntoView({block:'center'});const r=input.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`,
+        `(()=>{const input=document.querySelector('input[name="translationTextColor"]');input.scrollIntoView({block:'center'});const r=input.getBoundingClientRect();const point={x:r.x+r.width/2,y:r.y+r.height/2};if(document.elementFromPoint(point.x,point.y)!==input)throw Error('Translation color input is covered: '+JSON.stringify({rect:r.toJSON(),hit:document.elementFromPoint(point.x,point.y)?.outerHTML.slice(0,300)}));return point})()`,
       );
       await call('Input.dispatchMouseEvent', {
         type: 'mousePressed',
@@ -787,7 +894,7 @@ try {
     );
     await guest(
       first,
-      `(()=>{const state=window.__zlTranslation;const text=document.querySelector('.selectable-text');const record=state.incoming.get(text);record.status='pending';record.button.disabled=true;state.pending.set(999999,{direction:'incoming',record});window.__zlPendingRecord=record;return true})()`,
+      `(()=>{const state=window.__zlTranslation;const text=document.querySelector('.selectable-text');const record=state.controls.get(document.querySelector('[data-zl-translation]'));record.status='pending';record.button.disabled=true;state.pending.set(999999,{direction:'incoming',record});window.__zlPendingRecord=record;return true})()`,
     );
     await switchTranslation('发送自动翻译');
     await wait(
@@ -1299,6 +1406,7 @@ try {
       'PASS received translation, per-account isolation, first-click preview and second-click corrected send',
     );
     await verifyTranslationRedraft({ first, guest, evaluate, wait, service });
+    await verifyTranslationContexts({ first, guest, evaluate, wait, service });
     await vm(`globalThis.__zlTranslateFail=true;true`);
     await guest(
       first,
@@ -2285,6 +2393,7 @@ try {
     'remarks hydrated after native row remount',
   );
   await shot('/workspace/ZL-WA-customers.png');
+  await verifyCustomerCompatibility({ first, service, guest, wait });
   await click(`[data-service-id="${second}"] .account-card__select`);
   await guest(
     second,
@@ -2427,7 +2536,7 @@ try {
   if (mainPatched)
     try {
       await vm(
-        `globalThis.__zlSessionPrototype.fetch=globalThis.__zlToolsFetch;delete globalThis.__zlSessionPrototype;delete globalThis.__zlToolsFetch;delete globalThis.__zlTranslateFail;delete globalThis.__zlTranslationCalls;globalThis.__zlProxyTLS?.closeAllConnections();globalThis.__zlProxyTLS?.close();globalThis.__zlProxyServer?.closeAllConnections();globalThis.__zlProxyServer?.close();true`,
+        `globalThis.__zlSessionPrototype.fetch=globalThis.__zlToolsFetch;delete globalThis.__zlSessionPrototype;delete globalThis.__zlToolsFetch;delete globalThis.__zlTranslateFail;delete globalThis.__zlTranslationCalls;delete globalThis.__zlLastTranslationInput;globalThis.__zlProxyTLS?.closeAllConnections();globalThis.__zlProxyTLS?.close();globalThis.__zlProxyServer?.closeAllConnections();globalThis.__zlProxyServer?.close();true`,
       );
     } catch {
       /* A failed app connection may already have closed; fixtures remain isolated. */

@@ -11,11 +11,21 @@ export default class StartupQueue {
     private limit = 2,
   ) {}
 
-  update(ids: string[]) {
+  update(ids: string[], immediate: ReadonlySet<string> = new Set()) {
     const current = new Set(ids);
     for (const id of this.loading)
       if (!current.has(id)) this.loading.delete(id);
+    // User-created sessions open independently of the two boot-time slots.
+    // They must not occupy or release those slots when their page settles.
+    let changed = false;
+    for (const id of ids) {
+      if (immediate.has(id) && !this.admitted.has(id)) {
+        this.admitted.add(id);
+        changed = true;
+      }
+    }
     this.pending = ids.filter(id => !this.admitted.has(id));
+    if (changed) this.notify();
     this.drain();
   }
 

@@ -4,23 +4,9 @@ import { autorun } from 'mobx';
 import { isLinux, isMac, isWindows } from '../../environment';
 import type TrayIcon from '../../lib/Tray';
 
-const INDICATOR_TASKBAR = 'taskbar';
-const FILE_EXTENSION = isWindows ? 'ico' : 'png';
-
 let isTrayIconEnabled: boolean;
-
-const getAsset = (type: 'tray' | 'taskbar', asset: string) => {
-  return join(
-    __dirname,
-    '..',
-    '..',
-    'assets',
-    'images',
-    type,
-    process.platform,
-    `${asset}.${FILE_EXTENSION}`,
-  );
-};
+const iconPath = (...parts: string[]) =>
+  join(__dirname, '..', '..', 'assets', 'images', ...parts);
 
 export default (params: {
   mainWindow: BrowserWindow;
@@ -63,26 +49,23 @@ export default (params: {
     }
 
     if (isWindows) {
-      if (typeof args.indicator === 'number' && args.indicator !== 0) {
-        params.mainWindow.setOverlayIcon(
-          // @ts-expect-error Argument of type 'string' is not assignable to parameter of type 'NativeImage | null'.
-          getAsset(
-            'taskbar',
-            `${INDICATOR_TASKBAR}-${
-              args.indicator >= 10 ? 10 : args.indicator
-            }`,
-          ),
-          '',
-        );
-      } else if (typeof args.indicator === 'string') {
-        params.mainWindow.setOverlayIcon(
-          // @ts-expect-error Argument of type 'string' is not assignable to parameter of type 'NativeImage | null'.
-          getAsset('taskbar', `${INDICATOR_TASKBAR}-alert`),
-          '',
-        );
-      } else {
-        params.mainWindow.setOverlayIcon(null, '');
-      }
+      const value = args.indicator;
+      const label =
+        typeof value === 'number' && Number.isFinite(value) && value > 0
+          ? value >= 10
+            ? '10+'
+            : String(Math.floor(value))
+          : typeof value === 'string' && value
+            ? 'alert'
+            : '';
+      // Windows fixes overlay icons to the lower-right corner. Compose the
+      // badge into the window icon itself to place it above the logo instead.
+      params.mainWindow.setOverlayIcon(null, '');
+      params.mainWindow.setIcon(
+        label
+          ? iconPath('taskbar', `badged-${label}.png`)
+          : iconPath('icons', '256x256.png'),
+      );
     }
 
     // Update Tray

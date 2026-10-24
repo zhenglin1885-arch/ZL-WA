@@ -2,7 +2,7 @@
 /* eslint-disable import/first */
 
 import { EventEmitter } from 'node:events';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import {
   BrowserWindow,
   app,
@@ -31,7 +31,13 @@ import {
   DEFAULT_WINDOW_OPTIONS,
 } from './config';
 
-import { altKey, isLinux, isMac, isWindows } from './environment';
+import {
+  altKey,
+  isLinux,
+  isMac,
+  isWindows,
+  isWinPortable,
+} from './environment';
 import {
   isDevMode,
   protocolClient,
@@ -45,6 +51,7 @@ import handleDeepLink, { getDeepLinkFromArgs } from './electron/deepLinking';
 import './electron/exception';
 import ipcApi from './electron/ipc-api';
 import CacheLocation from './electron/CacheLocation';
+import { recoverCacheLocation } from './electron/cacheStartup';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -74,6 +81,7 @@ app.userAgentFallback = userAgent();
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | undefined;
 let cacheLocation: CacheLocation;
+let cacheLocationError: unknown;
 let willQuitApp = false;
 let overrideAppQuitForUpdate = false;
 
@@ -170,11 +178,19 @@ const gotTheLock = liftSingleInstanceLock
   : app.requestSingleInstanceLock();
 if (gotTheLock) {
   try {
-    cacheLocation = new CacheLocation(userDataPath());
+    cacheLocation = new CacheLocation(
+      userDataPath(),
+      isWindows && app.isPackaged && !isWinPortable
+        ? dirname(process.execPath)
+        : undefined,
+    );
     app.setPath('sessionData', cacheLocation.initialize());
   } catch (error) {
-    dialog.showErrorBox('无法打开缓存与账号数据', String(error));
-    app.exit(1);
+    if (cacheLocation!) cacheLocationError = error;
+    else {
+      dialog.showErrorBox('无法打开缓存与账号数据', String(error));
+      app.exit(1);
+    }
   }
   app.on('second-instance', (_event, argv) => {
     // Someone tried to run a second instance, we should focus our window.
@@ -280,8 +296,8 @@ const createWindow = () => {
   const backgroundColor = nativeTheme.shouldUseDarkColors
     ? darkThemeGrayDarkest
     : (retrieveSettingValue(
-        'accentColor',
-        DEFAULT_APP_SETTINGS.accentColor,
+        'lightThemeColor',
+        DEFAULT_APP_SETTINGS.lightThemeColor,
       ) as string);
 
   const linuxMainWindowConf = {
@@ -305,6 +321,7 @@ const createWindow = () => {
     frame: isLinux,
     backgroundColor,
     webPreferences: {
+      autoplayPolicy: 'no-user-gesture-required',
       spellcheck: retrieveSettingValue(
         'enableSpellchecking',
         DEFAULT_APP_SETTINGS.enableSpellchecking,
@@ -651,7 +668,24 @@ app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', () => {
+app.on('ready', async () => {
+  if (cacheLocationError) {
+    let recovered = false;
+    try {
+      recovered = await recoverCacheLocation(
+        cacheLocation,
+        dialog,
+        cacheLocationError,
+      );
+    } catch (error) {
+      dialog.showErrorBox('缓存目录恢复未完成', String(error));
+    }
+    // sessionData must be set before ready. Repair only configuration here,
+    // then relaunch before any main window, browser session or account opens.
+    if (recovered) app.relaunch();
+    app.exit(recovered ? 0 : 1);
+    return;
+  }
   // force app to live in /Applications
   enforceMacOSAppLocation();
 

@@ -13,7 +13,15 @@ import {
   realpathSync,
   mkdtempSync,
 } from 'node:fs';
-import { join, dirname, resolve, relative, isAbsolute, sep } from 'node:path';
+import {
+  join,
+  dirname,
+  basename,
+  resolve,
+  relative,
+  isAbsolute,
+  sep,
+} from 'node:path';
 
 interface LocationConfig {
   version: 1;
@@ -66,9 +74,17 @@ const browserEntry = (name: string) =>
     name,
   );
 const pathKey = (path: string) => {
-  const p = existsSync(path)
-    ? realpathSync(path)
-    : join(realpathSync(dirname(path)), resolve(path).split(sep).at(-1)!);
+  let parent = resolve(path);
+  const tail: string[] = [];
+  while (!existsSync(parent)) {
+    const next = dirname(parent);
+    if (next === parent) break;
+    tail.unshift(basename(parent));
+    parent = next;
+  }
+  const p = existsSync(parent)
+    ? join(realpathSync(parent), ...tail)
+    : resolve(path);
   return process.platform === 'win32' ? p.toLowerCase() : p;
 };
 const contains = (parent: string, child: string) => {
@@ -84,7 +100,10 @@ export default class CacheLocation {
 
   error = '';
 
-  constructor(readonly profile: string) {
+  constructor(
+    readonly profile: string,
+    readonly installationDirectory?: string,
+  ) {
     mkdirSync(profile, { recursive: true });
     if (existsSync(this.file)) {
       const value = JSON.parse(
@@ -122,7 +141,12 @@ export default class CacheLocation {
       next: this.config.pending || this.config.active,
       defaultDirectory: this.profile,
       pending: !!this.config.pending,
-      error: this.error || undefined,
+      error:
+        this.error ||
+        (this.installationDirectory &&
+        contains(this.installationDirectory, this.config.active)
+          ? '当前缓存位于软件安装目录内，安装版升级可能删除它。请在更新软件前选择安装目录以外的独立文件夹并重启完成迁移。'
+          : undefined),
     };
   }
 
@@ -144,7 +168,18 @@ export default class CacheLocation {
     }
   }
 
+  private validateInstallation(target: string) {
+    if (
+      this.installationDirectory &&
+      contains(this.installationDirectory, target)
+    )
+      throw new Error(
+        '缓存不能保存在软件安装目录内，AutoSetup 升级会清理该目录。请选择安装目录以外的独立文件夹，例如 D:\\ZL-WA数据。',
+      );
+  }
+
   private validateTarget(target: string) {
+    this.validateInstallation(target);
     if (pathKey(target) === pathKey(this.profile)) return;
     if (
       (contains(this.profile, target) ||
@@ -158,6 +193,15 @@ export default class CacheLocation {
       this.owned(target);
   }
 
+  private customDirectory(parent: string) {
+    return join(
+      realpathSync(parent),
+      'AppData',
+      'Roaming',
+      this.profile.endsWith('Dev') ? 'ZL-WADev' : 'ZL-WA',
+    );
+  }
+
   select(parent: string) {
     if (
       !isAbsolute(parent) ||
@@ -165,10 +209,7 @@ export default class CacheLocation {
       !statSync(parent).isDirectory()
     )
       throw new Error('请选择有效的文件夹');
-    const target = join(
-      realpathSync(parent),
-      this.profile.endsWith('Dev') ? 'ZL-WA缓存-Dev' : 'ZL-WA缓存',
-    );
+    const target = this.customDirectory(parent);
     this.validateTarget(target);
     mkdirSync(target, { recursive: true });
     this.writable(target);
@@ -197,6 +238,65 @@ export default class CacheLocation {
     this.save({ ...this.config, pending: undefined });
     this.error = '';
     return this.state();
+  }
+
+  private saveRecovery(active: string) {
+    // Retain the old path even when its disk/folder is currently unavailable.
+    writeFileSync(
+      join(this.profile, `cache-location.recovery-${randomUUID()}.json`),
+      JSON.stringify(this.config),
+      { flag: 'wx', mode: 0o600 },
+    );
+    this.save({
+      ...this.config,
+      active,
+      pending: undefined,
+      cleanup: undefined,
+    });
+    this.error = '';
+    return this.state();
+  }
+
+  recoverExisting(path: string) {
+    if (!isAbsolute(path) || !existsSync(path) || !statSync(path).isDirectory())
+      throw new Error('请选择仍存在的原缓存文件夹');
+    const target = realpathSync(path);
+    this.validateInstallation(target);
+    this.owned(target);
+    const partitions = join(target, 'Partitions');
+    if (
+      !existsSync(partitions) ||
+      !statSync(partitions).isDirectory() ||
+      readdirSync(partitions).length === 0
+    )
+      throw new Error('此文件夹没有原账号网页数据，不能作为恢复目录');
+    this.writable(target);
+    // Adopting an intact copy must not run a pending move or delete old data.
+    return this.saveRecovery(target);
+  }
+
+  createFresh(parent: string) {
+    if (
+      !isAbsolute(parent) ||
+      !existsSync(parent) ||
+      !statSync(parent).isDirectory()
+    )
+      throw new Error('请选择有效的文件夹');
+    const base = this.customDirectory(parent);
+    // Explicit fresh login never reuses or replaces an existing directory.
+    const target = existsSync(base)
+      ? `${base}-New-${randomUUID().slice(0, 8)}`
+      : base;
+    this.validateTarget(target);
+    mkdirSync(target, { recursive: true });
+    this.writable(target);
+    writeFileSync(
+      join(target, marker),
+      JSON.stringify({ id: this.config.id }),
+      { flag: 'wx', mode: 0o600 },
+    );
+    // This is only called after the user explicitly accepts signing in again.
+    return this.saveRecovery(target);
   }
 
   private verifyCopy(source: string, target: string) {
@@ -252,6 +352,8 @@ export default class CacheLocation {
         this.save({ ...this.config, pending: undefined });
         return source;
       }
+      if (!existsSync(dirname(target)))
+        throw new Error('目标磁盘或上级文件夹不可用，原账号数据未改动');
       this.validateTarget(target);
       mkdirSync(target, { recursive: true });
       this.writable(target);

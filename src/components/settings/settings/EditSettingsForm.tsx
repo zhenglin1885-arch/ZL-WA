@@ -390,7 +390,11 @@ class EditSettingsForm extends Component<IProps, IState> {
   };
 
   resetColorOnEmptyInput(
-    name: 'accentColor' | 'progressbarAccentColor' | 'translationTextColor',
+    name:
+      | 'accentColor'
+      | 'lightThemeColor'
+      | 'progressbarAccentColor'
+      | 'translationTextColor',
   ): void {
     if (this.props.form.$(name).value.trim().length === 0) {
       this.props.form.$(name).set(DEFAULT_APP_SETTINGS[name]);
@@ -398,10 +402,15 @@ class EditSettingsForm extends Component<IProps, IState> {
   }
 
   resetColorsFromSettings(): void {
-    const { accentColor, progressbarAccentColor, translationTextColor } =
-      window['ferdium'].stores.settings.app;
+    const {
+      accentColor,
+      lightThemeColor,
+      progressbarAccentColor,
+      translationTextColor,
+    } = window['ferdium'].stores.settings.app;
     this.props.form.$('translationTextColor').set(translationTextColor);
     this.props.form.$('accentColor').set(accentColor);
+    this.props.form.$('lightThemeColor').set(lightThemeColor);
     this.props.form.$('progressbarAccentColor').set(progressbarAccentColor);
   }
 
@@ -431,12 +440,16 @@ class EditSettingsForm extends Component<IProps, IState> {
     // Reset color to default if input is empty
     this.resetColorOnEmptyInput('translationTextColor');
     this.resetColorOnEmptyInput('accentColor');
+    this.resetColorOnEmptyInput('lightThemeColor');
     this.resetColorOnEmptyInput('progressbarAccentColor');
 
     const tinyTranslationColor = tinycolor(
       this.props.form.$('translationTextColor').value,
     );
     const tinyAccentColor = tinycolor(this.props.form.$('accentColor').value);
+    const tinyLightThemeColor = tinycolor(
+      this.props.form.$('lightThemeColor').value,
+    );
     const tinyProgressbarAccentColor = tinycolor(
       this.props.form.$('progressbarAccentColor').value,
     );
@@ -444,12 +457,14 @@ class EditSettingsForm extends Component<IProps, IState> {
     // Do not submit if one of the accent color is not set and the action is the change of color
     if (
       !tinyAccentColor.isValid() ||
+      !tinyLightThemeColor.isValid() ||
       !tinyProgressbarAccentColor.isValid() ||
       !tinyTranslationColor.isValid()
     ) {
       if (
         e?.target?.name === 'translationTextColor' ||
         e?.target?.name === 'accentColor' ||
+        e?.target?.name === 'lightThemeColor' ||
         e?.target?.name === 'progressbarAccentColor'
       ) {
         return;
@@ -469,6 +484,8 @@ class EditSettingsForm extends Component<IProps, IState> {
         if (tinyTranslationColor.getFormat() === 'name') {
           values.translationTextColor = tinyTranslationColor.toHexString();
         }
+        if (tinyLightThemeColor.getFormat() === 'name')
+          values.lightThemeColor = tinyLightThemeColor.toHexString();
         if (tinyAccentColor.getFormat() === 'name') {
           values.accentColor = tinyAccentColor.toHexString();
         }
@@ -955,15 +972,18 @@ class EditSettingsForm extends Component<IProps, IState> {
                 <p>
                   应用于聊天中的翻译文字，所有账户共用；清空后恢复默认颜色。
                 </p>
-                <p>{intl.formatMessage(messages.overallTheme)}</p>
+                <p>浅色模式主题色</p>
                 <div className="settings__settings-group__apply-color">
                   <ColorPickerInput
-                    {...form.$('accentColor').bind()}
-                    name="accentColor"
+                    {...form.$('lightThemeColor').bind()}
+                    name="lightThemeColor"
                     onColorChange={e => this.submit(e)}
                     className="color-picker-input"
                   />
                 </div>
+                <p>
+                  调整浅色模式的顶部状态栏、左右侧栏和界面强调色，深色模式不受影响。
+                </p>
                 <p>{intl.formatMessage(messages.progressbarTheme)}</p>
                 <div className="settings__settings-group__apply-color">
                   <ColorPickerInput

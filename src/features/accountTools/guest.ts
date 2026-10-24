@@ -26,6 +26,7 @@ export function translationTick(
       busy: false,
       config,
       incoming: new WeakMap(),
+      controls: new WeakMap(),
       activeChat: '',
       memo: new Map(),
       dirty: true,
@@ -42,7 +43,7 @@ export function translationTick(
         const element = node as HTMLElement;
         if (
           element.matches?.(
-            '[data-zl-translation], script, style, button, [data-testid*="quoted"], blockquote',
+            '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], blockquote',
           )
         )
           return '';
@@ -61,7 +62,7 @@ export function translationTick(
           if (
             child.nodeType === 1 &&
             (child as Element).matches(
-              '[data-zl-translation], script, style, button, [data-testid*="quoted"], blockquote',
+              '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], blockquote',
             )
           )
             continue;
@@ -90,10 +91,10 @@ export function translationTick(
       );
     };
     const sendSelector =
-      '[aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send-filled"], [data-icon="send-filled"], [data-testid="compose-btn-send"], [data-testid="media-send"]';
+      '[aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send-filled"], [data-icon="send-filled"], [data-testid="compose-btn-send"], [data-testid="media-send"]';
     const editDialogSelector =
       '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"], [role="dialog"], [data-animate-modal-popup="true"]';
-    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
+    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
     const documentSelector =
       '[data-testid="document-preview"], [data-testid="document-thumb"], [data-testid="document-preview-file"], [data-icon="document"], [data-icon="document-filled"], [data-icon^="document-"], [data-icon="wds-ic-document"], [data-icon^="wds-ic-document-"]';
     const visible = (node: HTMLElement) =>
@@ -102,7 +103,7 @@ export function translationTick(
       !node.closest('[aria-hidden="true"]');
     state.mediaRoots = new WeakMap();
     state.mediaSequence = 0;
-    const composerContext = () => {
+    const composerContext = (preferred?: Element) => {
       const candidates: {
         input: HTMLElement;
         root: HTMLElement;
@@ -111,46 +112,58 @@ export function translationTick(
         editing?: boolean;
       }[] = [];
       for (const input of document.querySelectorAll<HTMLElement>(
-        '[contenteditable="true"][role="textbox"], [contenteditable="true"][data-lexical-editor="true"]',
+        '[contenteditable="true"]',
       )) {
         if (!visible(input)) continue;
-        const editRoot = input.closest<HTMLElement>(editDialogSelector);
-        if (editRoot?.querySelector(editSubmitSelector)) {
-          const explicit = editRoot.matches(
-            '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"]',
-          );
-          // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading lines distinguish the edit-message modal from unrelated dialogs.
-          const heading = (editRoot.innerText || '')
-            .split('\n')
-            .slice(0, 6)
-            .some(line =>
-              /^(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)$/i.test(
-                line.trim(),
+        const roots: HTMLElement[] = [];
+        for (
+          let root = input.parentElement;
+          root && root !== document.body;
+          root = root.parentElement
+        ) {
+          if (root.matches(editDialogSelector)) roots.push(root);
+        }
+        const editRoot = roots.find(
+          root =>
+            root.matches(
+              '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"]',
+            ) ||
+            [
+              ...root.querySelectorAll<HTMLElement>(
+                'header, h1, h2, [role="heading"], [data-testid="dialog-title"]',
               ),
-            );
-          if (explicit || heading) {
-            if (!state.mediaRoots.has(editRoot)) {
-              state.mediaSequence += 1;
-              state.mediaRoots.set(editRoot, state.mediaSequence);
-            }
-            const preview = editRoot.querySelector<HTMLElement>(
-              '[data-id], .message-out .selectable-text, [data-testid="msg-text"]',
-            );
-            candidates.push({
-              input,
-              root: editRoot,
-              submitSelector: editSubmitSelector,
-              editing: true,
-              key: JSON.stringify([
-                'edit',
-                state.mediaRoots.get(editRoot),
-                preview && !input.contains(preview)
-                  ? preview.dataset.id || preview.textContent
-                  : '',
-              ]),
-            });
-            continue;
+            ].some(node =>
+              /edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje/i.test(
+                node.textContent || '',
+              ),
+            ) ||
+            /(?:^|\n)\s*(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)\s*(?:\n|$)/i.test(
+              // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading line boundaries distinguish edit dialogs from other popups.
+              root.innerText || '',
+            ),
+        );
+        if (editRoot?.querySelector(editSubmitSelector)) {
+          if (!state.mediaRoots.has(editRoot)) {
+            state.mediaSequence += 1;
+            state.mediaRoots.set(editRoot, state.mediaSequence);
           }
+          const preview = editRoot.querySelector<HTMLElement>(
+            '[data-id], .message-out .selectable-text, [data-testid="msg-text"]',
+          );
+          candidates.push({
+            input,
+            root: editRoot,
+            submitSelector: editSubmitSelector,
+            editing: true,
+            key: JSON.stringify([
+              'edit',
+              state.mediaRoots.get(editRoot),
+              preview && !input.contains(preview)
+                ? preview.dataset.id || preview.textContent
+                : '',
+            ]),
+          });
+          continue;
         }
 
         const caption =
@@ -233,6 +246,15 @@ export function translationTick(
         }
       }
       if (candidates.length > 0) {
+        const targeted =
+          preferred &&
+          candidates.find(
+            item =>
+              item.input === preferred ||
+              item.input.contains(preferred) ||
+              item.root.contains(preferred),
+          );
+        if (targeted) return targeted;
         const focused = candidates.find(
           item =>
             item.input === document.activeElement ||
@@ -240,14 +262,41 @@ export function translationTick(
         );
         return focused || (candidates.length === 1 ? candidates[0] : undefined);
       }
-      const input = document.querySelector<HTMLElement>(
-        '#main footer [contenteditable="true"][role="textbox"], #main footer [contenteditable="true"][data-lexical-editor="true"]',
+      const inputs = [
+        ...document.querySelectorAll<HTMLElement>(
+          '#main footer [contenteditable="true"], #main [data-testid="conversation-compose-box-input"] [contenteditable="true"], #main [data-testid="conversation-compose-box"] [contenteditable="true"]',
+        ),
+      ].filter(node => visible(node));
+      const input =
+        inputs.find(
+          node => node === preferred || node.contains(preferred || null),
+        ) ||
+        inputs.find(
+          node =>
+            node === document.activeElement ||
+            node.contains(document.activeElement),
+        ) ||
+        (inputs.length === 1 ? inputs[0] : undefined);
+      const root =
+        input?.closest<HTMLElement>('footer') ||
+        input?.closest<HTMLElement>(
+          '[data-testid="conversation-compose-box"]',
+        ) ||
+        input?.parentElement;
+      const quote = root?.querySelector<HTMLElement>(
+        '[data-testid*="quoted"], [data-testid="reply-context"], [data-testid="reply-preview"], [data-testid="quoted-message"]',
       );
-      return input && visible(input)
+      return input && root
         ? {
             input,
-            root: input.closest<HTMLElement>('footer')!,
-            key: 'text',
+            root,
+            key: JSON.stringify([
+              'text',
+              quote?.dataset.id ||
+                quote?.getAttribute('data-message-id') ||
+                quote?.textContent ||
+                '',
+            ]),
             editing: false,
           }
         : undefined;
@@ -355,6 +404,8 @@ export function translationTick(
         if (current.refresh) {
           current.refresh.hidden = false;
           current.refresh.disabled = false;
+          current.refresh.removeAttribute('aria-busy');
+          current.refresh.title = '重新翻译（重新请求，不使用缓存）';
         }
       });
     };
@@ -363,9 +414,14 @@ export function translationTick(
         const current = job.record;
         if (job.direction === 'incoming' && current?.status === 'pending') {
           current.status = 'idle';
-          if (current.refresh) current.refresh.disabled = false;
+          if (current.refresh) {
+            current.refresh.disabled = false;
+            current.refresh.removeAttribute('aria-busy');
+          }
           current.button.disabled = false;
           current.button.textContent = '点击翻译';
+          current.button.hidden = false;
+          current.button.style.display = 'inline-flex';
           current.autoAttempted = true;
         }
       }
@@ -375,9 +431,29 @@ export function translationTick(
     };
     const intercept = (event: Event) => {
       if (!state.config.outgoing) return;
-      const context = composerContext();
+      if (event.type === 'pointerdown' && (event as PointerEvent).button !== 0)
+        return;
+      const context = composerContext(event.target as Element);
       const input = context?.input;
-      if (!input || !context) return;
+      if (!input || !context) {
+        const target = event.target as Element;
+        const root = target?.closest?.(`footer, ${editDialogSelector}`);
+        if (
+          root?.querySelector('[contenteditable="true"]') &&
+          (((event.type === 'click' || event.type === 'pointerdown') &&
+            target.closest(`${sendSelector}, ${editSubmitSelector}`)) ||
+            (event.type === 'keydown' &&
+              (event as KeyboardEvent).key === 'Enter' &&
+              !(event as KeyboardEvent).shiftKey))
+        ) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          notice(
+            '暂未识别到消息输入框，已阻止原文发送；请重新打开编辑窗口后重试',
+          );
+        }
+        return;
+      }
       const key = event as KeyboardEvent;
       const sendKey =
         event.type === 'keydown' &&
@@ -391,7 +467,7 @@ export function translationTick(
         target?.closest(submitSelector) ||
         control?.querySelector(submitSelector);
       const sendClick =
-        event.type === 'click' &&
+        (event.type === 'click' || event.type === 'pointerdown') &&
         Boolean(sendNode && context.root.contains(sendNode));
       if (
         !(sendKey && (target === input || input.contains(target))) &&
@@ -439,7 +515,7 @@ export function translationTick(
         state.approved.context === context.key &&
         !state.busy
       ) {
-        state.approved = null;
+        if (event.type !== 'pointerdown') state.approved = null;
         notice('');
         return;
       }
@@ -478,6 +554,28 @@ export function translationTick(
         context.editing ? '正在翻译，修改尚未保存…' : '正在翻译，消息尚未发送…',
       );
     };
+    const translationControl = (event: Event) => {
+      const target = event.target as Element;
+      const control = target?.closest<HTMLElement>(
+        '[data-zl-retranslate], [data-zl-translate]',
+      );
+      const container = control?.closest('[data-zl-translation]');
+      const record = container && state.controls.get(container);
+      if (!control || !record) return;
+      event.stopImmediatePropagation();
+      if (event.type !== 'click') return;
+      event.preventDefault();
+      record.request(true, Object.hasOwn(control.dataset, 'zlRetranslate'));
+    };
+    for (const type of [
+      'pointerdown',
+      'mousedown',
+      'pointerup',
+      'mouseup',
+      'click',
+    ])
+      window.addEventListener(type, translationControl, true);
+    window.addEventListener('pointerdown', intercept, true);
     window.addEventListener('keydown', intercept, true);
     window.addEventListener('click', intercept, true);
     const clearApproval = () => {
@@ -642,7 +740,7 @@ export function translationTick(
         rect.height === 0
       )
         continue;
-      const textNode = [
+      const candidate = [
         body,
         ...body.querySelectorAll<HTMLElement>(
           '.selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"], [data-pre-plain-text] [dir="auto"], [data-lexical-text="true"]',
@@ -662,7 +760,29 @@ export function translationTick(
             'footer, header, [contenteditable="true"], [data-zl-translation], [data-testid*="quoted"], [data-testid*="link-preview"], blockquote',
           ),
       );
-      if (!textNode || seen.has(textNode)) continue;
+      if (!candidate) continue;
+      // Formatted media captions can contain many selectable spans. Read their
+      // common message wrapper, rather than translating only the first span.
+      let textNode = candidate;
+      for (
+        let parent = candidate.parentElement;
+        parent;
+        parent = parent.parentElement
+      ) {
+        if (
+          parent.matches(
+            '.message-in, .message-out, [data-id], [data-testid="msg-container"], [role="row"], #main',
+          )
+        )
+          break;
+        if (
+          parent.matches(
+            '.copyable-text, [data-pre-plain-text], .selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"]',
+          )
+        )
+          textNode = parent;
+      }
+      if (seen.has(textNode)) continue;
       seen.add(textNode);
       if (processed >= 24) break;
       processed += 1;
@@ -672,7 +792,7 @@ export function translationTick(
         ) ||
         textNode.parentElement ||
         textNode;
-      const text = state.readText(textNode);
+      const text = state.readText(textNode).trim();
       if (!text.trim() || text.length > 12_000 || !state.needsTranslation(text))
         continue;
       const identity = `${state.chatKey()}:${bubble.closest('[data-id]')?.getAttribute('data-id') || ''}`;
@@ -689,6 +809,7 @@ export function translationTick(
         container.style.cssText =
           'height:auto;clear:both;padding:6px 0 2px;text-align:left;white-space:pre-wrap;font:13px/1.5 sans-serif';
         const label = document.createElement('span');
+        container.setAttribute('aria-live', 'polite');
         label.dataset.zlTranslationText = 'true';
         label.style.cssText =
           'height:auto;white-space:pre-wrap;overflow-wrap:anywhere';
@@ -729,29 +850,46 @@ export function translationTick(
           autoAttempted: false,
         };
         state.incoming.set(textNode, record);
+        state.controls.set(container, record);
         const current = record;
         current.request = (manual: boolean, force = false) => {
           if (
             !state.config.incoming ||
             current.chat !== state.chatKey() ||
-            current.status === 'pending' ||
-            !textNode.isConnected ||
-            state.readText(textNode) !== current.text
-          )
+            !textNode.isConnected
+          ) {
+            if (manual) state.notice('消息或翻译设置已变化，请在当前聊天重试');
+            state.dirty = true;
             return;
+          }
+          if (current.status === 'pending') {
+            if (manual) state.notice('正在翻译，请稍候');
+            return;
+          }
+          const latestText = state.readText(textNode).trim();
+          if (!latestText.trim() || latestText.length > 12_000) {
+            if (manual) state.notice('消息为空或超过 12000 字符，无法翻译');
+            return;
+          }
           if (
             (!manual && state.pending.size >= 2) ||
             state.pending.size >= 12
           ) {
-            button.title = '翻译队列繁忙，请稍后点击重试';
+            if (manual) state.notice('翻译队列繁忙，请稍后点击重试');
             return;
           }
+          current.text = latestText;
+          current.cacheKey = JSON.stringify([state.signature, latestText]);
           if (force) state.memo.delete(current.cacheKey);
           current.status = 'pending';
           refresh.disabled = true;
+          refresh.setAttribute('aria-busy', 'true');
+          refresh.title = '正在重新翻译…';
           current.autoAttempted = true;
           button.disabled = true;
-          button.textContent = '翻译中…';
+          button.textContent = force ? '重新翻译中…' : '翻译中…';
+          button.hidden = false;
+          button.style.display = 'inline-flex';
           if (!force) label.textContent = '';
           state.sequence += 1;
           const id = state.sequence;
@@ -774,18 +912,6 @@ export function translationTick(
           if (manual) state.queue.unshift(request);
           else state.queue.push(request);
         };
-        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup'])
-          refresh.addEventListener(type, event => event.stopPropagation());
-        refresh.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          current.request(true, true);
-        });
-        button.addEventListener('click', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          current.request(true);
-        });
       }
       const cached = state.memo.get(record.cacheKey);
       if (cached && record.status !== 'done' && record.status !== 'pending')
@@ -940,7 +1066,10 @@ export function translationResult(
   }
   state.pending.delete(id);
   const { record } = job;
-  if (record?.refresh) record.refresh.disabled = false;
+  if (record?.refresh) {
+    record.refresh.disabled = false;
+    record.refresh.removeAttribute('aria-busy');
+  }
   if (!result.error && result.text?.trim() && job.cacheKey)
     state.remember(job.cacheKey, result.text);
   state.dirty = true;
@@ -948,11 +1077,17 @@ export function translationResult(
     !state.config.incoming ||
     (job.chat && state.chatKey() !== job.chat) ||
     !job.input.isConnected ||
-    state.readText(job.input) !== job.text ||
+    state.readText(job.input).trim() !== job.text ||
     !record?.container.isConnected ||
     state.incoming.get(job.input) !== record
-  )
+  ) {
+    if (record?.status === 'pending') {
+      record.status = 'idle';
+      record.button.disabled = false;
+      record.button.textContent = '点击翻译';
+    }
     return false;
+  }
   if (result.error || !result.text?.trim()) {
     const showError = () => {
       record.button.disabled = false;

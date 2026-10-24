@@ -3,7 +3,14 @@ import { join } from 'node:path';
 import { ipcRenderer, shell } from 'electron';
 import { ensureFileSync, pathExistsSync, writeFileSync } from 'fs-extra';
 import { debounce, remove } from 'lodash';
-import { action, computed, makeObservable, observable, reaction } from 'mobx';
+import {
+  action,
+  computed,
+  makeObservable,
+  observable,
+  reaction,
+  runInAction,
+} from 'mobx';
 import ms from 'ms';
 
 import type { Stores } from '../@types/stores.types';
@@ -67,6 +74,9 @@ export default class ServicesStore extends TypedStore {
   // [0] => Most recent, [n] => Least recent
   // No service ID should be in the list multiple times, not all service IDs have to be in the list
   @observable lastUsedServices: string[] = [];
+
+  // Memory only: after a restart these accounts use the normal startup queue.
+  @observable immediateStartupIds = new Set<string>();
 
   private toggleToTalkCallback = () => this.active?.toggleToTalk();
 
@@ -494,6 +504,9 @@ export default class ServicesStore extends TypedStore {
     const response = await this.createServiceRequest.execute(recipeId, data)
       .promise;
 
+    // Mark before publishing the new account so its first render bypasses boot throttling.
+    runInAction(() => this.immediateStartupIds.add(response.data.id));
+
     // Account cards can activate immediately after creation; wait for the cache.
     await this.allServicesRequest.patch(result => {
       if (!result) return;
@@ -774,7 +787,9 @@ export default class ServicesStore extends TypedStore {
   @action _focusService({ serviceId }) {
     if (
       typeof document !== 'undefined' &&
-      document.querySelector?.('[role="dialog"], [role="menu"]')
+      document.querySelector?.(
+        '.settings, .auth, [role="dialog"], [role="menu"]',
+      )
     )
       return;
     const service = this.one(serviceId);
@@ -786,8 +801,12 @@ export default class ServicesStore extends TypedStore {
   }
 
   @action _focusActiveService(focusEvent = null) {
+    if (
+      typeof document !== 'undefined' &&
+      document.querySelector?.('.settings, .auth')
+    )
+      return;
     if (this.stores.user.isLoggedIn) {
-      // TODO: add checks to not focus service when router path is /settings or /auth
       const service = this.active;
       if (service) {
         if (service.webview) {

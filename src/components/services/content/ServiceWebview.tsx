@@ -308,7 +308,9 @@ class ServiceWebview extends Component<IProps> {
   refocusWebview = (): void => {
     if (
       typeof document !== 'undefined' &&
-      document.querySelector?.('[role="dialog"], [role="menu"]')
+      document.querySelector?.(
+        '.settings, .auth, [role="dialog"], [role="menu"]',
+      )
     )
       return;
     const { webview } = this;

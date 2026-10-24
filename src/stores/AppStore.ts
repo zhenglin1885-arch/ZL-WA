@@ -27,6 +27,7 @@ import {
 import moment from 'moment';
 import ms from 'ms';
 import { v4 as uuidV4 } from 'uuid';
+import { playNotificationSound } from '../features/accounts/notificationSound';
 
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
@@ -505,7 +506,11 @@ export default class AppStore extends TypedStore {
       delete options.icon;
     }
 
-    const notification = new window.Notification(title, options);
+    if (serviceId) playNotificationSound(Boolean(options.silent));
+    const notification = new window.Notification(title, {
+      ...options,
+      silent: true,
+    });
 
     debug('New notification', title, options);
 

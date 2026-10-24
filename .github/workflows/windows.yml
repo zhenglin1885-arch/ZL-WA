@@ -8,6 +8,11 @@ on:
         required: false
         type: string
 
+      download_tag:
+        description: 'Standalone test download tag; never updates the stable release'
+        required: false
+        type: string
+
 permissions:
   contents: read
 
@@ -33,6 +38,17 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag must match package.json version.' }
+      - name: Validate standalone download
+        if: inputs.download_tag != ''
+        shell: pwsh
+        env:
+          DOWNLOAD_TAG: ${{ inputs.download_tag }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
+          if ($env:DOWNLOAD_TAG -notmatch '^test-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$') {
+            throw 'Invalid standalone download tag.'
+          }
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -85,3 +101,15 @@ jobs:
             gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
+      - name: Publish standalone test download
+        if: inputs.download_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
+          $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version standalone test package" --notes 'Standalone test download only. The stable release and automatic update feed remain unchanged.'
+          if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }

@@ -286,6 +286,7 @@
     }
   }
   &__unread {
+    margin-right: 12px;
     background: transparent;
     color: #e53935;
     font-size: 20px;
@@ -442,6 +443,7 @@
     font-size: 12px !important;
   }
   .account-card__unread {
+    margin-right: 0;
     position: absolute;
     top: 2px;
     right: 2px;
@@ -506,13 +508,14 @@
 }
 
 body:not(.theme__dark) .account-sidebar {
-  background: #7367f0;
+  background: var(--zl-light-theme, #7367f0);
+  color: var(--zl-light-theme-text, #fff);
   border-color: rgba(255, 255, 255, 0.25);
   .account-group__toggle,
   .account-group__add,
   .account-group__more,
   .account-sidebar__footer button {
-    color: #fff !important;
+    color: var(--zl-light-theme-text, #fff) !important;
   }
   .account-card {
     background: rgba(255, 255, 255, 0.12);
@@ -520,6 +523,19 @@ body:not(.theme__dark) .account-sidebar {
   }
   .account-card.is-active {
     background: rgba(255, 255, 255, 0.2);
-    border-color: #fff;
+    border-color: var(--zl-light-theme-text, #fff);
+  }
+}
+
+body:not(.theme__dark) .account-sidebar {
+  .account-card__name,
+  .account-card__phone,
+  .account-card__remark,
+  .account-card__more,
+  .account-card__sleep:not(.is-sleeping) {
+    color: var(--zl-light-theme-text, #fff) !important;
+  }
+  .account-sidebar__new-group {
+    color: #fff !important;
   }
 }

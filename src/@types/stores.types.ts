@@ -82,6 +82,7 @@ interface TypedStore {
 
 export interface AppStore extends TypedStore {
   accentColor: string;
+  lightThemeColor: string;
   adaptableDarkMode: boolean;
   progressbarAccentColor: string;
   webviewPaddingSize: number;

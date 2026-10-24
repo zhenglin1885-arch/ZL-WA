@@ -185,6 +185,34 @@ describe('two-phase native editor replacement guards', () => {
     });
     expect(state.approved).toBeUndefined();
   });
+  it('unlocks a refresh whose source changed while the provider was running', () => {
+    const record = {
+      status: 'pending',
+      container: { isConnected: true },
+      button: { disabled: true, textContent: '重新翻译中…' },
+      refresh: { disabled: true, removeAttribute: jest.fn() },
+    };
+    state.config = { incoming: true };
+    state.incoming = new WeakMap([[input, record]]);
+    state.pending.set(3, {
+      direction: 'incoming',
+      input,
+      text: input.innerText,
+      record,
+    });
+    input.innerText = 'edited while translating';
+    translationResult(3, 'document-1', {
+      text: 'outdated translation',
+      error: false,
+    });
+    expect(state.pending.has(3)).toBe(false);
+    expect(record.status).toBe('idle');
+    expect(record.refresh.disabled).toBe(false);
+    expect(record.refresh.removeAttribute).toHaveBeenCalledWith('aria-busy');
+    expect(record.button.disabled).toBe(false);
+    expect(state.dirty).toBe(true);
+    expect(input.innerText).toBe('edited while translating');
+  });
   it('retains a clickable retry on failed message preview and hides the button on success', () => {
     const record: any = {
       container: { isConnected: true, style: {} },

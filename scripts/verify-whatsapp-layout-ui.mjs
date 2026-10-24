@@ -30,13 +30,27 @@ export async function verifyWhatsAppLayout(id) {
       `(()=>{const r=document.querySelector('[data-zl-chat-resize]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
     );
   try {
+    await guest(
+      `(()=>{const side=document.querySelector('#side');const wrapper=document.createElement('div');wrapper.id='qa-side-wrapper';wrapper.style.cssText='display:flex;width:'+side.getBoundingClientRect().width+'px;flex:0 0 auto;max-width:none';side.before(wrapper);wrapper.append(side);wrapper.addEventListener('pointerdown',event=>event.stopImmediatePropagation(),true);return true})()`,
+    );
+    await wait(
+      `${service}.webview.executeJavaScript('window.__zlChatListLayout.column?.id==="qa-side-wrapper"')`,
+      'native wrapper detected before drag',
+    );
     let p = await point();
     for (const type of ['mouseDown', 'mouseUp'])
       await send({ type, ...p, button: 'left', clickCount: 1 });
     const wide = await guest(
       `document.querySelector('#side').getBoundingClientRect().width`,
     );
-    assert(wide > before.width + 50, 'native click expands list');
+    assert(
+      wide > before.width + 50,
+      `native click expands list: ${JSON.stringify(
+        await guest(
+          `(()=>{const s=window.__zlChatListLayout;const b=document.querySelector('[data-zl-chat-resize]');const r=b.getBoundingClientRect();return {before:${before.width},wide:${wide},stateWidth:s.width,column:s.column?.id,side:s.side?.id,events:fixture.resizeEvents,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML,rect:r.toJSON()}})()`,
+        ),
+      )}`,
+    );
     p = await point();
     await send({ type: 'mouseDown', ...p, button: 'left', clickCount: 1 });
     await send({
@@ -95,7 +109,7 @@ export async function verifyWhatsAppLayout(id) {
     );
   } finally {
     await guest(
-      `(()=>{const state=window.__zlChatListLayout;state.width=0;state.column.removeAttribute('data-zl-chat-column');state.column.style.removeProperty('--zl-chat-list-width');${before.stored === null ? "localStorage.removeItem('zl-chat-list-width')" : `localStorage.setItem('zl-chat-list-width',${JSON.stringify(before.stored)})`};return true})()`,
+      `(()=>{const state=window.__zlChatListLayout;state.width=0;state.column.removeAttribute('data-zl-chat-column');state.column.style.removeProperty('--zl-chat-list-width');state.side.removeAttribute('data-zl-chat-column');state.side.style.removeProperty('--zl-chat-list-width');const wrapper=document.querySelector('#qa-side-wrapper');if(wrapper){wrapper.before(state.side);wrapper.remove()}${before.stored === null ? "localStorage.removeItem('zl-chat-list-width')" : `localStorage.setItem('zl-chat-list-width',${JSON.stringify(before.stored)})`};return true})()`,
     );
     await evaluate(
       `window.ferdium.stores.settings._update({type:'app',data:${JSON.stringify(theme)}});true`,

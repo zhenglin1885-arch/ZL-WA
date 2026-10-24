@@ -52,6 +52,7 @@ const styles = {
 interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
   services?: Service[];
   accountSidebar?: AccountSidebarConfig;
+  immediateStartupIds?: ReadonlySet<string>;
   setWebviewReference: () => void;
   detachService: () => void;
   // handleIPCMessage: () => void; // TODO: [TECH DEBT] later check it
@@ -99,7 +100,7 @@ class Services extends Component<IProps, IState> {
         (rank.get(config.accounts[a]?.groupId || 'default') ?? 0) -
         (rank.get(config.accounts[b]?.groupId || 'default') ?? 0),
     );
-    this.startup.update(ids);
+    this.startup.update(ids, this.props.immediateStartupIds);
   };
 
   constructor(props: IProps) {

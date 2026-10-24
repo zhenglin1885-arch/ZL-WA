@@ -153,6 +153,7 @@ describe('ServicesStore', () => {
   it('finishes inserting the created account before callers can activate it', async () => {
     const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
     const response = { data: { id: 'new-account' }, status: [] };
+    store.immediateStartupIds = new Set();
     let finishPatch!: () => void;
     const patchDone = new Promise<void>(resolve => {
       finishPatch = resolve;
@@ -181,6 +182,7 @@ describe('ServicesStore', () => {
       });
     await Promise.resolve();
     expect(completed).toBe(false);
+    expect(store.immediateStartupIds.has('new-account')).toBe(true);
     finishPatch();
     await creation;
     expect(completed).toBe(true);
@@ -297,6 +299,40 @@ describe('ServicesStore', () => {
       } else {
         Reflect.deleteProperty(globalThis, 'document');
       }
+    }
+  });
+
+  it('keeps settings input focus while accounts run, and resumes chat focus after closing settings', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    let settingsOpen = true;
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: { querySelector: () => (settingsOpen ? {} : null) },
+    });
+    const service = {
+      id: 'account',
+      webview: { focus: jest.fn(), blur: jest.fn() },
+    };
+    const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
+    Object.defineProperty(store, 'active', { value: service });
+    Object.assign(store, {
+      one: () => service,
+      stores: {
+        user: { isLoggedIn: true },
+        settings: { app: { splitMode: false } },
+      },
+    });
+    try {
+      store._focusService({ serviceId: service.id });
+      store._focusActiveService();
+      expect(service.webview.focus).not.toHaveBeenCalled();
+      expect(service.webview.blur).not.toHaveBeenCalled();
+      settingsOpen = false;
+      store._focusActiveService();
+      expect(service.webview.focus).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'document', original);
+      else Reflect.deleteProperty(globalThis, 'document');
     }
   });
 

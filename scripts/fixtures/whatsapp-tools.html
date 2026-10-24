@@ -156,6 +156,9 @@
         nativeInputs: 0,
         ownPhone: '8613800000001',
       };
+      for (const type of ['pointerdown', 'pointerup', 'click']) window.addEventListener(type,event=>{
+        if (event.target.closest?.('[data-zl-chat-resize]')) (fixture.resizeEvents ||= []).push({type,target:event.target.tagName});
+      },true);
       // Simulate the affected editor: webpage execCommand cannot replace its text.
       document.execCommand = () => false;
       const chats = [

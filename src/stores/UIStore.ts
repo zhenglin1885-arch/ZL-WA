@@ -1,15 +1,13 @@
 import { nativeTheme } from '@electron/remote';
 import { createTheme } from '@mui/material/styles';
 import { action, computed, makeObservable, observable, reaction } from 'mobx';
-import tinycolor from 'tinycolor2';
 
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
-import { DEFAULT_ACCENT_COLOR } from '../config';
 import { type Theme, ThemeType, theme } from '../themes';
 import TypedStore from './lib/TypedStore';
-import { appThemeSource } from '../features/appearance/theme';
+import { appThemeSource, appAccentColor } from '../features/appearance/theme';
 
 export default class UIStore extends TypedStore {
   @observable showServicesUpdatedInfoBar = false;
@@ -104,20 +102,23 @@ export default class UIStore extends TypedStore {
 
   @computed get theme(): Theme {
     const themeId = this.isDarkThemeActive ? ThemeType.dark : ThemeType.default;
-    const { accentColor } = this.stores.settings.app;
-    return theme(themeId, accentColor);
+    return theme(
+      themeId,
+      appAccentColor(this.stores.settings.app, this.isDarkThemeActive),
+    );
   }
 
   @computed get muiTheme() {
-    const { accentColor } = this.stores.settings.app;
+    const accentColor = appAccentColor(
+      this.stores.settings.app,
+      this.isDarkThemeActive,
+    );
 
     return createTheme({
       palette: {
         mode: this.isDarkThemeActive ? 'dark' : 'light',
         primary: {
-          main: tinycolor(accentColor).isValid()
-            ? accentColor
-            : DEFAULT_ACCENT_COLOR,
+          main: accentColor,
         },
       },
     });

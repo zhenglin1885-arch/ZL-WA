@@ -1,5 +1,6 @@
 import {
   mkdtempSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -136,7 +137,8 @@ test('catches up missed daily exports and only prunes local expired messages', a
   const folder = readdirSync(join(dir, 'exports')).find(
     n => n !== '目录.html',
   )!;
-  const index = join(dir, 'exports', folder, backupDay(old), '目录.html');
+  const index = join(dir, 'exports', folder, backupDay(now), '目录.html');
+  expect(existsSync(join(dir, 'exports', folder, backupDay(old)))).toBe(false);
   expect(readFileSync(index, 'utf8')).toContain('聊天记录目录');
   const first = store.state().stats.lastExport;
   await store.catchUp(now + 1000);
@@ -147,6 +149,123 @@ test('catches up missed daily exports and only prunes local expired messages', a
   expect(readFileSync(index, 'utf8')).toContain('聊天记录目录');
   expect(create().state().stats.messages).toBe(0);
 });
+const time = (day: number) => new Date(2026, 9, day, 12).getTime();
+test('dated snapshots contain all earlier conversations, translations and images but exclude later messages', async () => {
+  const store = create();
+  const first = packet(time(21));
+  store.ingest('account', {
+    ...first,
+    messages: [
+      {
+        ...first.messages[0],
+        id: 'old',
+        text: 'Earlier history',
+        translation: '历史译文',
+      },
+      {
+        ...first.messages[0],
+        id: 'current',
+        time: time(23),
+        text: 'Snapshot day message',
+      },
+      {
+        ...first.messages[0],
+        id: 'future',
+        time: time(24),
+        text: 'Future message',
+      },
+    ],
+  });
+  store.ingest('account', {
+    ...first,
+    chatId: '100000000@c.us',
+    chatName: 'Earlier conversation only',
+    messages: [
+      {
+        ...first.messages[0],
+        id: 'old-other-chat',
+        text: 'Earlier conversation text',
+      },
+    ],
+  });
+  store.ingest('second', {
+    ...first,
+    accountName: 'Other account',
+    messages: [
+      {
+        ...first.messages[0],
+        id: 'other-account',
+        text: 'Other account private message',
+      },
+    ],
+  });
+  await store.export('2026-10-23');
+  const root = join(dir, 'exports');
+  const folder = readdirSync(root).find(name => name.startsWith('Account-'))!;
+  const snapshot = join(root, folder, '2026-10-23');
+  const files = readdirSync(snapshot).filter(name => name !== '目录.html');
+  expect(files).toHaveLength(2);
+  const contents = files
+    .map(name => readFileSync(join(snapshot, name), 'utf8'))
+    .join('');
+  expect(contents).toContain('Earlier history');
+  expect(contents).toContain('Snapshot day message');
+  expect(contents).toContain('Earlier conversation text');
+  expect(contents).toContain('历史译文');
+  expect(contents).toContain(png);
+  expect(contents).not.toContain('Future message');
+  expect(contents).not.toContain('Other account private message');
+  expect(readFileSync(join(snapshot, '目录.html'), 'utf8')).toContain(
+    '截至 2026-10-23 的全部聊天记录',
+  );
+});
+
+test('scheduled snapshots catch up once and refresh for newly synchronized earlier history', async () => {
+  const store = create();
+  const now = new Date(2026, 9, 24, 10).getTime();
+  const p = packet(new Date(2026, 9, 21, 12).getTime());
+  store.ingest('account', p);
+  await store.catchUp(now);
+  const root = join(dir, 'exports');
+  const folder = readdirSync(root).find(name => name !== '目录.html')!;
+  expect(readdirSync(join(root, folder))).toEqual(['2026-10-23', '目录.html']);
+  const first = store.state().stats.lastExport;
+  await store.catchUp(now + 1000);
+  expect(store.state().stats.lastExport).toBe(first);
+  store.ingest('account', {
+    ...p,
+    messages: [
+      {
+        ...p.messages[0],
+        id: 'late-history',
+        time: p.messages[0].time - 86_400_000,
+        text: 'Newly synchronized old message',
+      },
+    ],
+  });
+  await store.catchUp(now + 2000);
+  expect(store.state().stats.lastExport).not.toBe(first);
+  const snapshot = join(root, folder, '2026-10-23');
+  const file = readdirSync(snapshot).find(name => name !== '目录.html')!;
+  expect(readFileSync(join(snapshot, file), 'utf8')).toContain(
+    'Newly synchronized old message',
+  );
+  const refreshed = store.state().stats.lastExport;
+  store.ingest('account', {
+    ...p,
+    messages: [
+      {
+        ...p.messages[0],
+        id: 'today',
+        time: now,
+        text: 'Today message after cutoff',
+      },
+    ],
+  });
+  await store.catchUp(now + 3000);
+  expect(store.state().stats.lastExport).toBe(refreshed);
+});
+
 test('rejects external image URLs and invalid packet IDs', () => {
   const p = packet();
   expect(() => validateBackupPacket({ ...p, chatId: '../bad' })).toThrow();
@@ -173,6 +292,26 @@ test('starts at most two accounts in sidebar order, releases one slot per comple
   queue.complete('fourth');
   queue.update(['top', 'third', 'fourth', 'new']);
   expect(queue.admitted.has('new')).toBe(true);
+});
+
+test('new sessions bypass occupied startup slots without releasing or consuming them', () => {
+  const queue = new StartupQueue(() => {});
+  queue.update(['one', 'two', 'three', 'four']);
+  const immediate = new Set(['new', 'another', 'sleeping']);
+  queue.update(['one', 'two', 'three', 'four', 'new'], immediate);
+  expect([...queue.admitted]).toEqual(['one', 'two', 'new']);
+  queue.complete('new');
+  expect(queue.admitted.has('three')).toBe(false);
+  queue.update(['one', 'two', 'three', 'four', 'new', 'another'], immediate);
+  expect(queue.admitted.has('another')).toBe(true);
+  expect(queue.admitted.has('sleeping')).toBe(false);
+  queue.complete('one');
+  expect(queue.admitted.has('three')).toBe(true);
+  expect(queue.admitted.has('four')).toBe(false);
+  // Creation hints are not persisted; the next app instance starts only two.
+  const restarted = new StartupQueue(() => {});
+  restarted.update(['one', 'two', 'three', 'four', 'new', 'another']);
+  expect([...restarted.admitted]).toEqual(['one', 'two']);
 });
 
 // The guest must only acknowledge messages once the host has saved them.

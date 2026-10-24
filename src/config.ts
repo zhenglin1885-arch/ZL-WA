@@ -636,6 +636,7 @@ export const DEFAULT_APP_SETTINGS = {
   adaptableDarkMode: true,
   translationTextColor: '#ffe45c',
   accentColor: DEFAULT_ACCENT_COLOR,
+  lightThemeColor: DEFAULT_ACCENT_COLOR,
   progressbarAccentColor: DEFAULT_ACCENT_COLOR,
   serviceRibbonWidth: 68,
   sidebarServicesLocation: SIDEBAR_SERVICES_LOCATION_TOPLEFT,
