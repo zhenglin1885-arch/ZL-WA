@@ -67,6 +67,15 @@ describe('WhatsApp account adapter', () => {
     expect(snapshot4.status).toBe('error');
   });
 
+  it('prioritizes abnormal socket states over a remaining login QR code', async () => {
+    modules.WAWebSocketModel = { Socket: { state: 'TOS_BLOCK' } };
+    selectors.add(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    );
+    const snapshot = await readWhatsAppSnapshot();
+    expect(snapshot.status).toBe('error');
+  });
+
   it('does not mistake WhatsApp opaque LIDs for phone numbers', async () => {
     modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
     modules.WAWebConnModel = {
@@ -254,8 +263,8 @@ describe('WhatsApp account adapter', () => {
     };
     expect(accountStatus(service)).toBe('online');
     expect(accountStatus({ ...service, isError: true })).toBe('error');
-    expect(accountStatus({ ...service, isEnabled: false })).toBe('error');
-    expect(accountStatus({ ...service, isHibernating: true })).toBe('error');
+    expect(accountStatus({ ...service, isEnabled: false })).toBe('logged-out');
+    expect(accountStatus({ ...service, isHibernating: true })).toBe('sleeping');
     expect(accountStatus({ ...service, isLoading: true })).toBe('loading');
   });
 });

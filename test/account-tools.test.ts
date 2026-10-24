@@ -152,6 +152,27 @@ describe('WhatsApp recipient/send adapter (synthetic modules, no real messages)'
     chat.isReadOnly = true;
     expect(listRecipients()).toEqual([]);
   });
+  it('keeps native message IDs when MsgKey exposes toString instead of _serialized', async () => {
+    modules.WAWebMsgKey = Object.assign(
+      jest.fn(() => ({ toString: () => 'true_123@g.us_native-key' })),
+      { newId: async () => 'native-key' },
+    );
+    expect(await sendTextToChat('123@g.us', 'hello')).toEqual({
+      messageId: 'true_123@g.us_native-key',
+      confirmed: true,
+    });
+  });
+  it('does not report success without a recoverable message ID even after acceptance', async () => {
+    modules.WAWebMsgKey = Object.assign(jest.fn(), {
+      newId: async () => 'native-key',
+    });
+    expect(await sendTextToChat('123@g.us', 'hello')).toMatchObject({
+      messageId: '',
+      confirmed: false,
+      error: expect.stringContaining('未取得消息编号'),
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
   it('submits a text payload and waits for server acceptance', async () => {
     expect(await sendTextToChat('123@g.us', 'hello')).toEqual({
       messageId: 'synthetic-key',

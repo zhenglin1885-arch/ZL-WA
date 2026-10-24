@@ -454,6 +454,7 @@ export default class BulkQueue {
       this.operations.delete(record.id);
       this.notify();
     }
+    return record;
   }
 
   async edit(id: string, text: string, targets: string[]) {
@@ -464,9 +465,10 @@ export default class BulkQueue {
     if (
       !record?.deliveries?.length ||
       !this.adapter.edit ||
-      !['text', 'image', 'caption', 'video', 'document'].includes(
-        record.spec?.type || '',
-      )
+      (record.spec &&
+        !['text', 'image', 'caption', 'video', 'document'].includes(
+          record.spec.type,
+        ))
     )
       throw new Error('该记录没有可编辑的文字消息，请先核对发送结果');
     const selected = record.deliveries.filter(d =>

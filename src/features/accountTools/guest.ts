@@ -59,6 +59,13 @@ export function translationTick(
         let text = '';
         for (const child of node.childNodes) {
           if (
+            child.nodeType === 1 &&
+            (child as Element).matches(
+              '[data-zl-translation], script, style, button, [data-testid*="quoted"], blockquote',
+            )
+          )
+            continue;
+          if (
             text &&
             child.nodeType === 1 &&
             ['P', 'DIV', 'LI'].includes((child as Element).tagName) &&
@@ -345,7 +352,10 @@ export function translationTick(
         current.button.disabled = false;
         current.button.hidden = true;
         current.button.style.display = 'none';
-        if (current.refresh) current.refresh.hidden = false;
+        if (current.refresh) {
+          current.refresh.hidden = false;
+          current.refresh.disabled = false;
+        }
       });
     };
     state.cancelPending = () => {
@@ -353,6 +363,7 @@ export function translationTick(
         const current = job.record;
         if (job.direction === 'incoming' && current?.status === 'pending') {
           current.status = 'idle';
+          if (current.refresh) current.refresh.disabled = false;
           current.button.disabled = false;
           current.button.textContent = '点击翻译';
           current.autoAttempted = true;
@@ -677,7 +688,7 @@ export function translationTick(
         container.dataset.zlTranslation = 'true';
         container.style.cssText =
           'height:auto;clear:both;padding:6px 0 2px;text-align:left;white-space:pre-wrap;font:13px/1.5 sans-serif';
-        const label = document.createElement('div');
+        const label = document.createElement('span');
         label.dataset.zlTranslationText = 'true';
         label.style.cssText =
           'height:auto;white-space:pre-wrap;overflow-wrap:anywhere';
@@ -693,10 +704,11 @@ export function translationTick(
         refresh.dataset.zlRetranslate = 'true';
         refresh.setAttribute('aria-label', '重新翻译');
         refresh.title = '重新翻译（重新请求，不使用缓存）';
-        refresh.textContent = '⟳';
+        refresh.innerHTML =
+          '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 7a9 9 0 1 0 1 8M20 3v5h-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="12" y="15.5" text-anchor="middle" fill="currentColor" font-size="10" stroke="none">文</text></svg>';
         refresh.hidden = true;
         refresh.style.cssText =
-          'border:0;background:transparent;color:inherit;font:22px/1.2 sans-serif;padding:2px 6px;cursor:pointer';
+          'border:0;background:transparent;color:inherit;vertical-align:middle;width:28px;height:28px;padding:2px;margin-left:4px;cursor:pointer;white-space:normal';
         refresh.style.color = state.color;
         container.append(label, refresh, button);
         const mount = textNode.closest('.copyable-text');
@@ -762,6 +774,8 @@ export function translationTick(
           if (manual) state.queue.unshift(request);
           else state.queue.push(request);
         };
+        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup'])
+          refresh.addEventListener(type, event => event.stopPropagation());
         refresh.addEventListener('click', event => {
           event.preventDefault();
           event.stopPropagation();
@@ -1124,9 +1138,21 @@ export async function sendTextToChat(
     settled?.[1].status === 'fulfilled' ? settled[1].value : undefined;
   const model: any =
     settled?.[0].status === 'fulfilled' ? settled[0].value : undefined;
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- This guest function is serialized without host closures.
+  const serializeKey = (key: any): string => {
+    if (typeof key === 'string') return key;
+    if (typeof key?._serialized === 'string' && key._serialized)
+      return key._serialized;
+    const value = key?.toString?.();
+    return typeof value === 'string' && value !== '[object Object]'
+      ? value
+      : '';
+  };
+  const messageId =
+    serializeKey(id) || serializeKey(model?.id) || serializeKey(outcome?.id);
   let ack = model?.ack ?? message.ack;
   try {
-    ack = req('WAWebCollections').Msg?.get(id._serialized)?.ack ?? ack;
+    ack = req('WAWebCollections').Msg?.get(messageId)?.ack ?? ack;
   } catch {
     /* Receipt lookup is optional. */
   }
@@ -1136,10 +1162,14 @@ export async function sendTextToChat(
     ['OK', 'success'].includes(outcome?.messageSendResult) ||
     ['OK', 'success'].includes(outcome?.sendMsgResult?.messageSendResult);
   return {
-    messageId: id._serialized,
-    confirmed,
-    ...(confirmed
+    messageId,
+    confirmed: confirmed && Boolean(messageId),
+    ...(confirmed && messageId
       ? {}
-      : { error: '发送结果待确认，请核对发送结果；请勿直接重发' }),
+      : {
+          error: messageId
+            ? '发送结果待确认，请核对发送结果；请勿直接重发'
+            : '消息已提交但未取得消息编号，请核对发送结果；请勿直接重发',
+        }),
   };
 }

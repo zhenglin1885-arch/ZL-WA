@@ -71,10 +71,21 @@ export async function sendBulkMessage(
       isPtt: spec.type === 'audio',
     });
   }
-  if (typeof result?.id !== 'string')
-    throw new Error('未确认服务器接受消息，请在 WhatsApp 核查');
+  const key = result?.id;
+  const messageId =
+    typeof key === 'string' ? key : key?._serialized || key?.toString?.();
+  if (
+    typeof messageId !== 'string' ||
+    !messageId.trim() ||
+    messageId === '[object Object]'
+  )
+    return {
+      messageId: '',
+      confirmed: false,
+      error: '消息已提交但未取得消息编号，请核对发送结果；请勿直接重发',
+    };
   return {
-    messageId: result.id,
+    messageId,
     confirmed:
       result.ack >= 1 ||
       ['OK', 'success'].includes(result.sendMsgResult) ||
@@ -117,8 +128,14 @@ export async function reconcileBulkMessage(
     throw new Error('当前会话不是 WhatsApp');
   const wpp = (window as any).WPP;
   if (!wpp?.isReady) throw new Error('WhatsApp 消息接口尚未就绪');
-  const serialized = (id: any) =>
-    typeof id === 'string' ? id : id?._serialized || '';
+  const serialized = (id: any): string => {
+    if (typeof id === 'string') return id;
+    if (typeof id?._serialized === 'string') return id._serialized;
+    const value = id?.toString?.();
+    return typeof value === 'string' && value !== '[object Object]'
+      ? value
+      : '';
+  };
   const owns = (message: any) =>
     Boolean(message?.id?.fromMe || message?.isSentByMe) &&
     serialized(message.id?.remote || message.to) === chatId;

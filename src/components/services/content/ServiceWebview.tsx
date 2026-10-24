@@ -20,6 +20,7 @@ import {
   mergeAccountSnapshot,
   accountIdentity,
 } from '../../../features/accounts/whatsapp';
+import { configureWhatsAppLayout } from '../../../features/accounts/layout';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
 import { configureTranslation } from '../../../features/accountTools/runtime';
 
@@ -127,6 +128,7 @@ class ServiceWebview extends Component<IProps> {
       await view.executeJavaScript(
         `(${applyWhatsAppTheme.toString()})(${Boolean(stores?.ui.isDarkThemeActive || service.isDarkModeEnabled)})`,
       );
+      await view.executeJavaScript(`(${configureWhatsAppLayout.toString()})()`);
       await configureTranslation(
         service,
         stores?.settings.app.translationTextColor,

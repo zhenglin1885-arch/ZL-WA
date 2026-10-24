@@ -8,6 +8,7 @@ import {
 import {
   existsSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
   renameSync,
   mkdirSync,
@@ -335,12 +336,12 @@ export default class ChatBackup {
   }
 
   private revision(day: string) {
-    return JSON.stringify(
+    return `account-html-v2:${JSON.stringify(
       Object.entries(this.metas)
         .filter(([, m]) => m.day === day)
         .map(([id, m]) => [id, m.revision])
         .sort((a, b) => String(a).localeCompare(String(b))),
-    );
+    )}`;
   }
 
   export(
@@ -373,10 +374,8 @@ export default class ChatBackup {
     if (selection !== 'all' && !/^\d{4}-\d{2}-\d{2}$/.test(selection))
       throw new Error('无效导出日期');
     const revision = this.revision(selection);
-    const target = join(
-      this.config.directory,
-      selection === 'all' ? '全部聊天记录' : selection,
-    );
+    const target = this.config.directory;
+    const period = selection === 'all' ? '全部聊天记录' : selection;
     mkdirSync(target, { recursive: true });
     const chats = new Map<
       string,
@@ -394,11 +393,16 @@ export default class ChatBackup {
       saved.messages.push(...Object.values(shard.messages));
       chats.set(chatKey, saved);
     }
-    const links: string[] = [];
+    const accounts = new Map<string, { name: string; links: string[] }>();
     for (const [key, { shard, messages }] of chats) {
       const folder = `${safeName(shard.accountName)}-${digest(`${shard.accountId}:${shard.ownerId}`).slice(0, 8)}`;
       const name = `${safeName(shard.chatName)}-${key.slice(0, 8)}.html`;
-      mkdirSync(join(target, folder, '图片'), { recursive: true });
+      const account = accounts.get(folder) || {
+        name: shard.accountName,
+        links: [],
+      };
+      accounts.set(folder, account);
+      mkdirSync(join(target, folder, period), { recursive: true });
       const rows: string[] = [];
       for (const [index, m] of messages
         .sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))
@@ -409,11 +413,9 @@ export default class ChatBackup {
           });
         let image = '';
         if (m.image) {
-          this.write(
-            join(target, folder, '图片', m.image),
-            this.unseal(readFileSync(join(this.root, m.image))),
-          );
-          image = `<p><img loading="lazy" src="${escape(`图片/${m.image}`)}" alt="聊天图片"></p>`;
+          const data = this.unseal(readFileSync(join(this.root, m.image)));
+          const mime = m.image.slice(m.image.lastIndexOf('.') + 1);
+          image = `<p><img loading="lazy" src="data:image/${mime};base64,${data.toString('base64')}" alt="聊天图片"></p>`;
         } else if (m.hasImage)
           image = '<p><small>图片在网页端尚未下载或未能保存</small></p>';
         rows.push(
@@ -421,21 +423,53 @@ export default class ChatBackup {
         );
       }
       this.write(
-        join(target, folder, name),
+        join(target, folder, period, name),
         page(
           shard.chatName,
-          `<header><a href="../目录.html">← 目录</a><h1>${escape(shard.chatName)}</h1><div>${escape(shard.accountName)} · ${escape(shard.chatId)} · ${messages.length} 条消息</div></header>${rows.join('')}`,
+          `<header><a href="目录.html">← 目录</a><h1>${escape(shard.chatName)}</h1><div>${escape(shard.accountName)} · ${escape(shard.chatId)} · ${messages.length} 条消息</div></header>${rows.join('')}`,
         ),
       );
-      links.push(
-        `<li><a href="${escape(`${encodeURIComponent(folder)}/${encodeURIComponent(name)}`)}">${escape(shard.accountName)} / ${escape(shard.chatName)}</a> <small>${messages.length} 条消息</small></li>`,
+      account.links.push(
+        `<li><a href="${escape(encodeURIComponent(name))}">${escape(shard.chatName)}</a> <small>${messages.length} 条消息</small></li>`,
       );
     }
+    for (const [folder, account] of accounts) {
+      this.write(
+        join(target, folder, period, '目录.html'),
+        page(
+          '聊天记录目录',
+          `<header><a href="../目录.html">← 账号目录</a><h1>${escape(account.name)}</h1><p>${escape(period)} · ${account.links.length} 个对话</p><small>文字、译文和图片均嵌入 HTML，可离线查看。</small></header><ul>${account.links.join('')}</ul>`,
+        ),
+      );
+      const periods = readdirSync(join(target, folder), { withFileTypes: true })
+        .filter(
+          entry =>
+            entry.isDirectory() &&
+            (entry.name === '全部聊天记录' ||
+              /^\d{4}-\d{2}-\d{2}$/.test(entry.name)) &&
+            existsSync(join(target, folder, entry.name, '目录.html')),
+        )
+        .map(entry => entry.name)
+        .sort((a, b) => a.localeCompare(b));
+      this.write(
+        join(target, folder, '目录.html'),
+        page(
+          account.name,
+          `<header><a href="../目录.html">← 全部账号</a><h1>${escape(account.name)}</h1></header><ul>${periods.map(day => `<li><a href="${encodeURIComponent(day)}/目录.html">${escape(day)}</a></li>`).join('')}</ul>`,
+        ),
+      );
+    }
+    const folders = readdirSync(target, { withFileTypes: true }).filter(
+      entry =>
+        entry.isDirectory() &&
+        /-[\da-f]{8}$/.test(entry.name) &&
+        existsSync(join(target, entry.name, '目录.html')),
+    );
     this.write(
       join(target, '目录.html'),
       page(
         '聊天记录目录',
-        `<header><h1>聊天记录目录</h1><p>${selection === 'all' ? '全部已保存记录' : escape(selection)} · ${chats.size} 个对话</p><small>导出时间：${escape(new Date(now).toLocaleString('zh-CN'))}，文字、译文及已保存的图片均可离线查看。</small></header><ul>${links.join('')}</ul>`,
+        `<header><h1>聊天记录目录</h1><p>按账号查看聊天记录</p><small>导出时间：${escape(new Date(now).toLocaleString('zh-CN'))}</small></header><ul>${folders.map(entry => `<li><a href="${encodeURIComponent(entry.name)}/目录.html">${escape(accounts.get(entry.name)?.name || entry.name)}</a></li>`).join('')}</ul>`,
       ),
     );
     this.error = '';

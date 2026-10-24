@@ -1,4 +1,5 @@
 import { observer } from 'mobx-react';
+import { autorun, type IReactionDisposer } from 'mobx';
 import ms from 'ms';
 import { Component, type ReactElement } from 'react';
 import Confetti from 'react-confetti';
@@ -76,6 +77,8 @@ class Services extends Component<IProps, IState> {
 
   private startupMounted = false;
 
+  private startupDisposer?: IReactionDisposer;
+
   // eslint-disable-next-line unicorn/consistent-function-scoping -- Callback belongs to this component instance.
   startup = new StartupQueue(() => {
     if (this.startupMounted) this.forceUpdate();
@@ -109,7 +112,9 @@ class Services extends Component<IProps, IState> {
 
   componentDidMount(): void {
     this.startupMounted = true;
-    this.syncStartup();
+    // Live sleep/enabled changes must reach the queue even when the list and
+    // sidebar preferences are unchanged. Selection alone never admits a sleeper.
+    this.startupDisposer = autorun(this.syncStartup);
     this.confettiTimeout = window.setTimeout(() => {
       this.setState({
         showConfetti: false,
@@ -123,6 +128,7 @@ class Services extends Component<IProps, IState> {
 
   componentWillUnmount(): void {
     this.startupMounted = false;
+    this.startupDisposer?.();
     if (this.confettiTimeout) {
       clearTimeout(this.confettiTimeout);
     }

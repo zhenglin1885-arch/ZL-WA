@@ -309,9 +309,12 @@
   &--logged-out {
     background: #f05259;
   }
-  &--error,
-  &--loading {
+  &--error {
     background: #edb136;
+  }
+  &--sleeping,
+  &--loading {
+    background: #9299a3;
   }
 }
 // The upstream div reset otherwise stretches MUI's invisible focus sentinels
@@ -500,4 +503,23 @@
 .account-card__unread,
 .account-group__toggle .account-group__unread {
   font-family: 'ZL Unread Rounded', 'Segoe UI', sans-serif;
+}
+
+body:not(.theme__dark) .account-sidebar {
+  background: #7367f0;
+  border-color: rgba(255, 255, 255, 0.25);
+  .account-group__toggle,
+  .account-group__add,
+  .account-group__more,
+  .account-sidebar__footer button {
+    color: #fff !important;
+  }
+  .account-card {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+  .account-card.is-active {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: #fff;
+  }
 }

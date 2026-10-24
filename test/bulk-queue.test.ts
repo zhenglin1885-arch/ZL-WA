@@ -245,6 +245,44 @@ describe('persistent bulk queue without live WhatsApp', () => {
       `restored-${targets[0].id}`,
     );
   });
+  it('returns repaired completed records for an edit/revoke dialog without resending', async () => {
+    const target = spec().targets[0];
+    queue.records = [
+      saved({
+        status: '已完成',
+        success: 1,
+        total: 1,
+        deliveries: [{ target, status: 'sent' }],
+      }),
+    ];
+    adapter.reconcile = jest.fn(async () => ({
+      messageId: 'recovered',
+      confirmed: true,
+    }));
+    const action = queue.reconcile('saved');
+    await finish(action);
+    const repaired = await action;
+    expect(repaired.deliveries?.[0].messageId).toBe('recovered');
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+  it('allows legacy records with message IDs and missing type metadata to use live edit checks', async () => {
+    const target = spec().targets[0];
+    queue.records = [
+      saved({
+        spec: undefined,
+        status: '已完成',
+        total: 1,
+        success: 1,
+        deliveries: [{ target, status: 'sent', messageId: 'legacy-id' }],
+      }),
+    ];
+    adapter.edit = jest.fn(async () => {});
+    await finish(
+      queue.edit('saved', 'new text', [`${target.accountId}:${target.id}`]),
+    );
+    expect(adapter.edit).toHaveBeenCalledWith(target, 'legacy-id', 'new text');
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
   it('retains unverified results when reconciliation cannot uniquely identify a message', async () => {
     const target = spec().targets[0];
     queue.records = [

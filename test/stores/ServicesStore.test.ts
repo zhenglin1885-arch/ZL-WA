@@ -36,6 +36,20 @@ const ServicesStore = jest.requireActual<
   typeof import('../../src/stores/ServicesStore')
 >('../../src/stores/ServicesStore').default;
 
+const makeStore = (services: any[], activeService?: string) => {
+  for (const service of services) service.isEnabled ??= true;
+  const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
+  Object.defineProperty(store, 'allDisplayed', { value: services });
+  Object.assign(store, {
+    stores: {
+      router: { location: { pathname: '/' } },
+      settings: { all: { service: { activeService } } },
+    },
+    _setActive: jest.fn(),
+  });
+  return store;
+};
+
 describe('ServicesStore', () => {
   it('does not replace live WhatsApp unread totals with the slower DOM recipe badge', () => {
     const service = { recipe: { id: 'whatsapp' }, accountUnreadLive: true };
@@ -96,6 +110,27 @@ describe('ServicesStore', () => {
     expect(service.lastHibernated).toBe(123);
   });
 
+  it('selects a sleeping window without waking or mounting the account', () => {
+    const sleeping = {
+      id: 'sleeping',
+      isActive: false,
+      isManuallyHibernating: true,
+      isHibernationRequested: true,
+    };
+    const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
+    Object.defineProperty(store, 'all', { value: [sleeping] });
+    Object.assign(store, {
+      one: () => sleeping,
+      stores: { router: { push: jest.fn() } },
+      lastUsedServices: [],
+      _awake: jest.fn(),
+    });
+    store._setActive({ serviceId: sleeping.id });
+    expect(sleeping.isActive).toBe(true);
+    expect(store._awake).not.toHaveBeenCalled();
+    expect(sleeping.isManuallyHibernating).toBe(true);
+    expect(sleeping.isHibernationRequested).toBe(true);
+  });
   it('reopens a manually sleeping account and rechecks its live login status', () => {
     const service = {
       isManuallyHibernating: true,
@@ -164,6 +199,80 @@ describe('ServicesStore', () => {
       store._deleteService({ serviceId: 'keep-account', redirect: null }),
     ).rejects.toThrow('offline');
     expect(patch).not.toHaveBeenCalled();
+  });
+
+  describe('automatic selection after removing an account', () => {
+    it('skips the first sleeping account and selects an already awake account', () => {
+      const sleeping = { id: 'sleeping', isActive: false, isHibernating: true };
+      const awake = { id: 'awake', isActive: false, isHibernating: false };
+      const store = makeStore([sleeping, awake], 'deleted');
+      store._mapActiveServiceToServiceModelReaction();
+      store._checkForActiveService();
+      expect(store._setActive).toHaveBeenCalledWith({ serviceId: 'awake' });
+      expect(sleeping.isActive).toBe(false);
+      expect(sleeping.isHibernating).toBe(true);
+    });
+    it.each([undefined, 'deleted'])(
+      'keeps every remaining account asleep when selection is %s',
+      activeService => {
+        const sleeping = [
+          { id: 'first', isActive: false, isHibernating: true },
+          { id: 'second', isActive: false, isHibernating: true },
+        ];
+        const store = makeStore(sleeping, activeService);
+        store._mapActiveServiceToServiceModelReaction();
+        store._checkForActiveService();
+        // Later preference updates rerun these same reactions.
+        store._mapActiveServiceToServiceModelReaction();
+        store._checkForActiveService();
+        expect(store._setActive).not.toHaveBeenCalled();
+        expect(
+          sleeping.every(service => !service.isActive && service.isHibernating),
+        ).toBe(true);
+      },
+    );
+    it('never uses a disabled account as an automatic fallback', () => {
+      const disabled = {
+        id: 'disabled',
+        isEnabled: false,
+        isActive: false,
+        isHibernating: false,
+      };
+      const sleeping = { id: 'sleeping', isActive: false, isHibernating: true };
+      const store = makeStore([disabled, sleeping]);
+      store._mapActiveServiceToServiceModelReaction();
+      store._checkForActiveService();
+      expect(store._setActive).not.toHaveBeenCalled();
+      expect(disabled.isActive).toBe(false);
+      expect(sleeping.isActive).toBe(false);
+    });
+    it('preserves the current awake account when an unrelated account is deleted', () => {
+      const sleeping = { id: 'sleeping', isActive: false, isHibernating: true };
+      const active = { id: 'current', isActive: true, isHibernating: false };
+      const store = makeStore([sleeping, active], active.id);
+      store._mapActiveServiceToServiceModelReaction();
+      store._checkForActiveService();
+      expect(store._setActive).not.toHaveBeenCalled();
+      expect(active.isActive).toBe(true);
+      expect(sleeping.isActive).toBe(false);
+    });
+    it('preserves an explicitly selected sleeping account without waking it', () => {
+      const sleeping = { id: 'sleeping', isActive: true, isHibernating: true };
+      const store = makeStore([sleeping], sleeping.id);
+      store._mapActiveServiceToServiceModelReaction();
+      store._checkForActiveService();
+      expect(store._setActive).not.toHaveBeenCalled();
+      expect(sleeping.isActive).toBe(true);
+      expect(sleeping.isHibernating).toBe(true);
+    });
+    it('selects an awake account normally when no saved selection exists', () => {
+      const sleeping = { id: 'sleeping', isActive: false, isHibernating: true };
+      const awake = { id: 'awake', isActive: false, isHibernating: false };
+      const store = makeStore([sleeping, awake]);
+      store._mapActiveServiceToServiceModelReaction();
+      expect(awake.isActive).toBe(true);
+      expect(sleeping.isActive).toBe(false);
+    });
   });
 
   it('uses ZL-WA in the active service window title', () => {

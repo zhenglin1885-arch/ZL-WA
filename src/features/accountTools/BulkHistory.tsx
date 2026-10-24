@@ -34,7 +34,7 @@ export default function BulkHistory({
   onStop: (id: string) => Promise<void>;
   onRevoke: (id: string, targets?: string[]) => Promise<void>;
   onDelete: (ids: string[]) => Promise<void>;
-  onReconcile: (id: string) => Promise<void>;
+  onReconcile: (id: string) => Promise<SendRecord>;
   onEdit: (id: string, text: string, targets: string[]) => Promise<void>;
 }) {
   const running = activeIds.size > 0;
@@ -54,6 +54,39 @@ export default function BulkHistory({
   const [editTargets, setEditTargets] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const hasActionTargets = (record: SendRecord) =>
+    record.deliveries?.some(d => !d.revoked && (d.messageId || record.spec));
+  const prepareAction = async (record: SendRecord, edit: boolean) => {
+    setBusy(true);
+    setError('');
+    try {
+      const current =
+        record.spec && record.deliveries?.some(d => !d.revoked && !d.messageId)
+          ? await onReconcile(record.id)
+          : record;
+      const targets =
+        current.deliveries
+          ?.filter(d => d.messageId && !d.revoked)
+          .map(d => `${d.target.accountId}:${d.target.id}`) || [];
+      if (targets.length === 0)
+        throw new Error(
+          current.deliveries?.find(d => d.checkError)?.checkError ||
+            '未找到可操作的消息编号，请先核对发送结果',
+        );
+      if (edit) {
+        setEditing(current);
+        setEditText(current.editedText || current.spec?.text || current.text);
+        setEditTargets(targets);
+      } else {
+        setRevoking(current);
+        setRevokeTargets(targets);
+      }
+    } catch (error_) {
+      setError(errorText(String(error_)));
+    } finally {
+      setBusy(false);
+    }
+  };
   const status = (r: SendRecord) =>
     r.status === '发送中' && !activeIds.has(r.id) ? '已中断' : r.status;
   const filtered = records.filter(r => {
@@ -318,20 +351,16 @@ export default function BulkHistory({
                           <Button
                             disabled={
                               activeIds.has(r.id) ||
-                              !r.deliveries?.some(
-                                d => d.messageId && !d.revoked,
-                              )
+                              busy ||
+                              !hasActionTargets(r)
                             }
-                            onClick={() => {
-                              setError('');
-                              setRevoking(r);
-                              setRevokeTargets(
-                                (r.deliveries ?? [])
-                                  .filter(d => d.messageId && !d.revoked)
-                                  .map(
-                                    d => `${d.target.accountId}:${d.target.id}`,
-                                  ),
-                              );
+                            title={
+                              hasActionTargets(r)
+                                ? ''
+                                : '此记录缺少可核对的发送对象或消息编号'
+                            }
+                            onClick={async () => {
+                              await prepareAction(r, false);
                             }}
                           >
                             撤回已发消息
@@ -340,29 +369,22 @@ export default function BulkHistory({
                             disabled={
                               activeIds.has(r.id) ||
                               busy ||
-                              ![
-                                'text',
-                                'caption',
-                                'video',
-                                'document',
-                              ].includes(r.spec?.type || '') ||
-                              !r.deliveries?.some(
-                                d => d.messageId && !d.revoked,
-                              )
+                              (r.spec &&
+                                ![
+                                  'text',
+                                  'caption',
+                                  'video',
+                                  'document',
+                                ].includes(r.spec.type)) ||
+                              !hasActionTargets(r)
                             }
-                            onClick={() => {
-                              setError('');
-                              setEditing(r);
-                              setEditText(
-                                r.editedText || r.spec?.text || r.text,
-                              );
-                              setEditTargets(
-                                (r.deliveries || [])
-                                  .filter(d => d.messageId && !d.revoked)
-                                  .map(
-                                    d => `${d.target.accountId}:${d.target.id}`,
-                                  ),
-                              );
+                            title={
+                              hasActionTargets(r)
+                                ? ''
+                                : '此记录缺少可核对的发送对象或消息编号'
+                            }
+                            onClick={async () => {
+                              await prepareAction(r, true);
                             }}
                           >
                             编辑已发消息

@@ -224,6 +224,9 @@ export default inject('stores')(
                 onChange={e => setAccount(e.target.value)}
               >
                 <option value="">请选择在线 WhatsApp 账号</option>
+                <option value="all" disabled={accounts.length === 0}>
+                  全部在线 WhatsApp 账号
+                </option>
                 {accounts.map(s => (
                   <option key={s.id} value={s.id}>
                     {s.accountSnapshot.nickname || s.name}{' '}
@@ -287,7 +290,9 @@ export default inject('stores')(
                 导出
               </button>
               <p>
-                生成“目录.html”和各账号、对话页面，连同图片文件夹一起复制即可在其他电脑离线查看。“全部”每次更新为当前已保存的完整记录。
+                先按账号分文件夹，再按全部记录或日期分类。图片嵌入对话
+                HTML，复制 HTML
+                即可离线查看。“全部”每次更新为当前已保存的完整记录。
               </p>
               {stats.lastExport && (
                 <p>上次导出：{new Date(stats.lastExport).toLocaleString()}</p>

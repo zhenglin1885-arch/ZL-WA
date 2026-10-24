@@ -675,8 +675,8 @@ export default class ServicesStore extends TypedStore {
         this._setIsActive(s, false);
       }
     }
+    // Selecting a window does not restore a sleeping account.
     this._setIsActive(service, true);
-    this._awake({ serviceId: service.id });
 
     if (
       this.isTodosServiceActive &&
@@ -1329,15 +1329,16 @@ export default class ServicesStore extends TypedStore {
 
   _mapActiveServiceToServiceModelReaction() {
     const { activeService } = this.stores.settings.all.service;
-    if (this.allDisplayed.length > 0) {
-      for (const service of this.allDisplayed) {
-        this._setIsActive(
-          service,
-          activeService
-            ? activeService === service.id
-            : this.allDisplayed[0].id === service.id,
-        );
-      }
+    const fallback = this.allDisplayed.find(
+      service => service.isEnabled && !service.isHibernating,
+    );
+    for (const service of this.allDisplayed) {
+      this._setIsActive(
+        service,
+        activeService
+          ? activeService === service.id
+          : fallback?.id === service.id,
+      );
     }
   }
 
@@ -1451,9 +1452,12 @@ export default class ServicesStore extends TypedStore {
       this.allDisplayed.findIndex(service => service.isActive) === -1 &&
       this.allDisplayed.length > 0
     ) {
-      debug('No active service found, setting active service to index 0');
-
-      this._setActive({ serviceId: this.allDisplayed[0].id });
+      // Automatic fallback (including deletion) must never open a sleeping
+      // account. Only an explicit account selection is allowed to wake it.
+      const fallback = this.allDisplayed.find(
+        service => service.isEnabled && !service.isHibernating,
+      );
+      if (fallback) this._setActive({ serviceId: fallback.id });
     }
   }
 

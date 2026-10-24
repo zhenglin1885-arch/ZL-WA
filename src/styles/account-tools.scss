@@ -970,3 +970,15 @@
 .group-tools-dialog .group-tools-log {
   flex: 1 0 140px;
 }
+
+body:not(.theme__dark) .account-tools {
+  background: #7367f0;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+body:not(.theme__dark) .account-tools-rail button {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+body:not(.theme__dark) .account-tools-rail button[aria-pressed='true'] {
+  background: #0754da;
+}

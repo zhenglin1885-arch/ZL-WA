@@ -76,7 +76,8 @@ interface State {
 const statusLabels = {
   online: '已登录',
   'logged-out': '未登录',
-  error: '异常 / 已停用或休眠',
+  error: '连接异常 / 账号异常',
+  sleeping: '已休眠',
   loading: '连接中 / 状态待确认',
 };
 const dialogTitles: Record<DialogKind, string> = {
@@ -196,7 +197,7 @@ export default class AccountSidebar extends Component<StoresProps, State> {
     });
   };
 
-  select = (service: Service): void => {
+  select = (service: Service, restore = false): void => {
     if (
       service.id === this.draggedAccount &&
       Date.now() < this.suppressSelectUntil
@@ -210,13 +211,14 @@ export default class AccountSidebar extends Component<StoresProps, State> {
           redirect: false,
         });
       }
+      if (restore) this.props.stores.services._awake({ serviceId: service.id });
       this.activate(service.id);
     });
   };
 
   toggleSleep = (service: Service): void => {
     if (service.isHibernating || !service.isEnabled) {
-      this.select(service);
+      this.select(service, true);
     } else {
       this.perform(async () => {
         this.props.stores.services._hibernate({

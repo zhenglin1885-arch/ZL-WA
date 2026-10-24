@@ -106,6 +106,28 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       );
     },
   );
+  it.each(['serialized', 'toString'] as const)(
+    'preserves object message keys for later edit and revoke: %p',
+    async format => {
+      const id: unknown =
+        format === 'serialized'
+          ? { _serialized: 'own-message' }
+          : { toString: () => 'own-message' };
+      wpp.chat.sendTextMessage.mockResolvedValue({ id, ack: 1 });
+      expect(await sendBulkMessage('chat@g.us', spec())).toEqual({
+        messageId: 'own-message',
+        confirmed: true,
+      });
+    },
+  );
+  it('keeps an unidentifiable accepted send uncertain and never submits it again', async () => {
+    wpp.chat.sendTextMessage.mockResolvedValue({ id: {}, ack: 1 });
+    expect(await sendBulkMessage('chat@g.us', spec())).toMatchObject({
+      messageId: '',
+      confirmed: false,
+    });
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
   it('constructs a contact card from the user supplied name and international number', async () => {
     await sendBulkMessage('chat@g.us', spec('contact'));
     expect(wpp.chat.sendVCardContactMessage).toHaveBeenCalledWith(

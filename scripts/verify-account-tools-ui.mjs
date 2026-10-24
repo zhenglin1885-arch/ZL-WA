@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { verifyWhatsAppLayout } from './verify-whatsapp-layout-ui.mjs';
 import { verifyTranslationRedraft } from './verify-translation-redraft-ui.mjs';
 import { verifyGroups } from './verify-groups-ui.mjs';
 import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
@@ -381,6 +382,7 @@ try {
   console.log(
     'PASS light desktop: manual dark updates app, MUI, Chromium and native WhatsApp classes; delayed light reset repaired; system-follow and compatibility switches work without reload or draft loss',
   );
+  await verifyWhatsAppLayout(first);
   if (!process.argv.includes('--customers-only')) {
     // Use native mouse/keyboard input and screen coordinates: DOM-only clicks
     // cannot catch a focus sentinel pushing the whole dialog off-screen.
@@ -529,11 +531,24 @@ try {
       0,
       'translating sent bubbles never resends them',
     );
-    const beforeRetranslate = await vm('globalThis.__zlTranslationCalls');
+    // Simulate an interrupted refresh restored from cache, then use real mouse input.
     await guest(
       first,
-      `document.querySelector('.message-in [data-zl-retranslate]').click();true`,
+      `(()=>{const state=window.__zlTranslation;const nested=document.createElement('span');nested.innerHTML='Original<div data-zl-translation>Decoration</div>';if(state.readText(nested)!=='Original')throw Error('Translation decoration changed source text');const node=document.querySelector('.message-in .selectable-text');const record=state.incoming.get(node);if(!record)throw Error('Missing translation');record.request(true,true);state.cancelPending();state.restore(record,'你好');if(record.refresh.disabled)throw Error('Cancelled refresh remained disabled');return true})()`,
     );
+    const beforeRetranslate = await vm('globalThis.__zlTranslationCalls');
+    const refreshPoint = await guest(
+      first,
+      `(()=>{const button=document.querySelector('.message-in [data-zl-retranslate]');button.scrollIntoView({block:'center'});const r=button.getBoundingClientRect();if(!button.textContent.includes('文'))throw Error('Missing 文 icon');if(button.previousElementSibling.tagName!=='SPAN')throw Error('Translation is not inline');return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+    );
+    const refreshContents = await evaluate(
+      `${service(first)}.webview.getWebContentsId()`,
+    );
+    for (const type of ['mouseDown', 'mouseUp']) {
+      await vm(
+        `process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').webContents.fromId(${refreshContents}).sendInputEvent(${JSON.stringify({ type, ...refreshPoint, button: 'left', clickCount: 1 })});true`,
+      );
+    }
     await wait(
       `(${service(first)}.webview.executeJavaScript('!document.querySelector(".message-in [data-zl-retranslate]").disabled')).then(Boolean)`,
       'retranslation completed',

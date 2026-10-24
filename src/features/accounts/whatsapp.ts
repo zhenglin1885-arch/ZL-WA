@@ -25,13 +25,6 @@ export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
   const socket = module('WAWebSocketModel')?.Socket;
   const socketState = socket?.state;
   if (
-    ['UNPAIRED', 'UNPAIRED_IDLE'].includes(socketState) ||
-    document.querySelector(
-      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
-    )
-  )
-    return { status: 'logged-out' };
-  if (
     !navigator.onLine ||
     [
       'CONFLICT',
@@ -46,6 +39,13 @@ export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
   )
     return { status: 'error' };
 
+  if (
+    ['UNPAIRED', 'UNPAIRED_IDLE'].includes(socketState) ||
+    document.querySelector(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    )
+  )
+    return { status: 'logged-out' };
   const loggedIn =
     socketState === 'CONNECTED' ||
     Boolean(document.querySelector('#pane-side, #side'));
@@ -344,14 +344,10 @@ export function accountStatus(service: {
   hasCrashed: boolean;
   isHibernating: boolean;
   accountSnapshot: AccountSnapshot;
-}): AccountSnapshot['status'] {
-  if (
-    !service.isEnabled ||
-    service.isError ||
-    service.hasCrashed ||
-    service.isHibernating
-  )
-    return 'error';
+}): AccountSnapshot['status'] | 'sleeping' {
+  if (service.isHibernating) return 'sleeping';
+  if (!service.isEnabled) return 'logged-out';
+  if (service.isError || service.hasCrashed) return 'error';
   if (service.isLoading) return 'loading';
   return service.accountSnapshot.status;
 }

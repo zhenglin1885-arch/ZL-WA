@@ -84,25 +84,25 @@ test('exports escaped offline HTML, correct per-chat links, translations and ori
   const index = await store.export('all');
   const html = readFileSync(index, 'utf8');
   expect(html).toContain('目录');
-  const folder = readdirSync(join(dir, 'exports', '全部聊天记录')).find(
+  const folder = readdirSync(join(dir, 'exports')).find(
     n => n !== '目录.html',
   )!;
-  const name = readdirSync(join(dir, 'exports', '全部聊天记录', folder)).find(
-    n => n.endsWith('.html'),
+  const location = join(dir, 'exports', folder, '全部聊天记录');
+  const name = readdirSync(location).find(
+    n => n.endsWith('.html') && n !== '目录.html',
   )!;
-  const chat = readFileSync(
-    join(dir, 'exports', '全部聊天记录', folder, name),
-    'utf8',
-  );
+  const chat = readFileSync(join(location, name), 'utf8');
   expect(chat).toContain('private-message&lt;&amp;&gt;');
   expect(chat).toContain('private-translation');
   expect(chat).not.toContain('<script>');
   expect(chat).not.toContain('</article>,<article');
-  expect(chat).toContain('../目录.html');
-  const photos = join(dir, 'exports', '全部聊天记录', folder, '图片');
-  expect(readFileSync(join(photos, readdirSync(photos)[0]))).toEqual(
-    Buffer.from(png.split(',')[1], 'base64'),
-  );
+  expect(chat).toContain('href="目录.html"');
+  expect(chat).toContain(`src="${png}"`);
+  expect(readdirSync(location).every(n => n.endsWith('.html'))).toBe(true);
+  expect(
+    readFileSync(join(dir, 'exports', folder, '目录.html'), 'utf8'),
+  ).toContain(encodeURIComponent('全部聊天记录'));
+  expect(html).toContain(encodeURIComponent(folder));
 });
 test('never overwrites encrypted data when the OS key cannot be decrypted or index is damaged', () => {
   const store = create();
@@ -133,7 +133,10 @@ test('catches up missed daily exports and only prunes local expired messages', a
   store.configure({ ...store.config, retentionDays: 0 });
   store.ingest('account', packet(old));
   await store.catchUp(now);
-  const index = join(dir, 'exports', backupDay(old), '目录.html');
+  const folder = readdirSync(join(dir, 'exports')).find(
+    n => n !== '目录.html',
+  )!;
+  const index = join(dir, 'exports', folder, backupDay(old), '目录.html');
   expect(readFileSync(index, 'utf8')).toContain('聊天记录目录');
   const first = store.state().stats.lastExport;
   await store.catchUp(now + 1000);
@@ -247,4 +250,33 @@ test('does not delete retained data when committing an expiry update fails', () 
   expect(() => store.prune(Date.now() + 400 * 86_400_000)).toThrow();
   expect(store.state().stats.messages).toBe(1);
   expect(create().state().stats.messages).toBe(1);
+});
+
+test('exports account-first folders isolating different accounts and login owners, with working date and full indexes', async () => {
+  const store = create();
+  const p = packet();
+  store.ingest('account-a', p);
+  store.ingest('account-b', { ...p, accountName: 'Second account' });
+  store.ingest('account-a', { ...p, ownerId: '111111111@c.us' });
+  await store.export('all');
+  await store.export(backupDay(p.messages[0].time));
+  const root = join(dir, 'exports');
+  const folders = readdirSync(root).filter(n => n !== '目录.html');
+  expect(folders).toHaveLength(3);
+  for (const folder of folders) {
+    expect(
+      readdirSync(join(root, folder)).sort((a, b) => a.localeCompare(b)),
+    ).toEqual(
+      [backupDay(p.messages[0].time), '全部聊天记录', '目录.html'].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    );
+    const index = readFileSync(join(root, folder, '目录.html'), 'utf8');
+    expect(index).toContain(backupDay(p.messages[0].time));
+    expect(index).toContain(encodeURIComponent('全部聊天记录'));
+    const full = join(root, folder, '全部聊天记录');
+    expect(readdirSync(full)).toHaveLength(2);
+    const chat = readdirSync(full).find(n => n !== '目录.html')!;
+    expect(readFileSync(join(full, chat), 'utf8')).toContain(png);
+  }
 });
