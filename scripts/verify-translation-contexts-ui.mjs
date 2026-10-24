@@ -9,24 +9,54 @@ export async function verifyTranslationContexts({
   service,
 }) {
   const view = `${service(first)}.webview`;
-  const clickGuest = async selector => {
+  const clickGuest = async (selector, holdForTranslation = false) => {
     const point = await guest(
       first,
       `(()=>{const node=document.querySelector(${JSON.stringify(selector)});node.scrollIntoView({block:'center'});const r=node.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
     );
-    for (const type of ['mouseDown', 'mouseUp'])
+    for (const type of ['mouseDown', 'mouseUp']) {
       await evaluate(
         `require('@electron/remote').webContents.fromId(${view}.getWebContentsId()).sendInputEvent(${JSON.stringify({ type, ...point, button: 'left', clickCount: 1 })});true`,
       );
+      if (type === 'mouseDown' && holdForTranslation)
+        await wait(
+          `${view}.executeJavaScript('Boolean(window.__zlTranslation.approved)&&!window.__zlTranslation.busy')`,
+          'holding first mouse gesture until translation completes',
+        );
+    }
   };
   const beforeEdited = await guest(first, 'fixture.edited.length');
-  for (const confirm of ['wds-ic-checkmark-large', 'checkmark-medium']) {
+  for (const [confirm, unmarked, enter] of [
+    ['wds-ic-checkmark-large', false, false],
+    ['checkmark-medium', false, false],
+    ['wds-ic-checkmark-small', true, false],
+    ['checkmark-circle', true, true],
+  ]) {
     await guest(
       first,
       `(()=>{fixture.openEdit('新版本编辑翻译 ${confirm}',false,'Editar mensagem');const root=document.querySelector('#fixture-edit');root.prepend(Object.assign(document.createElement('div'),{innerText:'Preview\\n'.repeat(10)}));const input=root.querySelector('[contenteditable]');input.removeAttribute('role');input.removeAttribute('data-lexical-editor');const save=root.querySelector('[data-testid=fixture-edit-save]');save.innerHTML='<span data-icon="${confirm}">✓</span>';const inner=document.createElement('div');inner.setAttribute('role','dialog');inner.append(input,save);root.append(inner);return true})()`,
     );
+    if (unmarked)
+      await guest(
+        first,
+        `(()=>{const root=document.querySelector('#fixture-edit');root.removeAttribute('data-animate-modal-popup');root.querySelector('[role=dialog]').removeAttribute('role');const title=root.querySelector('h2');const header=document.createElement('div');header.style.display='flex';header.innerHTML='<button type="button"><span data-icon="x">×</span></button><span>Edit message</span>';title.replaceWith(header);return true})()`,
+      );
+    const save = async () => {
+      if (enter) {
+        await guest(
+          first,
+          `document.querySelector('#fixture-edit [contenteditable]').focus();true`,
+        );
+        for (const type of ['keyDown', 'keyUp'])
+          await evaluate(
+            `require('@electron/remote').webContents.fromId(${view}.getWebContentsId()).sendInputEvent(${JSON.stringify({ type, keyCode: 'Enter' })});true`,
+          );
+      } else {
+        await clickGuest('#fixture-edit [data-testid=fixture-edit-save]');
+      }
+    };
     const count = await guest(first, 'fixture.edited.length');
-    await clickGuest('#fixture-edit [data-testid=fixture-edit-save]');
+    await save();
     await wait(
       `${view}.executeJavaScript('document.querySelector("#fixture-edit [contenteditable]")?.textContent==="Hello translated"')`,
       'nested edit with unmarked editor translates',
@@ -36,7 +66,7 @@ export async function verifyTranslationContexts({
       count,
       'first native gesture cannot save raw edit',
     );
-    await clickGuest('#fixture-edit [data-testid=fixture-edit-save]');
+    await save();
     await wait(
       `${view}.executeJavaScript('!document.querySelector("#fixture-edit")')`,
       'second native gesture confirms edit',
@@ -46,7 +76,60 @@ export async function verifyTranslationContexts({
       'Hello translated',
     );
   }
-  assert.equal(await guest(first, 'fixture.edited.length'), beforeEdited + 2);
+  assert.equal(await guest(first, 'fixture.edited.length'), beforeEdited + 4);
+  const beforeMedia = await guest(first, 'fixture.mediaSent.length');
+  for (const kind of ['image', 'video', 'file']) {
+    for (const enter of [false, true]) {
+      await guest(
+        first,
+        `(()=>{fixture.openMedia('附件说明必须先翻译',false,${JSON.stringify(kind)});const root=document.querySelector('#fixture-media');const wrap=root.querySelector('[data-testid=media-caption-input-container]');wrap.removeAttribute('data-testid');const input=wrap.querySelector('[contenteditable]');input.removeAttribute('role');input.removeAttribute('data-lexical-editor');input.setAttribute('aria-label','Type a message');const send=root.querySelector('[role=button]');send.removeAttribute('aria-label');send.innerHTML='<span data-icon="wds-ic-send">➤</span>';send.onpointerup=send.onclick;send.onclick=null;const footer=document.createElement('footer');footer.append(wrap,send);root.append(footer);document.querySelector('#main').append(root);if(${JSON.stringify(kind)}==='image')root.querySelector('img').src='https://web.whatsapp.com/preview.png';if(${JSON.stringify(kind)}==='file')root.querySelector('[data-testid=document-preview]').innerHTML='<span data-icon="wds-ic-document-text">sample.pdf</span>';input.focus();return true})()`,
+      );
+      const count = await guest(first, 'fixture.mediaSent.length');
+      let initialGesture = true;
+      const submit = async () => {
+        if (enter) {
+          await guest(
+            first,
+            `document.querySelector('#fixture-media [contenteditable]').focus();true`,
+          );
+          for (const type of ['keyDown', 'keyUp'])
+            await evaluate(
+              `require('@electron/remote').webContents.fromId(${view}.getWebContentsId()).sendInputEvent(${JSON.stringify({ type, keyCode: 'Enter' })});true`,
+            );
+        } else {
+          await clickGuest(
+            '#fixture-media [role=button]',
+            initialGesture && kind === 'image',
+          );
+        }
+      };
+      await submit();
+      initialGesture = false;
+      await wait(
+        `${view}.executeJavaScript('document.querySelector("#fixture-media [contenteditable]")?.textContent==="Hello translated"')`,
+        `${kind} generic footer caption translates before ${enter ? 'Enter' : 'pointerup'} send`,
+      );
+      assert.equal(
+        await guest(first, 'fixture.mediaSent.length'),
+        count,
+        'first attachment gesture never submits the original',
+      );
+      await submit();
+      await wait(
+        `${view}.executeJavaScript('fixture.mediaSent.length===${count + 1}')`,
+        'second attachment gesture confirms translation',
+      );
+      assert.equal(
+        await guest(first, 'fixture.mediaSent.at(-1).caption'),
+        'Hello translated',
+      );
+      assert.equal(await guest(first, 'fixture.mediaSent.at(-1).kind'), kind);
+    }
+  }
+  assert.equal(await guest(first, 'fixture.mediaSent.length'), beforeMedia + 6);
+  console.log(
+    'PASS image/video/file generic footer captions, remote image previews, new send icon, native pointerup and Enter, separate confirmation and original-text protection',
+  );
   const originalSent = await guest(first, 'fixture.sent.slice()');
   try {
     await guest(

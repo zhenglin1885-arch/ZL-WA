@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { type BrowserWindow, app, ipcMain } from 'electron';
+import { type BrowserWindow, app, ipcMain, nativeImage } from 'electron';
 import { autorun } from 'mobx';
 import { isLinux, isMac, isWindows } from '../../environment';
 import type TrayIcon from '../../lib/Tray';
@@ -13,6 +13,10 @@ export default (params: {
   settings: any;
   trayIcon: TrayIcon;
 }) => {
+  // Keep the application identity stable. Pinned/grouped Windows taskbar
+  // buttons may ignore per-window icon replacements, so unread counts must
+  // use the native taskbar overlay instead.
+  if (isWindows) params.mainWindow.setIcon(iconPath('icons', '256x256.png'));
   autorun(() => {
     isTrayIconEnabled = params.settings.app.get('enableSystemTray');
 
@@ -50,21 +54,23 @@ export default (params: {
 
     if (isWindows) {
       const value = args.indicator;
+      const count =
+        typeof value === 'number' && Number.isFinite(value)
+          ? Math.max(0, Math.floor(value))
+          : 0;
       const label =
-        typeof value === 'number' && Number.isFinite(value) && value > 0
-          ? value >= 10
-            ? '10+'
-            : String(Math.floor(value))
+        count > 0
+          ? String(Math.min(10, count))
           : typeof value === 'string' && value
             ? 'alert'
             : '';
-      // Windows fixes overlay icons to the lower-right corner. Compose the
-      // badge into the window icon itself to place it above the logo instead.
-      params.mainWindow.setOverlayIcon(null, '');
-      params.mainWindow.setIcon(
+      params.mainWindow.setOverlayIcon(
         label
-          ? iconPath('taskbar', `badged-${label}.png`)
-          : iconPath('icons', '256x256.png'),
+          ? nativeImage.createFromPath(
+              iconPath('taskbar', 'win32', `taskbar-${label}.ico`),
+            )
+          : null,
+        count > 0 ? `${count} 条未读消息` : label ? '有未读消息' : '',
       );
     }
 

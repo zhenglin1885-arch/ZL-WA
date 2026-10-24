@@ -16,18 +16,54 @@ export function configureWhatsAppLayout(): boolean {
     page.__zlChatListLayout = state;
     const style = document.createElement('style');
     style.textContent =
-      '[data-zl-chat-column]{width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-header]{position:relative!important;padding-right:36px!important}[data-zl-chat-resize]{position:absolute!important;right:3px;top:50%;transform:translateY(-50%);z-index:20;pointer-events:auto;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:inherit;cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
+      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-header]{position:relative!important;padding-right:36px!important}[data-zl-chat-resize]{position:absolute!important;right:3px;top:50%;transform:translateY(-50%);z-index:20;pointer-events:auto;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
     document.head.append(style);
     state.apply = (value: number, persist = false) => {
-      const left = state.column?.getBoundingClientRect().left || 0;
-      const available = window.innerWidth - left;
-      const max = Math.max(240, Math.min(available * 0.65, available - 300));
-      const next = Math.round(Math.min(max, Math.max(240, value)));
+      const rect = state.column.getBoundingClientRect();
+      const available =
+        (state.split?.getBoundingClientRect().right || window.innerWidth) -
+        rect.left;
+      const min = Math.min(240, Math.max(120, available * 0.35));
+      const max = Math.max(min, available - Math.min(300, available / 2));
+      const next = Math.round(Math.min(max, Math.max(min, value)));
       state.width = next;
-      for (const element of new Set<HTMLElement>([state.column, state.side])) {
-        if (element) {
-          element.dataset.zlChatColumn = 'true';
-          element.style.setProperty('--zl-chat-list-width', `${next}px`);
+      state.column.dataset.zlChatColumn = 'true';
+      state.column.style.setProperty('--zl-chat-list-width', `${next}px`);
+      // Resize the actual split tracks too. Fixed percentage/grid tracks on
+      // WhatsApp's parent otherwise leave the right pane at its old width.
+      if (state.split && state.pane) {
+        state.pane.dataset.zlChatPane = 'true';
+        const computed = getComputedStyle(state.split);
+        if (computed.display.includes('grid')) {
+          const tracks = computed.gridTemplateColumns.split(' ');
+          if (
+            tracks.length > 1 &&
+            tracks.every((track: string) => /^\d+(?:\.\d+)?px$/.test(track))
+          ) {
+            let x =
+              state.split.getBoundingClientRect().left +
+              (Number.parseFloat(computed.paddingLeft) || 0) +
+              (Number.parseFloat(computed.borderLeftWidth) || 0);
+            const paneLeft = state.pane.getBoundingClientRect().left;
+            let leftTrack = -1;
+            let rightTrack = -1;
+            tracks.forEach((track: string, index: number) => {
+              if (Math.abs(x - rect.left) < 5) leftTrack = index;
+              if (Math.abs(x - paneLeft) < 5) rightTrack = index;
+              x +=
+                Number.parseFloat(track) +
+                (Number.parseFloat(computed.columnGap) || 0);
+            });
+            if (leftTrack >= 0 && rightTrack >= 0 && leftTrack !== rightTrack) {
+              tracks[leftTrack] = `${next}px`;
+              tracks[rightTrack] = 'minmax(0,1fr)';
+              state.split.dataset.zlChatGrid = 'true';
+              state.split.style.setProperty(
+                '--zl-chat-grid-columns',
+                tracks.join(' '),
+              );
+            }
+          }
         }
       }
       if (persist) {
@@ -58,6 +94,11 @@ export function configureWhatsAppLayout(): boolean {
         event.preventDefault();
         event.stopImmediatePropagation();
         state.suppressClick = false;
+        try {
+          (button as HTMLElement).setPointerCapture(event.pointerId);
+        } catch {
+          /* Window tracking remains available. */
+        }
         state.drag = {
           id: event.pointerId,
           x: event.clientX,
@@ -127,24 +168,62 @@ export function configureWhatsAppLayout(): boolean {
     });
   }
   const state = page.__zlChatListLayout;
-  // WhatsApp wraps #side in its flex column on some releases. Resize that column.
+  // Find the two real WhatsApp panes geometrically, including the welcome
+  // screen (which has no #main) and wrappers with padding or fixed tracks.
   let column: HTMLElement = side;
-  const sideWidth = side.getBoundingClientRect().width;
-  while (
-    column.parentElement &&
-    column.parentElement !== document.body &&
-    column.parentElement.getBoundingClientRect().width <
-      window.innerWidth - 100 &&
-    !column.parentElement.querySelector(
-      '#main, [data-testid="conversation-panel-wrapper"]',
-    ) &&
-    Math.abs(column.parentElement.getBoundingClientRect().width - sideWidth) < 4
-  )
-    column = column.parentElement;
-  if (state.column !== column) {
+  let split: HTMLElement | undefined;
+  let pane: HTMLElement | undefined;
+  for (
+    let branch: HTMLElement = side;
+    branch.parentElement && branch.parentElement !== document.body;
+    branch = branch.parentElement
+  ) {
+    const rect = branch.getBoundingClientRect();
+    const sibling = [...branch.parentElement.children].find(node => {
+      if (node === branch || !(node instanceof HTMLElement)) return false;
+      const other = node.getBoundingClientRect();
+      const { position } = getComputedStyle(node);
+      return (
+        position !== 'absolute' &&
+        position !== 'fixed' &&
+        other.width >= 150 &&
+        other.height >= 180 &&
+        other.left >= rect.right - 5 &&
+        Math.min(other.bottom, rect.bottom) - Math.max(other.top, rect.top) >=
+          Math.min(180, rect.height * 0.6)
+      );
+    }) as HTMLElement | undefined;
+    if (sibling) {
+      column = branch;
+      split = branch.parentElement;
+      pane = sibling;
+      break;
+    }
+  }
+  if (
+    state.column !== column ||
+    state.split !== split ||
+    state.pane !== pane ||
+    state.side !== side
+  ) {
     state.column?.removeAttribute('data-zl-chat-column');
     state.column?.style.removeProperty('--zl-chat-list-width');
+    for (const node of state.inner || []) delete node.dataset.zlChatInner;
+    state.pane?.removeAttribute('data-zl-chat-pane');
+    state.split?.removeAttribute('data-zl-chat-grid');
+    state.split?.style.removeProperty('--zl-chat-grid-columns');
     state.column = column;
+    state.split = split;
+    state.pane = pane;
+    state.inner = [];
+    for (
+      let node: HTMLElement = side;
+      node !== column && node.parentElement;
+      node = node.parentElement
+    ) {
+      node.dataset.zlChatInner = 'true';
+      state.inner.push(node);
+    }
   }
   state.side = side;
   if (state.width) state.apply(state.width);

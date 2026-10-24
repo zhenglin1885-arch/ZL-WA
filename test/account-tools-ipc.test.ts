@@ -226,6 +226,49 @@ describe('privileged account tools IPC', () => {
     await invoke('translate', 'account-2', 'cache source', 'incoming');
     expect(translate).toHaveBeenCalledTimes(3);
   });
+  it('shares identical pending translation requests instead of calling Google twice', async () => {
+    const Queue =
+      require('../src/features/accountTools/TranslationQueue').default;
+    const enqueued = jest.spyOn(Queue.prototype, 'enqueue');
+    const config = defaultTools();
+    config.translation.incoming = true;
+    await invoke('save', 'account-1', config);
+    const translate =
+      require('../src/electron/accountTranslation').translateAccount;
+    let release!: (value: any) => void;
+    translate.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          release = resolve;
+        }),
+    );
+    const first = invoke(
+      'translate',
+      'account-1',
+      'same pending source',
+      'incoming',
+    );
+    const second = invoke(
+      'translate',
+      'account-1',
+      'same pending source',
+      'incoming',
+    );
+    await new Promise(resolve => {
+      setImmediate(resolve);
+    });
+    expect(translate).toHaveBeenCalledTimes(1);
+    expect(enqueued).toHaveBeenCalledTimes(1);
+    expect(enqueued.mock.calls[0][3]).toBe(true);
+    release({ text: 'shared translation', error: false });
+    expect(await Promise.all([first, second])).toEqual([
+      { text: 'shared translation', error: false },
+      { text: 'shared translation', error: false },
+    ]);
+    await invoke('translate', 'account-1', 'same pending source', 'incoming');
+    expect(translate).toHaveBeenCalledTimes(1);
+    enqueued.mockRestore();
+  });
   it('does not associate a new model response with an old cache key while session preparation is pending', async () => {
     const config = defaultTools();
     config.translation.incoming = true;

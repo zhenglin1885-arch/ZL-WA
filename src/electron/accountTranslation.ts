@@ -10,7 +10,13 @@ export async function translateAccount(
   source: string,
   apiKey = '',
   model = '',
-): Promise<{ text: string; error: boolean; message?: string }> {
+): Promise<{
+  text: string;
+  error: boolean;
+  message?: string;
+  rateLimited?: boolean;
+  retryAfterMs?: number;
+}> {
   try {
     if (engine !== 'Google' && engine !== 'LibreTranslate' && !apiKey)
       throw new Error(`${engine} 需要填写 API Key 并应用配置`);
@@ -87,12 +93,28 @@ export async function translateAccount(
       signal: AbortSignal.timeout(20_000),
       cache: 'no-store',
     });
-    if (!response.ok)
+    if (!response.ok) {
+      const retry = response.headers?.get('retry-after');
+      const retryAfterMs = retry
+        ? Math.max(
+            0,
+            /^\d+(?:\.\d+)?$/.test(retry.trim())
+              ? Number(retry) * 1000
+              : Date.parse(retry) - Date.now(),
+          )
+        : 0;
       return {
         text: '',
         error: true,
-        message: `${engine} HTTP ${response.status}：${response.status === 401 || response.status === 403 ? '请检查 API Key、访问权限或网络地区' : response.status === 429 ? '额度不足或请求过于频繁' : '请检查通道和账号代理连接'}`,
+        ...(engine === 'Google' && response.status === 429
+          ? {
+              rateLimited: true,
+              retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : 0,
+            }
+          : {}),
+        message: `${engine} HTTP ${response.status}：${response.status === 401 || response.status === 403 ? '请检查 API Key、访问权限或网络地区' : response.status === 429 ? (engine === 'Google' ? '请求过于频繁，Google 已临时限流，请稍后重试' : '额度不足或请求过于频繁') : '请检查通道和账号代理连接'}`,
       };
+    }
     const data = await response.json();
     const translated =
       engine === 'Google'

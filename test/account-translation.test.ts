@@ -121,3 +121,41 @@ it('keeps every translated segment of a multiline Google caption', async () => {
     error: false,
   });
 });
+
+it('reports Google no-key HTTP 429 as rate limiting without implying paid quota', async () => {
+  const transport = jest.fn(async () => response({}, 429));
+  const result = await translateAccount(
+    transport,
+    'hello',
+    'zh-CN',
+    'Google',
+    'auto',
+  );
+  expect(result).toMatchObject({ error: true, text: '' });
+  expect(result.message).toContain('429');
+  expect(result.message).toContain('临时限流');
+  expect(result.message).not.toContain('额度');
+  expect(transport).toHaveBeenCalledTimes(1);
+});
+
+it.each(['12', new Date(Date.now() + 30_000).toUTCString(), 'invalid'])(
+  'reports Google rate limits and parses Retry-After %s without exposing response data',
+  async retry => {
+    const result = await translateAccount(
+      async () =>
+        new Response('provider secret', {
+          status: 429,
+          headers: { 'Retry-After': retry },
+        }),
+      'hello',
+      'zh-CN',
+      'Google',
+      'auto',
+    );
+    expect(result).toMatchObject({ error: true, text: '', rateLimited: true });
+    expect(result.retryAfterMs).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(result)).not.toContain('provider secret');
+    if (retry === '12') expect(result.retryAfterMs).toBe(12_000);
+    if (retry === 'invalid') expect(result.retryAfterMs).toBe(0);
+  },
+);

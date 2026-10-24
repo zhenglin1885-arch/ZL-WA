@@ -60,6 +60,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   initBulkMedia(mainWindow);
   const path = join(app.getPath('userData'), 'account-tools.json');
   const translations = new TranslationQueue();
+  const pendingTranslations = new Map<
+    string,
+    Promise<Awaited<ReturnType<typeof translateAccount>>>
+  >();
   const translationCache = new TranslationCache(
     join(app.getPath('userData'), 'translation-cache.json'),
   );
@@ -135,6 +139,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     Awaited<ReturnType<typeof createSocksBridge>>
   >();
   app.on('before-quit', () => {
+    translations.dispose();
     translationCache.flush();
     for (const bridge of bridges.values()) bridge.close();
     bridges.clear();
@@ -476,45 +481,64 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       ]);
       const cached = translationCache.get(key);
       if (!force && cached !== undefined) return { text: cached, error: false };
-      return translations.enqueue(id, direction === 'outgoing', async () => {
-        if (
-          JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
-          !get(id).translation[direction] ||
-          JSON.stringify([get(id).providers, get(id).encryptedKeys]) !==
-            JSON.stringify([savedConfig.providers, savedConfig.encryptedKeys])
-        )
-          return { text: '', error: true };
-        await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
-        const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
-        const config = get(id);
-        if (
-          JSON.stringify([
-            config.translation,
-            config.providers,
-            config.encryptedKeys,
-          ]) !==
-          JSON.stringify([t, savedConfig.providers, savedConfig.encryptedKeys])
-        )
-          return { text: '', error: true };
-        const s = session.fromPartition(`persist:service-${id}`);
-        const repeated = translationCache.get(key);
-        if (!force && repeated !== undefined)
-          return { text: repeated, error: false };
-        const result = await translateAccount(
-          accountTransport(s, config.proxy, () =>
-            decrypt(config.encryptedPassword),
-          ),
-          text,
-          direction === 'incoming' ? t.receiveTarget : t.sendTarget,
-          engine,
-          direction === 'incoming' ? t.receiveSource : t.source,
-          decrypt(config.encryptedKeys?.[engine]),
-          config.providers?.[engine]?.model,
-        );
-        if (!result.error && data.accounts[id])
-          translationCache.set(id, key, result.text);
-        return result;
-      });
+      const pendingKey = `${key}:${direction}:${force ? 'fresh' : 'cached'}`;
+      const pending = pendingTranslations.get(pendingKey);
+      if (pending) return pending;
+      const request = translations.enqueue(
+        id,
+        direction === 'outgoing',
+        async () => {
+          if (
+            JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
+            !get(id).translation[direction] ||
+            JSON.stringify([get(id).providers, get(id).encryptedKeys]) !==
+              JSON.stringify([savedConfig.providers, savedConfig.encryptedKeys])
+          )
+            return { text: '', error: true };
+          await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
+          const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
+          const config = get(id);
+          if (
+            JSON.stringify([
+              config.translation,
+              config.providers,
+              config.encryptedKeys,
+            ]) !==
+            JSON.stringify([
+              t,
+              savedConfig.providers,
+              savedConfig.encryptedKeys,
+            ])
+          )
+            return { text: '', error: true };
+          const s = session.fromPartition(`persist:service-${id}`);
+          const repeated = translationCache.get(key);
+          if (!force && repeated !== undefined)
+            return { text: repeated, error: false };
+          const result = await translateAccount(
+            accountTransport(s, config.proxy, () =>
+              decrypt(config.encryptedPassword),
+            ),
+            text,
+            direction === 'incoming' ? t.receiveTarget : t.sendTarget,
+            engine,
+            direction === 'incoming' ? t.receiveSource : t.source,
+            decrypt(config.encryptedKeys?.[engine]),
+            config.providers?.[engine]?.model,
+          );
+          if (!result.error && data.accounts[id])
+            translationCache.set(id, key, result.text);
+          return result;
+        },
+        engine === 'Google',
+      );
+      pendingTranslations.set(pendingKey, request);
+      try {
+        return await request;
+      } finally {
+        if (pendingTranslations.get(pendingKey) === request)
+          pendingTranslations.delete(pendingKey);
+      }
     },
   );
   ipcMain.handle(
@@ -528,18 +552,22 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
       await (prepared.has(id) ? prepared.get(id) : apply(id, config));
       const s = session.fromPartition(`persist:service-${id}`);
-      return translations.enqueue(id, true, () =>
-        translateAccount(
-          accountTransport(s, config.proxy, () =>
-            decrypt(config.encryptedPassword),
+      return translations.enqueue(
+        id,
+        true,
+        () =>
+          translateAccount(
+            accountTransport(s, config.proxy, () =>
+              decrypt(config.encryptedPassword),
+            ),
+            'Hello, this is a translation connection test.',
+            direction === 'incoming' ? t.receiveTarget : t.sendTarget,
+            engine,
+            'en',
+            decrypt(config.encryptedKeys?.[engine]),
+            config.providers?.[engine]?.model,
           ),
-          'Hello, this is a translation connection test.',
-          direction === 'incoming' ? t.receiveTarget : t.sendTarget,
-          engine,
-          'en',
-          decrypt(config.encryptedKeys?.[engine]),
-          config.providers?.[engine]?.model,
-        ),
+        engine === 'Google',
       );
     },
   );

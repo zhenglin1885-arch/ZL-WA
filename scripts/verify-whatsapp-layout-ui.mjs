@@ -109,7 +109,7 @@ export async function verifyWhatsAppLayout(id) {
     );
   } finally {
     await guest(
-      `(()=>{const state=window.__zlChatListLayout;state.width=0;state.column.removeAttribute('data-zl-chat-column');state.column.style.removeProperty('--zl-chat-list-width');state.side.removeAttribute('data-zl-chat-column');state.side.style.removeProperty('--zl-chat-list-width');const wrapper=document.querySelector('#qa-side-wrapper');if(wrapper){wrapper.before(state.side);wrapper.remove()}${before.stored === null ? "localStorage.removeItem('zl-chat-list-width')" : `localStorage.setItem('zl-chat-list-width',${JSON.stringify(before.stored)})`};return true})()`,
+      `(()=>{const state=window.__zlChatListLayout;state.width=0;for(const node of state.inner||[])delete node.dataset.zlChatInner;if(state.pane)delete state.pane.dataset.zlChatPane;if(state.split){delete state.split.dataset.zlChatGrid;state.split.style.removeProperty('--zl-chat-grid-columns')}state.column.removeAttribute('data-zl-chat-column');state.column.style.removeProperty('--zl-chat-list-width');state.side.removeAttribute('data-zl-chat-column');state.side.style.removeProperty('--zl-chat-list-width');const wrapper=document.querySelector('#qa-side-wrapper');if(wrapper){wrapper.before(state.side);wrapper.remove()}${before.stored === null ? "localStorage.removeItem('zl-chat-list-width')" : `localStorage.setItem('zl-chat-list-width',${JSON.stringify(before.stored)})`};return true})()`,
     );
     await evaluate(
       `window.ferdium.stores.settings._update({type:'app',data:${JSON.stringify(theme)}});true`,

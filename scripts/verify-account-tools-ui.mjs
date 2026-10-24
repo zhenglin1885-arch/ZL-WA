@@ -1180,7 +1180,7 @@ try {
     await vm('globalThis.__zlTranslateFail=false;true');
     await guest(
       first,
-      `document.querySelector('#fixture-media').remove();fixture.openMedia('等待翻译的图文');document.querySelector('#fixture-media [role=button]').click();true`,
+      `document.querySelector('#fixture-media').remove();fixture.openMedia('等待翻译的图文');document.querySelector('#fixture-media img').src='https://web.whatsapp.com/preview-A.png';document.querySelector('#fixture-media [role=button]').click();true`,
     );
     await wait(
       `(async()=>await ${service(first)}.webview.executeJavaScript("[...window.__zlTranslation.pending.values()].some(j=>j.direction==='outgoing')"))()`,
@@ -1188,7 +1188,7 @@ try {
     );
     await guest(
       first,
-      `document.querySelector('#fixture-media img').src='blob:https://web.whatsapp.com/synthetic-image-B';true`,
+      `document.querySelector('#fixture-media img').src='https://web.whatsapp.com/preview-B.png';true`,
     );
     await wait(
       `${service(first)}.webview.executeJavaScript("document.querySelector('#zl-translation-status')?.textContent").then(t=>t?.includes('已变化'))`,

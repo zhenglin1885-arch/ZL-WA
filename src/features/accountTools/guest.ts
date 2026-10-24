@@ -37,16 +37,38 @@ export function translationTick(
     // Emoji decorators can be IMG/contenteditable=false nodes. innerText alone
     // loses them, so read only message text and reconstruct emoji alt characters.
     state.readText = (root: Node): string => {
+      const metadata =
+        '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
+      const excluded = (element: Element) => {
+        if (element.matches(metadata)) return true;
+        const text = (element.textContent || '').trim();
+        if (
+          element.matches('[role="button"]') &&
+          /^(?:read more|阅读更多|查看更多|ler mais|leia mais|leer más)$/i.test(
+            text,
+          )
+        )
+          return true;
+        return (
+          root.nodeType === 1 &&
+          element !== root &&
+          /^(?:(?:edited|已编辑|editado)\s*)?\d{1,2}:\d{2}(?:\s*[ap]m)?$/i.test(
+            text,
+          ) &&
+          (!!element.querySelector(
+            '[data-icon="msg-dblcheck"], [data-icon^="msg-check"]',
+          ) ||
+            (element.tagName === 'SPAN' &&
+              !element.closest(
+                '.selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"], [data-lexical-text="true"], [contenteditable="true"]',
+              )))
+        );
+      };
       const walk = (node: Node): string => {
         if (node.nodeType === 3) return node.textContent || '';
         if (node.nodeType !== 1 && node.nodeType !== 11) return '';
         const element = node as HTMLElement;
-        if (
-          element.matches?.(
-            '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], blockquote',
-          )
-        )
-          return '';
+        if (node.nodeType === 1 && excluded(element)) return '';
         if (element.tagName === 'IMG') {
           const alt =
             element.getAttribute('alt') || element.dataset.plainText || '';
@@ -59,13 +81,7 @@ export function translationTick(
         if (element.tagName === 'BR') return '\n';
         let text = '';
         for (const child of node.childNodes) {
-          if (
-            child.nodeType === 1 &&
-            (child as Element).matches(
-              '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], blockquote',
-            )
-          )
-            continue;
+          if (child.nodeType === 1 && excluded(child as Element)) continue;
           if (
             text &&
             child.nodeType === 1 &&
@@ -91,10 +107,10 @@ export function translationTick(
       );
     };
     const sendSelector =
-      '[aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send-filled"], [data-icon="send-filled"], [data-testid="compose-btn-send"], [data-testid="media-send"]';
+      '[aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send"], [data-icon^="wds-ic-send-"], [data-icon^="send-"], [data-testid="compose-btn-send"], [data-testid="media-send"], [data-testid="media-editor-send"]';
     const editDialogSelector =
       '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"], [role="dialog"], [data-animate-modal-popup="true"]';
-    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
+    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-icon^="wds-ic-checkmark-"], [data-icon^="checkmark-"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
     const documentSelector =
       '[data-testid="document-preview"], [data-testid="document-thumb"], [data-testid="document-preview-file"], [data-icon="document"], [data-icon="document-filled"], [data-icon^="document-"], [data-icon="wds-ic-document"], [data-icon^="wds-ic-document-"]';
     const visible = (node: HTMLElement) =>
@@ -115,13 +131,22 @@ export function translationTick(
         '[contenteditable="true"]',
       )) {
         if (!visible(input)) continue;
+        // WhatsApp also renders edit popups without dialog roles or modal
+        // test IDs. Recognize their visible title and dismiss control together;
+        // never treat message content or the normal chat composer as a title.
+        const editTitle =
+          /^(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)$/i;
         const roots: HTMLElement[] = [];
         for (
           let root = input.parentElement;
-          root && root !== document.body;
+          root && !root.matches('body, #app, #main');
           root = root.parentElement
         ) {
-          if (root.matches(editDialogSelector)) roots.push(root);
+          const marked = root.matches(editDialogSelector);
+          const dismiss = root.querySelector(
+            '[data-icon="x"], [data-icon="x-viewer"], [data-icon="wds-ic-x"], [data-icon^="wds-ic-x-"], button[aria-label="Close"], button[aria-label="关闭"], [role="button"][aria-label="Close"]',
+          );
+          if (marked || dismiss) roots.push(root);
         }
         const editRoot = roots.find(
           root =>
@@ -130,12 +155,13 @@ export function translationTick(
             ) ||
             [
               ...root.querySelectorAll<HTMLElement>(
-                'header, h1, h2, [role="heading"], [data-testid="dialog-title"]',
+                'header, h1, h2, [role="heading"], [data-testid="dialog-title"], span',
               ),
-            ].some(node =>
-              /edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje/i.test(
-                node.textContent || '',
-              ),
+            ].some(
+              node =>
+                !node.closest(
+                  '[contenteditable="true"], [data-id], .message-in, .message-out, [data-zl-translation]',
+                ) && editTitle.test((node.textContent || '').trim()),
             ) ||
             /(?:^|\n)\s*(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)\s*(?:\n|$)/i.test(
               // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading line boundaries distinguish edit dialogs from other popups.
@@ -173,21 +199,25 @@ export function translationTick(
           /caption|添加说明|添加描述|添加文字|输入说明/i.test(
             input.getAttribute('aria-label') || '',
           );
-        if (
-          input.closest('#main footer') &&
-          !caption &&
-          !input.closest('[role="dialog"], [data-testid="media-editor"]')
-        )
-          continue;
         let root = input.parentElement;
         for (
           let depth = 0;
           root && depth < 10 && !root.matches('body, #app, #main');
           depth += 1, root = root.parentElement
         ) {
-          const media = root.querySelector(
-            `img[src^="blob:"], img[src^="data:image/"], video, canvas, [data-testid="media-preview"], [data-testid="media-editor"], ${documentSelector}`,
-          );
+          const media =
+            root.matches('[data-testid="media-editor"]') ||
+            [
+              ...root.querySelectorAll(
+                `img[src], video, canvas, object[data], embed[src], [data-testid="media-preview"], [data-testid="media-editor"], ${documentSelector}`,
+              ),
+            ].some(
+              node =>
+                !input.contains(node) &&
+                !node.closest(
+                  'button, [role="button"], [data-testid*="quoted"], [data-testid="reply-context"], [data-testid="reply-preview"], [data-testid="quoted-message"], blockquote',
+                ),
+            );
           if (
             root.querySelector(sendSelector) &&
             (media || (caption && root.matches('[role="dialog"]')))
@@ -198,14 +228,16 @@ export function translationTick(
             }
             const sources = [
               ...root.querySelectorAll<HTMLImageElement | HTMLVideoElement>(
-                'img[src^="blob:"], img[src^="data:image/"], video',
+                'img[src], video',
               ),
-            ].map(
-              node =>
-                node.getAttribute('src') ||
-                (node as HTMLVideoElement).currentSrc ||
-                '',
-            );
+            ]
+              .filter(node => !input.contains(node))
+              .map(
+                node =>
+                  node.getAttribute('src') ||
+                  (node as HTMLVideoElement).currentSrc ||
+                  '',
+              );
             const selected = [
               ...root.querySelectorAll<HTMLElement>(
                 '[aria-selected="true"], [data-selected="true"]',
@@ -429,10 +461,19 @@ export function translationTick(
       state.queue = [];
       state.busy = false;
     };
+    const submissionEvents = [
+      'pointerdown',
+      'mousedown',
+      'pointerup',
+      'mouseup',
+      'click',
+    ];
+    let blockedSubmission: Element | null = null;
     const intercept = (event: Event) => {
       if (!state.config.outgoing) return;
-      if (event.type === 'pointerdown' && (event as PointerEvent).button !== 0)
-        return;
+      const pointer = submissionEvents.includes(event.type);
+      if (pointer && (event as MouseEvent).button !== 0) return;
+      if (event.type === 'pointerdown') blockedSubmission = null;
       const context = composerContext(event.target as Element);
       const input = context?.input;
       if (!input || !context) {
@@ -440,7 +481,7 @@ export function translationTick(
         const root = target?.closest?.(`footer, ${editDialogSelector}`);
         if (
           root?.querySelector('[contenteditable="true"]') &&
-          (((event.type === 'click' || event.type === 'pointerdown') &&
+          ((pointer &&
             target.closest(`${sendSelector}, ${editSubmitSelector}`)) ||
             (event.type === 'keydown' &&
               (event as KeyboardEvent).key === 'Enter' &&
@@ -467,8 +508,7 @@ export function translationTick(
         target?.closest(submitSelector) ||
         control?.querySelector(submitSelector);
       const sendClick =
-        (event.type === 'click' || event.type === 'pointerdown') &&
-        Boolean(sendNode && context.root.contains(sendNode));
+        pointer && Boolean(sendNode && context.root.contains(sendNode));
       if (
         !(sendKey && (target === input || input.contains(target))) &&
         !sendClick
@@ -480,6 +520,18 @@ export function translationTick(
       ) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        return;
+      }
+      const submissionControl = control || sendNode;
+      if (
+        pointer &&
+        event.type !== 'pointerdown' &&
+        blockedSubmission &&
+        blockedSubmission === submissionControl
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.type === 'click') blockedSubmission = null;
         return;
       }
       const text = state.readText(input);
@@ -515,12 +567,17 @@ export function translationTick(
         state.approved.context === context.key &&
         !state.busy
       ) {
-        if (event.type !== 'pointerdown') state.approved = null;
+        if (event.type === 'click' || event.type === 'keydown')
+          state.approved = null;
         notice('');
         return;
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      // A fast cached result must not turn the remainder of this same mouse
+      // gesture into confirmation. The user confirms with a separate gesture.
+      if (event.type === 'pointerdown')
+        blockedSubmission = submissionControl || null;
       if (state.busy) {
         notice(
           context.editing
@@ -575,9 +632,8 @@ export function translationTick(
       'click',
     ])
       window.addEventListener(type, translationControl, true);
-    window.addEventListener('pointerdown', intercept, true);
-    window.addEventListener('keydown', intercept, true);
-    window.addEventListener('click', intercept, true);
+    for (const type of [...submissionEvents, 'keydown'])
+      window.addEventListener(type, intercept, true);
     const clearApproval = () => {
       state.approved = null;
       state.failedReplacement = null;
@@ -807,7 +863,12 @@ export function translationTick(
         const container = document.createElement('div');
         container.dataset.zlTranslation = 'true';
         container.style.cssText =
-          'height:auto;clear:both;padding:6px 0 2px;text-align:left;white-space:pre-wrap;font:13px/1.5 sans-serif';
+          'height:auto;clear:both;min-width:0;max-width:100%;box-sizing:border-box;contain:inline-size;padding:6px 0 2px;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:inherit';
+        const sourceStyle = getComputedStyle(textNode);
+        container.style.font = sourceStyle.font;
+        container.style.lineHeight = sourceStyle.lineHeight;
+        container.style.letterSpacing = sourceStyle.letterSpacing;
+        container.dir = 'auto';
         const label = document.createElement('span');
         container.setAttribute('aria-live', 'polite');
         label.dataset.zlTranslationText = 'true';
@@ -819,7 +880,7 @@ export function translationTick(
         button.dataset.zlTranslate = 'true';
         button.textContent = '点击翻译';
         button.style.cssText =
-          'display:inline-flex;align-items:center;border:0;border-radius:5px;background:#175aff;color:#fff;padding:7px 10px;margin:4px 0;cursor:pointer;font:13px/1.4 sans-serif';
+          'display:inline-flex;align-items:center;border:0;border-radius:5px;background:#175aff;color:#fff;padding:7px 10px;margin:4px 0;max-width:100%;box-sizing:border-box;white-space:normal;cursor:pointer;font:13px/1.4 sans-serif';
         const refresh = document.createElement('button');
         refresh.type = 'button';
         refresh.dataset.zlRetranslate = 'true';
