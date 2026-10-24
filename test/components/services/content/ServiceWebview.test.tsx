@@ -116,6 +116,34 @@ describe('ServiceWebview', () => {
     }
   });
 
+  it('mounts the split handle before unread adapters that may fail after WhatsApp changes', async () => {
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      accountSnapshot: { status: 'online' },
+    });
+    const component = new ServiceWebview(props as any) as ServiceWebviewClass;
+    const view = Object.assign(createMockWebviewElement(), {
+      executeJavaScript: jest
+        .fn()
+        .mockResolvedValueOnce(true)
+        .mockRejectedValueOnce(new Error('Unread module not ready')),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      await component.pollAccount();
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(2);
+      expect(view.executeJavaScript.mock.calls[0][0]).toContain(
+        'configureWhatsAppLayout',
+      );
+      expect(view.executeJavaScript.mock.calls[1][0]).toContain(
+        'watchWhatsAppUnread',
+      );
+    } finally {
+      component.componentWillUnmount();
+    }
+  });
+
   it('does not steal keyboard focus from an open account menu or dialog', () => {
     const originalDocument = Object.getOwnPropertyDescriptor(
       globalThis,

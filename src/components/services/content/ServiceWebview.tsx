@@ -124,11 +124,15 @@ class ServiceWebview extends Component<IProps> {
     this.accountPollRunning = true;
     const { unreadRevision } = this;
     try {
+      // Mount the split handle independently of unread/theme adapters: a
+      // changed WhatsApp module must not prevent this basic UI control.
+      await view
+        .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
+        .catch(error => debug('Could not mount WhatsApp split handle', error));
       await view.executeJavaScript(`(${watchWhatsAppUnread.toString()})()`);
       await view.executeJavaScript(
         `(${applyWhatsAppTheme.toString()})(${Boolean(stores?.ui.isDarkThemeActive || service.isDarkModeEnabled)})`,
       );
-      await view.executeJavaScript(`(${configureWhatsAppLayout.toString()})()`);
       await configureTranslation(
         service,
         stores?.settings.app.translationTextColor,

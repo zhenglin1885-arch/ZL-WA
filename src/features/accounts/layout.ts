@@ -1,10 +1,16 @@
 // Keep list sizing local to this account's browser partition; never reload chats.
 export function configureWhatsAppLayout(): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
-  const side = document.querySelector<HTMLElement>('#side');
-  const header = side?.querySelector<HTMLElement>('header');
-  if (!side || !header) return false;
   const page = window as any;
+  const side =
+    document.querySelector<HTMLElement>(
+      '#side, [data-testid="chat-list-pane"]',
+    ) || document.querySelector<HTMLElement>('#pane-side');
+  if (!side) {
+    if (page.__zlChatListLayout?.button)
+      page.__zlChatListLayout.button.hidden = true;
+    return false;
+  }
   if (!page.__zlChatListLayout) {
     let width = 0;
     try {
@@ -16,7 +22,7 @@ export function configureWhatsAppLayout(): boolean {
     page.__zlChatListLayout = state;
     const style = document.createElement('style');
     style.textContent =
-      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-header]{position:relative!important;padding-right:36px!important}[data-zl-chat-resize]{position:absolute!important;right:3px;top:50%;transform:translateY(-50%);z-index:20;pointer-events:auto;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
+      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;pointer-events:auto;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
     document.head.append(style);
     state.apply = (value: number, persist = false) => {
       const rect = state.column.getBoundingClientRect();
@@ -66,6 +72,7 @@ export function configureWhatsAppLayout(): boolean {
           }
         }
       }
+      state.position?.();
       if (persist) {
         try {
           localStorage.setItem('zl-chat-list-width', String(next));
@@ -165,7 +172,19 @@ export function configureWhatsAppLayout(): boolean {
     );
     window.addEventListener('resize', () => {
       if (state.width) state.apply(state.width);
+      state.position?.();
     });
+    if (typeof MutationObserver === 'function') {
+      state.observer = new MutationObserver(() => {
+        if (state.refreshPending) return;
+        state.refreshPending = true;
+        requestAnimationFrame(() => {
+          state.refreshPending = false;
+          configureWhatsAppLayout();
+        });
+      });
+      state.observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
   const state = page.__zlChatListLayout;
   // Find the two real WhatsApp panes geometrically, including the welcome
@@ -227,13 +246,12 @@ export function configureWhatsAppLayout(): boolean {
   }
   state.side = side;
   if (state.width) state.apply(state.width);
-  if (!header.querySelector('[data-zl-chat-resize]')) {
-    header.dataset.zlChatHeader = 'true';
+  if (!state.button?.isConnected) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.zlChatResize = 'true';
     button.setAttribute('aria-label', '调整聊天列表宽度');
-    button.title = '点击切换宽窄，或拖动调整聊天列表宽度';
+    button.title = '拖动调整宽度';
     button.innerHTML =
       '<svg width="20" height="22" viewBox="0 0 20 22" aria-hidden="true"><path d="M8 3v16M12 3v16M4 8l-2 3 2 3M16 8l2 3-2 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     button.addEventListener('keydown', event => {
@@ -246,7 +264,32 @@ export function configureWhatsAppLayout(): boolean {
         true,
       );
     });
-    header.append(button);
+    state.button = button;
+    // Keep the handle outside React-owned headers and overflow-clipped list
+    // wrappers. Its fixed position follows only the WhatsApp split boundary.
+    document.body.append(button);
   }
+  state.position = () => {
+    const button = state.button as HTMLButtonElement;
+    const rect = state.column.getBoundingClientRect();
+    const root = state.column as HTMLElement;
+    const header = root.querySelector<HTMLElement>(
+      'header, [data-testid="chat-list-header"], [role="banner"]',
+    );
+    const newChat = root.querySelector<HTMLElement>(
+      '[aria-label="New chat"], [aria-label="新聊天"], [aria-label="发起新聊天"], [title="New chat"], [data-testid="menu-bar-chat"], [data-icon="new-chat-outline"], [data-icon="chat-new"], [data-icon="wds-ic-chat-plus"], [data-icon="wds-ic-plus"]',
+    );
+    const anchor =
+      newChat?.getBoundingClientRect() || header?.getBoundingClientRect();
+    const modal = [
+      ...document.querySelectorAll<HTMLElement>('[role="dialog"]'),
+    ].some(node => node.getClientRects().length > 0 && !root.contains(node));
+    button.hidden =
+      !state.side.isConnected || rect.width <= 0 || rect.height <= 0 || modal;
+    if (button.hidden) return;
+    button.style.left = `${Math.round(rect.right - 14)}px`;
+    button.style.top = `${Math.round((anchor && anchor.height > 0 ? anchor.top + anchor.height / 2 : rect.top + 36) - 17)}px`;
+  };
+  state.position();
   return true;
 }

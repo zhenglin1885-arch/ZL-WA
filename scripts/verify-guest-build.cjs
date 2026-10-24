@@ -162,10 +162,26 @@ const {
     },
     addEventListener() {},
     setAttribute() {},
-    getBoundingClientRect: () => ({ width: 320, left: 0 }),
+    getBoundingClientRect: () => ({
+      width: 320,
+      height: 600,
+      left: 0,
+      right: 320,
+      top: 0,
+    }),
+    isConnected: true,
   };
-  const header = { dataset: {}, querySelector: () => null, append() {} };
-  const side = { ...element, querySelector: () => header, parentElement: null };
+  const header = {
+    ...element,
+    dataset: {},
+    querySelector: () => null,
+    append() {},
+  };
+  const side = {
+    ...element,
+    querySelector: selector => (selector.includes('header') ? header : null),
+    parentElement: null,
+  };
   const stored = {};
   const layoutPage = vm.createContext({
     location: { hostname: 'web.whatsapp.com' },
@@ -183,6 +199,8 @@ const {
     },
     document: {
       querySelector: () => side,
+      querySelectorAll: () => [],
+      body: { append() {} },
       createElement: () => ({ ...element }),
       head: { append() {} },
       documentElement: { style: { cursor: '', userSelect: '' } },

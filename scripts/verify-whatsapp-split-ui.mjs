@@ -64,25 +64,40 @@ try {
             'padded-flex-welcome',
             'grid-welcome',
             'flex-chat',
+            'headerless',
+            'no-side-id',
           ]) {
             win.setContentSize(1100, 750);
             const grid = variant === 'grid-welcome';
+            const nativeHeader =
+              variant === 'headerless' || variant === 'no-side-id'
+                ? 'div class="wa-head"'
+                : 'header';
+            const closeHeader = nativeHeader.startsWith('div')
+              ? 'div'
+              : 'header';
             html = `<!doctype html><style>
           *{box-sizing:border-box}body{margin:0;display:flex;height:100vh}
           #software-accounts{width:140px;flex:none}#software-tools{width:60px;flex:none}
           #guest{flex:1;min-width:0}#app{height:100%;width:100%;display:${grid ? 'grid' : 'flex'};${grid ? 'grid-template-columns:48px 280px minmax(0,1fr)' : ''}}
-          #wa-nav{width:48px;flex:0 0 48px}#list-col{width:280px;flex:0 0 280px;padding:8px;border:3px solid gray;min-width:280px}
-          #side{width:280px;height:100%;display:flex;flex-direction:column}header{height:72px;flex:none;display:flex;align-items:center;justify-content:space-between;background:#202c33;color:white}
+          #wa-nav{width:48px;flex:0 0 48px}#list-col{overflow:hidden;width:280px;flex:0 0 280px;padding:8px;border:3px solid gray;min-width:280px}
+          #side,.qa-side{width:280px;height:100%;display:flex;flex-direction:column}header,.wa-head{height:72px;flex:none;display:flex;align-items:center;justify-content:space-between;background:#202c33;color:white}
           #chat-pane,#welcome-pane{height:100%;min-width:400px;width:calc(100% - 328px);flex:0 0 calc(100% - 328px);background:#eee}
-          </style><div id="software-accounts">Software accounts</div><div id="guest"><div id="app"><div id="wa-nav">WA nav</div><div id="list-col"><div id="side"><header><span>WhatsApp</span><button id="new-chat">+</button></header><div>Chat list</div></div></div><div id="${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}">Conversation or welcome</div></div></div><div id="software-tools">Software tools</div>`;
+          </style><div id="software-accounts">Software accounts</div><div id="guest"><div id="app"><div id="wa-nav">WA nav</div><div id="list-col"><div id="${variant === 'no-side-id' ? 'new-side' : 'side'}" class="qa-side"><${nativeHeader}><span>WhatsApp</span><button id="new-chat" aria-label="New chat">+</button></${closeHeader}><div id="pane-side" style="flex:1">Chat list</div></div></div><div id="${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}">Conversation or welcome</div></div></div><div id="software-tools">Software tools</div>`;
             await win.loadURL('https://web.whatsapp.com/');
             await exec(
-              `window.__qaConfigure=${configureWhatsAppLayout.toString()};window.__qaConfigure();document.querySelector('header').addEventListener('pointerdown',e=>e.stopImmediatePropagation(),true);true`,
+              `window.__qaConfigure=${configureWhatsAppLayout.toString()};window.__qaConfigure();document.querySelector('header,.wa-head').addEventListener('pointerdown',e=>e.stopImmediatePropagation(),true);true`,
             );
             const geometry = () =>
               exec(
-                `(()=>{const box=id=>{const r=document.getElementById(id).getBoundingClientRect();return {x:r.x,right:r.right,width:r.width}};const state=window.__zlChatListLayout;return {column:box('list-col'),side:box('side'),pane:box('${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}'),app:box('app'),guest:box('guest'),accounts:box('software-accounts'),tools:box('software-tools'),stored:localStorage.getItem('zl-chat-list-width'),selected:state.column.id,grid:state.split?.dataset.zlChatGrid}})()`,
+                `(()=>{const box=id=>{const r=(id==='side'?document.querySelector('#side,.qa-side'):document.getElementById(id)).getBoundingClientRect();return {x:r.x,right:r.right,width:r.width}};const state=window.__zlChatListLayout;return {column:box('list-col'),side:box('side'),pane:box('${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}'),app:box('app'),guest:box('guest'),accounts:box('software-accounts'),tools:box('software-tools'),stored:localStorage.getItem('zl-chat-list-width'),selected:state.column.id,grid:state.split?.dataset.zlChatGrid}})()`,
               );
+            await exec(
+              `(()=>{const b=document.querySelector('[data-zl-chat-resize]');if(!b||b.parentElement!==document.body)throw Error('Handle must be mounted outside native header');const r=b.getBoundingClientRect();const plus=document.querySelector('#new-chat').getBoundingClientRect();if(!document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-zl-chat-resize]'))throw Error('Handle is clipped or not hittable');if(Math.abs(r.y+r.height/2-plus.y-plus.height/2)>1)throw Error('Handle must align with green plus');b.remove();return true})()`,
+            );
+            await exec(
+              'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+            );
             const before = await geometry();
             await drag(70);
             const after = await geometry();
@@ -91,7 +106,7 @@ try {
             );
             const swapped = await geometry();
             await exec(
-              `document.querySelector('header').replaceWith(document.querySelector('header').cloneNode(false));window.__qaConfigure();true`,
+              `document.querySelector('header,.wa-head').replaceChildren();window.__qaConfigure();true`,
             );
             await drag(-35);
             const rerendered = await geometry();
@@ -176,7 +191,7 @@ try {
     if (variant === 'grid-welcome') assert.equal(after.grid, 'true');
   }
   console.log(
-    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
+    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
   );
   console.log(
     JSON.stringify(
