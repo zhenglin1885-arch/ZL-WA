@@ -83,7 +83,7 @@ try {
           #wa-nav{width:48px;flex:0 0 48px}#list-col{overflow:hidden;width:280px;flex:0 0 280px;padding:8px;border:3px solid gray;min-width:280px}
           #side,.qa-side{width:280px;height:100%;display:flex;flex-direction:column}header,.wa-head{height:72px;flex:none;display:flex;align-items:center;justify-content:space-between;background:#202c33;color:white}
           #chat-pane,#welcome-pane{height:100%;min-width:400px;width:calc(100% - 328px);flex:0 0 calc(100% - 328px);background:#eee}
-          </style><div id="software-accounts">Software accounts</div><div id="guest"><div id="app"><div id="wa-nav">WA nav</div><div id="list-col"><div id="${variant === 'no-side-id' ? 'new-side' : 'side'}" class="qa-side"><${nativeHeader}><span>WhatsApp</span><button id="new-chat" aria-label="New chat">+</button></${closeHeader}><div id="pane-side" style="flex:1">Chat list</div></div></div><div id="${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}">Conversation or welcome</div></div></div><div id="software-tools">Software tools</div>`;
+          </style><div id="software-accounts">Software accounts</div><div id="guest"><div id="app"><div id="wa-nav">WA nav</div><div id="list-col" data-testid="chat-list-pane"><div id="${variant === 'no-side-id' ? 'new-side' : 'side'}" class="qa-side"><${nativeHeader}><span>WhatsApp</span><button id="new-chat" aria-label="New chat">+</button></${closeHeader}><div id="pane-side" style="flex:1">Chat list</div></div></div><div id="${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}">Conversation or welcome</div></div></div><div id="software-tools">Software tools</div>`;
             await win.loadURL('https://web.whatsapp.com/');
             await exec(
               `window.__qaConfigure=${configureWhatsAppLayout.toString()};window.__qaConfigure();document.querySelector('header,.wa-head').addEventListener('pointerdown',e=>e.stopImmediatePropagation(),true);true`,
@@ -149,6 +149,10 @@ try {
     assert(
       Math.abs(after.column.width - before.column.width - 70) < 1,
       `${variant}: native drag must widen list`,
+    );
+    assert(
+      Math.abs(after.side.width - before.side.width - 70) < 1,
+      `${variant}: inner native list must widen too`,
     );
     assert(
       Math.abs(after.pane.width - before.pane.width + 70) < 1,

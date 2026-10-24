@@ -3,9 +3,9 @@ export function configureWhatsAppLayout(): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
   const page = window as any;
   const side =
-    document.querySelector<HTMLElement>(
-      '#side, [data-testid="chat-list-pane"]',
-    ) || document.querySelector<HTMLElement>('#pane-side');
+    document.querySelector<HTMLElement>('#side') ||
+    document.querySelector<HTMLElement>('#pane-side') ||
+    document.querySelector<HTMLElement>('[data-testid="chat-list-pane"]');
   if (!side) {
     if (page.__zlChatListLayout?.button)
       page.__zlChatListLayout.button.hidden = true;
