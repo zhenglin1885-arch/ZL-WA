@@ -34,7 +34,7 @@ it('uses large upper-right composed Windows icons and restores the original on r
   ] as const) {
     update({}, { indicator: count });
     expect(mainWindow.setIcon).toHaveBeenLastCalledWith(
-      expect.stringContaining(file),
+      expect.stringContaining(join(...file.split('/'))),
     );
     expect(mainWindow.setOverlayIcon).toHaveBeenLastCalledWith(null, '');
     expect(trayIcon.setIndicator).toHaveBeenLastCalledWith(count);
