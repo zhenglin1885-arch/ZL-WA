@@ -999,12 +999,12 @@ try {
     );
     await clickText('检查页面识别');
     await wait(
-      `document.querySelector('.tools-notice')?.textContent.includes('已识别 3 条')`,
+      `document.querySelector('.tools-notice')?.textContent.includes('检测到 3 条')`,
       'visible page recognition status',
     );
     await clickText('复制页面诊断');
     const report = await evaluate(`require('electron').clipboard.readText()`);
-    assert.equal(JSON.parse(report).version, 7);
+    assert.equal(JSON.parse(report).version, 8);
     assert.equal(JSON.parse(report).counts['[data-zl-translate]'], 3);
     assert(
       !report.includes('8613800000001') &&

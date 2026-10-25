@@ -46,9 +46,14 @@ try {
           for (const variant of [
             'edit-main',
             'edit-plaintext',
+            'edit-live-modal',
             'image',
             'video',
             'file',
+            'image-live-drawer',
+            'video-live-drawer',
+            'file-live-drawer',
+            'multiple-live-drawer',
           ]) {
             for (const gesture of ['mouse', 'Enter']) {
               const edit = variant.startsWith('edit');
@@ -59,9 +64,26 @@ try {
                     ? '<video src="blob:https://web.whatsapp.com/A" style="width:250px;height:250px"></video>'
                     : '<div><span data-icon="wds-ic-document-text"></span><span title="report.pdf">report.pdf</span></div>';
               html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#main{position:fixed;inset:20px;background:#fff;padding:20px}#editor{padding:15px;min-height:40px;border:1px solid #ddd}button{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="app"><div id="background"><div contenteditable="true">保留后台草稿</div></div><div id="main" ${variant === 'edit-plaintext' ? 'role="dialog"' : ''}>${edit ? '<div><button aria-label="Dismiss"><svg></svg></button><div>Edit message</div></div><div data-id="true_chat_A">Are you OK</div>' : media}<div>${'<div>'.repeat(14)}<div id="editor" role="textbox" contenteditable="${variant === 'edit-plaintext' ? 'plaintext-only' : 'true'}" aria-label="Type a message">你好吗</div>${'</div>'.repeat(14)}</div><div><button id="confirm"><span data-icon="${edit ? 'wds-ic-checkmark-large' : 'wds-ic-send-filled'}">${edit ? '✓' : '➤'}</span></button></div></div></div>`;
+              if (variant === 'edit-live-modal') {
+                // Captured user structure: modal before the chat, a visible
+                // background composer, bare SVGs and only an accessible label
+                // on save. No data-icon/test ID on the save button.
+                html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#editor{padding:15px;min-height:40px;border:1px solid #ddd}button{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="app"><div role="dialog"><div data-testid="confirm-popup"><div data-testid="popup-contents"><div data-testid="edit-message-modal"><header><button aria-label="Close"><svg></svg></button><div>Edit message</div></header><div data-id="true_chat_A">Are you OK</div>${'<div>'.repeat(6)}<div id="editor" role="textbox" data-testid="edit-message-composer" contenteditable="true">你好吗</div>${'</div>'.repeat(6)}<div role="button"><svg></svg></div><button id="confirm" aria-label="Send edited message"><svg width="24" height="24"><path d="M1 12L8 20L23 1"/></svg></button></div></div></div></div><div id="main"><footer id="background"><div role="textbox" data-testid="conversation-compose-box-input" contenteditable="true">保留后台草稿</div><button aria-label="Send"><svg></svg></button></footer></div></div>`;
+              }
+              if (variant.endsWith('live-drawer')) {
+                // User capture: no modal/media-editor marker or data-icon;
+                // caption is itself editable and send is a labelled DIV.
+                // A document has no image or recognizable legacy file icon.
+                const attachment = variant.startsWith('file')
+                  ? '<div><svg></svg><span title="report.pdf">report.pdf</span></div>'
+                  : variant.startsWith('video')
+                    ? '<video src="blob:https://web.whatsapp.com/A" style="width:250px;height:250px"></video>'
+                    : '<img src="blob:https://web.whatsapp.com/A" width="250" height="250">';
+                html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#editor{padding:15px;min-height:40px;border:1px solid #ddd}#confirm{padding:20px;width:60px;height:60px}#background{position:fixed;left:0;bottom:0}</style><div id="app"><div data-testid="drawer-middle">${'<div>'.repeat(7)}${attachment}${'<div>'.repeat(5)}<div id="editor" role="textbox" data-testid="media-caption-input-container" contenteditable="true">你好吗</div>${'</div>'.repeat(5)}<div id="confirm" role="button" aria-label="Send ${variant.startsWith('multiple') ? 12 : 1} selected"><svg width="24" height="24"><path d="M1 1L23 12L1 23"/></svg></div>${'</div>'.repeat(7)}</div><div id="main"><footer id="background"><div role="textbox" data-testid="conversation-compose-box-input" contenteditable="true">保留后台草稿</div><button aria-label="Send"><svg></svg></button></footer></div></div>`;
+              }
               await win.loadURL('https://web.whatsapp.com/');
               await execute(
-                `window.sent=[];window.nativeText='你好吗';window.trustedInputs=0;const editor=document.querySelector('#editor');editor.addEventListener('input',event=>{window.nativeText=editor.innerText;if(event.isTrusted)window.trustedInputs++});const submit=()=>{if(!window.sent.length)window.sent.push(window.nativeText)};document.querySelector('#main').addEventListener('pointerup',event=>{if(event.target.closest('#confirm'))submit()},true);editor.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit()}});window.tick=${guest.translationTick.toString()};window.deliver=${guest.translationResult.toString()};window.config=${JSON.stringify(config)};tick(config);editor.focus();true`,
+                `window.sent=[];window.nativeText='你好吗';window.trustedInputs=0;const editor=document.querySelector('#editor');editor.addEventListener('input',event=>{window.nativeText=editor.innerText;if(event.isTrusted)window.trustedInputs++});const submit=()=>{if(!window.sent.length)window.sent.push(window.nativeText)};(document.querySelector('[data-testid="edit-message-modal"],[data-testid="drawer-middle"]')||document.querySelector('#main')).addEventListener('pointerup',event=>{if(event.target.closest('#confirm'))submit()},true);editor.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submit()}});window.tick=${guest.translationTick.toString()};window.deliver=${guest.translationResult.toString()};window.config=${JSON.stringify(config)};tick(config);editor.focus();true`,
               );
               const submit = async () => {
                 win.webContents.focus();

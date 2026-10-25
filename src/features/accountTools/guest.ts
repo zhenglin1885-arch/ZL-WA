@@ -14,10 +14,47 @@ export function translationTick(
   config: TranslationConfig,
   drain = true,
 ): TranslationRequest[] {
-  if (globalThis.location.hostname !== 'web.whatsapp.com') return [];
+  if (
+    globalThis.location.hostname !== 'web.whatsapp.com' ||
+    !document.body ||
+    !document.head
+  )
+    return [];
   const page = window as any;
+  const revision = 8;
+  const previous = page.__zlTranslation;
+  if (previous && (previous.revision !== revision || !previous.ready)) {
+    // Long-lived webviews may outlive the host renderer. Retire old callbacks
+    // before installing new ones, while retaining successful page translations.
+    previous.config = { ...previous.config, incoming: false, outgoing: false };
+    previous.approved = null;
+    previous.pending?.clear();
+    previous.queue = [];
+    previous.observer?.disconnect();
+    for (const listener of previous.listeners || [])
+      listener.target.removeEventListener(
+        listener.type,
+        listener.handler,
+        listener.capture,
+      );
+    for (const container of document.querySelectorAll<HTMLElement>(
+      '[data-zl-translation]',
+    )) {
+      const record = previous.controls?.get(container);
+      if (
+        record?.status === 'done' &&
+        record.cacheKey &&
+        record.label?.textContent?.trim()
+      )
+        previous.memo?.set(record.cacheKey, record.label.textContent);
+      container.remove();
+    }
+    page.__zlTranslation = undefined;
+  }
   if (!page.__zlTranslation) {
     const state: any = {
+      revision,
+      listeners: [],
       queue: [],
       pending: new Map(),
       sequence: 0,
@@ -28,12 +65,29 @@ export function translationTick(
       incoming: new WeakMap(),
       controls: new WeakMap(),
       activeChat: '',
-      memo: new Map(),
+      memo: previous?.memo instanceof Map ? previous.memo : new Map(),
       dirty: true,
       lastScan: 0,
       settleUntil: 0,
     };
     page.__zlTranslation = state;
+    while (state.memo.size > 800)
+      state.memo.delete(state.memo.keys().next().value);
+    const listen = (
+      target: any,
+      type: string,
+      handler: any,
+      options?: boolean | AddEventListenerOptions,
+    ) => {
+      target.addEventListener(type, handler, options);
+      state.listeners.push({
+        target,
+        type,
+        handler,
+        capture:
+          typeof options === 'boolean' ? options : Boolean(options?.capture),
+      });
+    };
     // Emoji decorators can be IMG/contenteditable=false nodes. innerText alone
     // loses them, so read only message text and reconstruct emoji alt characters.
     state.readText = (root: Node): string => {
@@ -107,11 +161,11 @@ export function translationTick(
       );
     };
     const sendSelector =
-      '[aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send"], [data-icon^="wds-ic-send-"], [data-icon^="send-"], [data-testid="compose-btn-send"], [data-testid="media-send"], [data-testid="media-editor-send"]';
+      'button[aria-label^="Send "][aria-label$=" selected"], [role="button"][aria-label^="Send "][aria-label$=" selected"], [aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send"], [data-icon^="wds-ic-send-"], [data-icon^="send-"], [data-testid="compose-btn-send"], [data-testid="media-send"], [data-testid="media-editor-send"]';
     const editDialogSelector =
       '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"], [role="dialog"], [data-animate-modal-popup="true"]';
     const editConfirmSelector =
-      '[data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-icon^="wds-ic-checkmark-"], [data-icon^="checkmark-"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"], [aria-label="Save changes"], [aria-label="保存修改"]';
+      'button[aria-label="Send edited message"], [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-icon^="wds-ic-checkmark-"], [data-icon^="checkmark-"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"], [aria-label="Save changes"], [aria-label="保存修改"]';
     const editSubmitSelector = `${sendSelector}, ${editConfirmSelector}`;
     const editorSelector =
       '[contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]';
@@ -221,7 +275,10 @@ export function translationTick(
             );
           if (
             root.querySelector(sendSelector) &&
-            (media || (caption && root.matches('[role="dialog"]')))
+            (media ||
+              (caption &&
+                (root.matches('[role="dialog"]') ||
+                  Boolean(root.closest('[data-testid="drawer-middle"]')))))
           ) {
             if (!state.mediaRoots.has(root)) {
               state.mediaSequence += 1;
@@ -343,6 +400,22 @@ export function translationTick(
         : undefined;
     };
     const composer = () => composerContext()?.input;
+    state.inspectComposer = () => {
+      const current = composerContext();
+      return current
+        ? {
+            recognized: true,
+            kind:
+              current.editing === true
+                ? 'edit'
+                : current.editing === false
+                  ? 'text'
+                  : 'media',
+            editor: current.input.tagName,
+            root: current.root.tagName,
+          }
+        : { recognized: false };
+    };
     state.contextKey = (input: HTMLElement) => {
       const context = composerContext();
       return context?.input === input ? context.key : undefined;
@@ -666,9 +739,9 @@ export function translationTick(
       'mouseup',
       'click',
     ])
-      window.addEventListener(type, translationControl, true);
+      listen(window, type, translationControl, true);
     for (const type of [...submissionEvents, 'keydown'])
-      window.addEventListener(type, intercept, true);
+      listen(window, type, intercept, true);
     const clearApproval = () => {
       state.approved = null;
       state.failedReplacement = null;
@@ -677,7 +750,8 @@ export function translationTick(
     // A whole-draft replacement is a new message, even when Chromium emits a
     // single input event and the editor never has an observable empty value.
     // Partial corrections still keep the second-click confirmation flow.
-    window.addEventListener(
+    listen(
+      window,
       'beforeinput',
       event => {
         const input = state.approved?.input as HTMLElement | undefined;
@@ -697,7 +771,8 @@ export function translationTick(
       },
       true,
     );
-    window.addEventListener(
+    listen(
+      window,
       'input',
       event => {
         const input = state.approved?.input as HTMLElement | undefined;
@@ -746,7 +821,8 @@ export function translationTick(
     });
     state.activeChat = chatKey();
     state.previewBlockedChat = config.preview ? state.activeChat : undefined;
-    document.addEventListener(
+    listen(
+      document,
       'scroll',
       () => {
         state.dirty = true;
@@ -760,6 +836,7 @@ export function translationTick(
       attributes: true,
       attributeFilter: ['title', 'data-id'],
     });
+    state.ready = true;
   }
   const state = page.__zlTranslation;
   if (
@@ -1214,6 +1291,147 @@ export function translationResult(
   return false;
 }
 
+// Read structural metadata only: never copy text, URLs, filenames, contact IDs
+// or credentials into the diagnostic report.
+/* eslint-disable unicorn/consistent-function-scoping -- This function is serialized into the guest and must not capture module helpers. */
+export function translationSurfaceDiagnostics() {
+  const state = (window as any).__zlTranslation;
+  const layout = (window as any).__zlChatListLayout;
+  const describe = (node: Element) => ({
+    tag: node.tagName,
+    role: node.getAttribute('role'),
+    attributes: node
+      .getAttributeNames()
+      .filter(name => name.startsWith('data-')),
+    classes: [...node.classList],
+  });
+  const bounds = (node?: Element) => {
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  };
+  const visible = (node: Element) =>
+    node.getClientRects().length > 0 &&
+    getComputedStyle(node).visibility !== 'hidden' &&
+    !node.closest('[aria-hidden="true"]');
+  const editors = [
+    ...document.querySelectorAll<HTMLElement>('[contenteditable]'),
+  ]
+    .filter(node => node.isContentEditable && visible(node))
+    .slice(0, 12)
+    .map(node => {
+      const ancestors: (ReturnType<typeof describe> & {
+        bounds: ReturnType<typeof bounds>;
+      })[] = [];
+      for (
+        let parent: Element | null = node, depth = 0;
+        parent && depth < 18;
+        parent = parent.parentElement, depth += 1
+      )
+        ancestors.push({ ...describe(parent), bounds: bounds(parent) });
+      return {
+        ...describe(node),
+        editable: node.getAttribute('contenteditable'),
+        focused: node === document.activeElement,
+        ancestors,
+      };
+    });
+  const controls = [
+    ...document.querySelectorAll<HTMLElement>(
+      'button,[role="button"],[type="submit"]',
+    ),
+  ]
+    .filter(node => visible(node))
+    // Popups precede the chat in WhatsApp's DOM. Taking the last controls
+    // alone drops the save/send button when a long conversation is open.
+    .sort((a, b) => {
+      const popup = (node: HTMLElement) =>
+        Boolean(
+          node.closest(
+            '[role="dialog"], [data-testid="edit-message-modal"], [data-testid="media-editor"], [data-testid="confirm-popup"], [data-testid="drawer-middle"]',
+          ),
+        );
+      return Number(popup(b)) - Number(popup(a));
+    })
+    .slice(0, 60)
+    .map(node => ({
+      ...describe(node),
+      bounds: bounds(node),
+      icons: [...node.querySelectorAll<HTMLElement>('[data-icon]')].map(
+        icon => icon.dataset.icon,
+      ),
+      iconTestIds: [...node.querySelectorAll<HTMLElement>('[data-testid]')].map(
+        icon => icon.dataset.testid,
+      ),
+      testId: node.dataset.testid,
+      sendLabel:
+        /^(?:send(?: \d+ selected)?|send message|发送|发送消息|enviar|enviar mensagem)$/i.test(
+          node.getAttribute('aria-label') || '',
+        ),
+      saveLabel:
+        /^(?:send edited message|save|save changes|confirm|保存|确认|保存修改|salvar|guardar)$/i.test(
+          node.getAttribute('aria-label') || '',
+        ),
+    }));
+  const pane = layout?.pane as HTMLElement | undefined;
+  const height = pane?.getBoundingClientRect().height || window.innerHeight;
+  // Native drawer layers can be siblings of the resized pane, so include
+  // them explicitly rather than inspecting only descendants of the pane.
+  const structural = [
+    ...document.querySelectorAll<HTMLElement>('[data-testid="drawer-middle"]'),
+    ...(pane
+      ? [pane, ...pane.querySelectorAll<HTMLElement>('div,section,main')]
+      : []),
+  ];
+  const seams = structural
+    .filter(node => node.getBoundingClientRect().height >= height * 0.7)
+    .slice(0, 40)
+    .map(node => {
+      const style = getComputedStyle(node);
+      const paint = (css: CSSStyleDeclaration) => ({
+        borderLeft: [css.borderLeftWidth, css.borderLeftColor],
+        borderRight: [css.borderRightWidth, css.borderRightColor],
+        boxShadow: css.boxShadow,
+        outline: [css.outlineWidth, css.outlineStyle, css.outlineColor],
+        background: css.backgroundColor,
+        hasBackgroundImage: css.backgroundImage !== 'none',
+        width: css.width,
+        height: css.height,
+        left: css.left,
+        right: css.right,
+      });
+      return {
+        ...describe(node),
+        bounds: bounds(node),
+        paint: paint(style),
+        before: paint(getComputedStyle(node, '::before')),
+        after: paint(getComputedStyle(node, '::after')),
+      };
+    });
+  return {
+    format: 1,
+    injectedRevision: state?.revision ?? null,
+    outgoing: state?.config?.outgoing ?? null,
+    incoming: state?.config?.incoming ?? null,
+    source: state?.config?.source ?? null,
+    target: state?.config?.sendTarget ?? null,
+    composer: state?.inspectComposer?.() ?? null,
+    adapterReady: Boolean(state?.ready),
+    listenerCount: state?.listeners?.length ?? null,
+    editorCount: editors.length,
+    editors,
+    controls,
+    layout: {
+      revision: layout?.revision ?? null,
+      column: bounds(layout?.column),
+      pane: bounds(pane),
+      seams,
+    },
+  };
+}
+
+/* eslint-enable unicorn/consistent-function-scoping */
+
 export function translationDiagnostics() {
   const state = (window as any).__zlTranslation;
   const selectors = [
@@ -1229,7 +1447,7 @@ export function translationDiagnostics() {
     '[data-zl-translation-text]',
   ];
   return {
-    version: 7,
+    version: 8,
     cachedEntries: state?.memo?.size ?? 0,
     deferredPreview: Boolean(
       state?.config?.preview &&
