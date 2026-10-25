@@ -69,6 +69,41 @@ try {
       `document.querySelectorAll('.zl-picks__item').length===1 && !!document.querySelector('[data-recipe-id="gmail"]')`,
       'recommendation search',
     );
+    await evaluate(
+      `(()=>{const input=document.querySelector('.zl-picks input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'');input.dispatchEvent(new Event('input',{bubbles:true}));return true})()`,
+    );
+    await wait(
+      `document.querySelectorAll('.recipe-teaser').length===16`,
+      'all original service buttons restored after search',
+    );
+    const cards = await evaluate(
+      `(()=>{const cards=[...document.querySelectorAll('.recipe-teaser')];const calendar=cards.find(n=>n.dataset.recipeId==='google-calendar');return {ids:cards.map(n=>n.dataset.recipeId),buttons:cards.every(n=>n.tagName==='BUTTON'),aliases:calendar.querySelector('.recipe-teaser__alias_label')?.textContent,rows:cards.map(n=>Math.round(n.getBoundingClientRect().top))}})()`,
+    );
+    assert.deepEqual(cards.ids, [
+      'discord',
+      'meta-business-suite',
+      'gitter',
+      'gmail',
+      'google-calendar',
+      'hangouts',
+      'mattermost',
+      'messenger',
+      'proton-mail',
+      'skype',
+      'slack',
+      'telegram',
+      'trello',
+      'tweetdeck',
+      'wechat',
+      'whatsapp',
+    ]);
+    assert(cards.buttons);
+    assert(cards.aliases.includes('gCalendar'));
+    assert.equal(
+      new Set(cards.rows).size,
+      4,
+      'original four-column card layout',
+    );
     await click('[data-recipe-id="gmail"]');
     await wait(
       `window.ferdium.stores.router.location.pathname==='/settings/services/add/gmail' && !!document.querySelector('form')`,

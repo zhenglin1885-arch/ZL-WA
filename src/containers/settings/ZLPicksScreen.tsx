@@ -1,7 +1,7 @@
 import { inject, observer } from 'mobx-react';
 import { Component } from 'react';
-import { Link } from 'react-router-dom';
 import type { StoresProps } from '../../@types/ferdium-components.types';
+import RecipeItem from '../../components/settings/recipes/RecipeItem';
 import SearchInput from '../../components/ui/SearchInput';
 import { H1 } from '../../components/ui/headline';
 
@@ -31,26 +31,26 @@ class ZLPicksScreen extends Component<
         <div className="settings__header">
           <H1>可用的服务</H1>
         </div>
-        <div className="settings__body zl-picks">
+        <div className="settings__body recipes zl-picks">
           <SearchInput
             placeholder="搜索服务"
             onChange={value => this.setState({ needle: value })}
             onReset={() => this.setState({ needle: '' })}
           />
-          <div className="zl-picks__navigation">
+          <div className="recipes__navigation zl-picks__navigation">
             <span className="badge badge--primary">ZL Picks</span>
           </div>
-          <div className="zl-picks__list">
+          <div className="recipes__list zl-picks__list">
             {recipes.map(recipe => (
-              <Link
+              <RecipeItem
                 key={recipe.id}
-                to={`/settings/services/add/${recipe.id}`}
-                className="zl-picks__item"
-                data-recipe-id={recipe.id}
-              >
-                <img src={recipe.icons?.svg} alt="" />
-                <span>{recipe.name}</span>
-              </Link>
+                recipe={recipe}
+                onClick={() =>
+                  this.props.actions!.service.showAddServiceInterface({
+                    recipeId: recipe.id,
+                  })
+                }
+              />
             ))}
           </div>
           {recipes.length === 0 && <p role="status">没有匹配的服务</p>}
