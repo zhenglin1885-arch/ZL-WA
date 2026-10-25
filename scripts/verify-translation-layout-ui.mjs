@@ -56,13 +56,13 @@ try {
           if(requests.length!==2)throw Error('Expected two manual translation jobs');
           const captionRequest=requests.find(job=>job.text.includes('Lucas'));
           if(!captionRequest?.text.includes('约17:22见面')||captionRequest.text.includes('Read more')||(captionRequest.text.match(/17:22/g)||[]).length!==1)throw Error('Timestamp leaked into translation or legitimate message time removed: '+JSON.stringify(captionRequest?.text));
-          requests.forEach(job=>result(job.id,job.token,{text:${JSON.stringify(input.translated)},error:false}));
+          requests.forEach(job=>result(job.id,job.token,{text:${JSON.stringify(input.translated)},error:false,...(job.text.includes('Lucas')?{provider:'MyMemory'}:{})}));
           await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
           const after=widths();
           const containers=[...document.querySelectorAll('[data-zl-translation]')];
           const labels=[...document.querySelectorAll('[data-zl-translation-text]')];
           const font=getComputedStyle(source).font;
-          const details={before,manual,after,paragraphs:labels.every(n=>n.textContent===${JSON.stringify(input.translated)}),fonts:containers.every(n=>getComputedStyle(n).font===font),wraps:labels.every(n=>getComputedStyle(n).whiteSpace==='pre-wrap'),noOverflow:containers.every(n=>n.scrollWidth<=n.clientWidth+1),originalUntouched:source.getAttribute('style')===originalStyle};
+          const details={before,manual,after,backupNotPinned:window.__zlTranslation.memo.size===1,paragraphs:labels.every(n=>n.textContent===${JSON.stringify(input.translated)}),fonts:containers.every(n=>getComputedStyle(n).font===font),wraps:labels.every(n=>getComputedStyle(n).whiteSpace==='pre-wrap'),noOverflow:containers.every(n=>n.scrollWidth<=n.clientWidth+1),originalUntouched:source.getAttribute('style')===originalStyle};
           containers.forEach(n=>n.style.contain='none');
           details.uncontained=widths();
           containers.forEach(n=>n.style.contain='inline-size');
@@ -103,6 +103,7 @@ try {
     ),
   );
   for (const flag of [
+    'backupNotPinned',
     'paragraphs',
     'fonts',
     'wraps',

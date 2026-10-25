@@ -69,11 +69,13 @@ it('answers only the exact account HTTP proxy challenge once, never origin authe
   expect(callback).toHaveBeenLastCalledWith();
   const response: any = new EventEmitter();
   response.statusCode = 200;
+  response.headers = { 'retry-after': ['45'] };
   request.emit('response', response);
   response.emit('data', Buffer.from('translated'));
   response.emit('end');
   const translated = await result;
   expect(await translated.text()).toBe('translated');
+  expect(translated.headers.get('retry-after')).toBe('45');
   expect(require('electron').net.request).toHaveBeenLastCalledWith(
     expect.objectContaining({ session: s, redirect: 'error' }),
   );

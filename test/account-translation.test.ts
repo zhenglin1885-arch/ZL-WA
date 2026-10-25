@@ -159,3 +159,20 @@ it.each(['12', new Date(Date.now() + 30_000).toUTCString(), 'invalid'])(
     if (retry === 'invalid') expect(result.retryAfterMs).toBe(0);
   },
 );
+
+it.each([403, 408, 429, 500, 502, 503, 504])(
+  'marks Google HTTP %s as eligible for automatic fallback',
+  async status => {
+    const result = await translateAccount(
+      async () =>
+        new Response('{}', { status, headers: { 'Retry-After': '17' } }),
+      'hello',
+      'zh-CN',
+      'Google',
+      'en',
+    );
+    expect(result.error).toBe(true);
+    expect(Boolean(result.rateLimited || result.unavailable)).toBe(true);
+    expect(result.retryAfterMs).toBe(17_000);
+  },
+);

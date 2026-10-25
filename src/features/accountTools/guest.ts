@@ -1002,7 +1002,12 @@ export function translationTick(
 export function translationResult(
   id: number,
   token: string,
-  result: { text: string; error: boolean; message?: string },
+  result: {
+    text: string;
+    error: boolean;
+    message?: string;
+    provider?: 'MyMemory';
+  },
   phase: 'prepare' | 'selected' | 'complete' = 'prepare',
 ): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
@@ -1131,7 +1136,12 @@ export function translationResult(
     record.refresh.disabled = false;
     record.refresh.removeAttribute('aria-busy');
   }
-  if (!result.error && result.text?.trim() && job.cacheKey)
+  if (
+    !result.error &&
+    result.text?.trim() &&
+    job.cacheKey &&
+    result.provider !== 'MyMemory'
+  )
     state.remember(job.cacheKey, result.text);
   state.dirty = true;
   if (

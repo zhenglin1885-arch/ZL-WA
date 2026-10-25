@@ -12,7 +12,6 @@ import type Request from '../stores/lib/Request';
 
 export interface FerdiumStores {
   app: AppStore;
-  communityRecipes: CommunityRecipesStore;
   features: FeaturesStore;
   globalError: GlobalErrorStore;
   recipePreviews: RecipePreviewsStore;
@@ -29,7 +28,6 @@ export interface FerdiumStores {
 
 export interface Stores {
   app: AppStore;
-  communityRecipes: CommunityRecipesStore;
   features: FeaturesStore;
   globalError: GlobalErrorStore;
   recipePreviews: RecipePreviewsStore;
@@ -136,10 +134,6 @@ export interface AppStore extends TypedStore {
   debugInfo: () => void;
   enableLongPressServiceHint: boolean;
   getSandbox: (serviceId: string) => string | undefined;
-}
-
-interface CommunityRecipesStore extends TypedStore {
-  communityRecipes: () => void;
 }
 
 interface FeaturesStore extends TypedStore {

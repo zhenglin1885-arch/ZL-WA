@@ -55,10 +55,6 @@ const messages = defineMessages({
     id: 'settings.services.noServicesAdded',
     defaultMessage: 'Start by adding a service.',
   },
-  discoverServices: {
-    id: 'settings.services.discoverServices',
-    defaultMessage: 'Discover services',
-  },
 });
 
 const styles = {
@@ -202,8 +198,8 @@ class EditWorkspaceForm extends Component<IProps> {
                   </span>
                   {intl.formatMessage(messages.noServicesAdded)}
                 </p>
-                <Link to="/settings/recipes" className="button">
-                  {intl.formatMessage(messages.discoverServices)}
+                <Link to="/settings/services/add/whatsapp" className="button">
+                  新增 WhatsApp 会话
                 </Link>
               </div>
             ) : (

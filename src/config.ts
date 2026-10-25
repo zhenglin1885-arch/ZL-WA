@@ -543,10 +543,7 @@ export const DEFAULT_WINDOW_OPTIONS = {
 
 export const GITHUB_FRANZ_URL = 'https://github.com/meetfranz';
 export const GITHUB_FERDIUM_URL = 'https://github.com/ferdium';
-export const FERDIUM_SERVICE_REQUEST = `${GITHUB_FERDIUM_URL}/ferdium-app/issues`;
 export const FERDIUM_TRANSLATION = 'https://crowdin.com/project/ferdium-app';
-export const FERDIUM_DEV_DOCS =
-  'https://github.com/ferdium/ferdium-recipes/blob/main/docs/integration.md';
 
 export const FILE_SYSTEM_SETTINGS_TYPES = ['app', 'proxy', 'shortcuts'];
 

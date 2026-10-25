@@ -13,11 +13,11 @@ import DownloadManagerWindow from './containers/download-manager/DownloadManager
 import AppLayoutContainer from './containers/layout/AppLayoutContainer';
 import EditServiceScreen from './containers/settings/EditServiceScreen';
 import EditSettingsScreen from './containers/settings/EditSettingsScreen';
-import RecipesScreen from './containers/settings/RecipesScreen';
 import ReleaseNotesScreen from './containers/settings/ReleaseNotesScreen';
 import ReleaseNotesWindow from './containers/settings/ReleaseNotesWindow';
 import ServicesScreen from './containers/settings/ServicesScreen';
 import SettingsWindow from './containers/settings/SettingsWindow';
+import ZLPicksScreen from './containers/settings/ZLPicksScreen';
 import SupportFerdiumScreen from './containers/settings/SupportScreen';
 import { WORKSPACES_ROUTES } from './features/workspaces/constants';
 import EditWorkspaceScreen from './features/workspaces/containers/EditWorkspaceScreen';
@@ -77,11 +77,11 @@ class FerdiumRoutes extends Component<IProps> {
             >
               <Route
                 path="/settings/recipes"
-                element={<RecipesScreen {...this.props} />}
+                element={<ZLPicksScreen {...this.props} />}
               />
               <Route
                 path="/settings/recipes/:filter"
-                element={<RecipesScreen {...this.props} />}
+                element={<Navigate to="/settings/services" replace />}
               />
               <Route
                 path="/settings/services"

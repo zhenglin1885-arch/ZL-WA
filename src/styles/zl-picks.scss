@@ -1,0 +1,45 @@
+@use './config.scss' as *;
+
+.zl-picks__navigation {
+  margin-bottom: 25px;
+}
+
+.zl-picks__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 20px;
+}
+
+.zl-picks__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 150px;
+  padding: 12px;
+  border-radius: $theme-border-radius;
+  background: $theme-gray-lightest;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+
+  img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+  }
+
+  &:hover {
+    background: $theme-gray-lighter;
+  }
+}
+
+.theme__dark .zl-picks__item {
+  background: $dark-theme-gray-dark;
+  color: $dark-theme-text-color;
+
+  &:hover {
+    background: $dark-theme-gray;
+  }
+}

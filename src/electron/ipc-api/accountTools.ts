@@ -17,6 +17,7 @@ import {
   type SendRecord,
 } from '../../features/accountTools/config';
 import { translateAccount } from '../accountTranslation';
+import { translateMyMemory } from '../myMemoryTranslation';
 import { createSocksBridge } from '../socksProxy';
 import { accountTransport } from '../accountTransport';
 import TranslationQueue from '../../features/accountTools/TranslationQueue';
@@ -484,54 +485,80 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       const pendingKey = `${key}:${direction}:${force ? 'fresh' : 'cached'}`;
       const pending = pendingTranslations.get(pendingKey);
       if (pending) return pending;
+      const fallbackKey = TranslationCache.key([key, 'MyMemory']);
+      if (!force && engine === 'Google' && translations.googleUnavailable()) {
+        const previous = translationCache.get(fallbackKey);
+        if (previous !== undefined)
+          return { text: previous, error: false, provider: 'MyMemory' };
+      }
+      const perform = async (useFallback = false) => {
+        if (
+          JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
+          !get(id).translation[direction] ||
+          JSON.stringify([get(id).providers, get(id).encryptedKeys]) !==
+            JSON.stringify([savedConfig.providers, savedConfig.encryptedKeys])
+        )
+          return { text: '', error: true };
+        await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
+        const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
+        const config = get(id);
+        if (
+          JSON.stringify([
+            config.translation,
+            config.providers,
+            config.encryptedKeys,
+          ]) !==
+          JSON.stringify([t, savedConfig.providers, savedConfig.encryptedKeys])
+        )
+          return { text: '', error: true };
+        const s = session.fromPartition(`persist:service-${id}`);
+        const repeated = translationCache.get(key);
+        if (!force && repeated !== undefined)
+          return { text: repeated, error: false, fromCache: true };
+        if (useFallback && !force) {
+          const previous = translationCache.get(fallbackKey);
+          if (previous !== undefined)
+            return {
+              text: previous,
+              error: false,
+              provider: 'MyMemory' as const,
+              fromCache: true,
+            };
+        }
+        const transport = accountTransport(s, config.proxy, () =>
+          decrypt(config.encryptedPassword),
+        );
+        const target =
+          direction === 'incoming' ? t.receiveTarget : t.sendTarget;
+        const source = direction === 'incoming' ? t.receiveSource : t.source;
+        const result = useFallback
+          ? await translateMyMemory(transport, text, target, source)
+          : await translateAccount(
+              transport,
+              text,
+              target,
+              engine,
+              source,
+              decrypt(config.encryptedKeys?.[engine]),
+              config.providers?.[engine]?.model,
+            );
+        if (!result.error && data.accounts[id])
+          translationCache.set(
+            id,
+            useFallback ? fallbackKey : key,
+            result.text,
+            useFallback ? 300_000 : undefined,
+          );
+        return result;
+      };
       const request = translations.enqueue(
         id,
         direction === 'outgoing',
-        async () => {
-          if (
-            JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
-            !get(id).translation[direction] ||
-            JSON.stringify([get(id).providers, get(id).encryptedKeys]) !==
-              JSON.stringify([savedConfig.providers, savedConfig.encryptedKeys])
-          )
-            return { text: '', error: true };
-          await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
-          const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
-          const config = get(id);
-          if (
-            JSON.stringify([
-              config.translation,
-              config.providers,
-              config.encryptedKeys,
-            ]) !==
-            JSON.stringify([
-              t,
-              savedConfig.providers,
-              savedConfig.encryptedKeys,
-            ])
-          )
-            return { text: '', error: true };
-          const s = session.fromPartition(`persist:service-${id}`);
-          const repeated = translationCache.get(key);
-          if (!force && repeated !== undefined)
-            return { text: repeated, error: false };
-          const result = await translateAccount(
-            accountTransport(s, config.proxy, () =>
-              decrypt(config.encryptedPassword),
-            ),
-            text,
-            direction === 'incoming' ? t.receiveTarget : t.sendTarget,
-            engine,
-            direction === 'incoming' ? t.receiveSource : t.source,
-            decrypt(config.encryptedKeys?.[engine]),
-            config.providers?.[engine]?.model,
-          );
-          if (!result.error && data.accounts[id])
-            translationCache.set(id, key, result.text);
-          return result;
-        },
+        () => perform(),
         engine === 'Google',
+        engine === 'Google' ? () => perform(true) : undefined,
       );
+
       pendingTranslations.set(pendingKey, request);
       try {
         return await request;
@@ -568,6 +595,17 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
             config.providers?.[engine]?.model,
           ),
         engine === 'Google',
+        engine === 'Google'
+          ? () =>
+              translateMyMemory(
+                accountTransport(s, config.proxy, () =>
+                  decrypt(config.encryptedPassword),
+                ),
+                'Hello, this is a translation connection test.',
+                direction === 'incoming' ? t.receiveTarget : t.sendTarget,
+                'en',
+              )
+          : undefined,
       );
     },
   );

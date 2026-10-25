@@ -51,7 +51,9 @@ try {
   const catalogue = await evaluate(
     `(async()=>{const list=await window.ferdium.api.recipePreviews.all();return list.map(r=>({id:r.id,icon:r.icons.svg}))})()`,
   );
-  assert(catalogue.length > 400);
+  assert.equal(catalogue.length, 16);
+  assert(catalogue.some(r => r.id === 'whatsapp'));
+  assert(catalogue.some(r => r.id === 'discord'));
   assert(catalogue.every(r => !/^https?:/.test(r.icon)));
   const results = await evaluate(
     `window.ferdium.api.recipePreviews.search('whatsapp')`,
@@ -59,8 +61,8 @@ try {
   assert(results.some(r => r.id === 'whatsapp'));
   await evaluate(`window.ferdium.stores.router.push('/settings/recipes');true`);
   await wait(
-    `document.querySelectorAll('.recipe-teaser').length>0`,
-    'local services catalogue',
+    `document.querySelectorAll('.zl-picks__item').length===16`,
+    'ZL Picks displays original supported recommendations',
   );
   await evaluate(
     `window.ferdium.stores.router.push('/settings/services');true`,
@@ -84,7 +86,7 @@ try {
     'cloud route redirect',
   );
   console.log(
-    'PASS bundled catalogue/search/icons work offline; cloud account and server routes removed',
+    'PASS WhatsApp recipe/search/icon work offline; catalogue and cloud routes removed',
   );
   if (restore) {
     const expected = JSON.parse(readFileSync(manifestPath, 'utf8'));

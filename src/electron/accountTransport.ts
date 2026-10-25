@@ -71,12 +71,16 @@ export function accountTransport(
         });
         response.on('end', () => {
           cleanup();
+          const responseHeaders = new Headers();
+          for (const [name, values] of Object.entries(response.headers || {}))
+            for (const value of Array.isArray(values) ? values : [values])
+              if (value !== undefined) responseHeaders.append(name, value);
           resolve(
             new Response(
               response.statusCode === 204 || init.method === 'HEAD'
                 ? null
                 : Buffer.concat(chunks),
-              { status: response.statusCode },
+              { status: response.statusCode, headers: responseHeaders },
             ),
           );
         });

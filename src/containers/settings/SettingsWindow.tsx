@@ -6,7 +6,6 @@ import type { StoresProps } from '../../@types/ferdium-components.types';
 import Layout from '../../components/settings/SettingsLayout';
 import Navigation from '../../components/settings/navigation/SettingsNavigation';
 import ErrorBoundary from '../../components/util/ErrorBoundary';
-import { workspaceStore } from '../../features/workspaces';
 
 interface IProps extends Partial<StoresProps> {}
 
@@ -39,10 +38,7 @@ class SettingsContainer extends Component<IProps> {
     const { closeSettings } = this.props.actions!.ui;
 
     const navigation: ReactElement = (
-      <Navigation
-        serviceCount={stores!.services.all.length}
-        workspaceCount={workspaceStore.workspaces.length}
-      />
+      <Navigation serviceCount={stores!.services.all.length} />
     );
 
     return ReactDOM.createPortal(

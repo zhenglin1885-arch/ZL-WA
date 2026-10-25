@@ -213,6 +213,36 @@ describe('two-phase native editor replacement guards', () => {
     expect(state.dirty).toBe(true);
     expect(input.innerText).toBe('edited while translating');
   });
+  it.each([undefined, 'MyMemory'] as const)(
+    'shows %s results without pinning backup results in the Google page cache',
+    provider => {
+      const record: any = {
+        container: { isConnected: true },
+        label: {},
+        button: { style: {} },
+      };
+      state.config = { incoming: true };
+      state.incoming = new WeakMap([[input, record]]);
+      state.remember = jest.fn();
+      state.restore = jest.fn();
+      state.pending.set(3, {
+        direction: 'incoming',
+        input,
+        text: input.innerText,
+        record,
+        cacheKey: 'primary-key',
+      });
+      translationResult(3, 'document-1', {
+        text: 'translated preview',
+        error: false,
+        provider,
+      });
+      expect(state.restore).toHaveBeenCalledWith(record, 'translated preview');
+      expect(state.remember).toHaveBeenCalledTimes(
+        provider === 'MyMemory' ? 0 : 1,
+      );
+    },
+  );
   it('retains a clickable retry on failed message preview and hides the button on success', () => {
     const record: any = {
       container: { isConnected: true, style: {} },

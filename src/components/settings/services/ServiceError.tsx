@@ -18,10 +18,6 @@ const messages = defineMessages({
     id: 'settings.service.error.goBack',
     defaultMessage: 'Back to services',
   },
-  availableServices: {
-    id: 'settings.service.form.availableServices',
-    defaultMessage: 'Available services',
-  },
   errorMessage: {
     id: 'settings.service.error.message',
     defaultMessage: 'Could not load service recipe.',
@@ -39,8 +35,8 @@ class ServiceError extends Component<IProps> {
       <div className="settings__main">
         <div className="settings__header">
           <span className="settings__header-item">
-            <Link to="/settings/recipes">
-              {intl.formatMessage(messages.availableServices)}
+            <Link to="/settings/services">
+              {intl.formatMessage(messages.goBack)}
             </Link>
           </span>
           <span className="separator" />

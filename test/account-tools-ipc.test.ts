@@ -269,6 +269,99 @@ describe('privileged account tools IPC', () => {
     expect(translate).toHaveBeenCalledTimes(1);
     enqueued.mockRestore();
   });
+  it('automatically uses MyMemory during Google cooldown, reuses only its separate cache, and returns to Google without changing settings', async () => {
+    jest.useFakeTimers();
+    try {
+      const config = defaultTools();
+      config.translation.incoming = true;
+      await invoke('save', 'account-1', config);
+      const google =
+        require('../src/electron/accountTranslation').translateAccount;
+      google
+        .mockResolvedValueOnce({ text: '', error: true, rateLimited: true })
+        .mockResolvedValue({ text: 'Google restored', error: false });
+      const s = sessions.get('persist:service-account-1');
+      s.fetch.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              responseStatus: 200,
+              quotaFinished: false,
+              responseData: { translatedText: 'MyMemory result' },
+            }),
+          ),
+      );
+      expect(
+        await invoke('translate', 'account-1', 'Hello', 'incoming'),
+      ).toMatchObject({
+        text: 'MyMemory result',
+        provider: 'MyMemory',
+        error: false,
+      });
+      expect(google).toHaveBeenCalledTimes(1);
+      expect(s.fetch).toHaveBeenCalledTimes(1);
+      expect(
+        new URL(s.fetch.mock.calls[0][0]).searchParams.get('langpair'),
+      ).toBe('en|zh-CN');
+      expect(
+        await invoke('translate', 'account-1', 'Hello', 'incoming'),
+      ).toMatchObject({ text: 'MyMemory result' });
+      expect(s.fetch).toHaveBeenCalledTimes(1);
+      const waiting = invoke(
+        'translate',
+        'account-1',
+        'Are you OK',
+        'incoming',
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+      await waiting;
+      expect(google).toHaveBeenCalledTimes(1);
+      expect(s.fetch).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(4000);
+      expect(
+        await invoke('translate', 'account-1', 'Hello', 'incoming'),
+      ).toEqual({ text: 'Google restored', error: false });
+      expect(google).toHaveBeenCalledTimes(2);
+      expect(s.fetch).toHaveBeenCalledTimes(2);
+      expect(invoke('get', 'account-1').translation.receiveEngine).toBe(
+        'Google',
+      );
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+  it('rechecks disabled translation settings before a queued MyMemory fallback can run', async () => {
+    jest.useFakeTimers();
+    try {
+      const config = defaultTools();
+      config.translation.incoming = true;
+      await invoke('save', 'account-1', config);
+      const google =
+        require('../src/electron/accountTranslation').translateAccount;
+      google.mockResolvedValue({ text: '', error: true, rateLimited: true });
+      const s = sessions.get('persist:service-account-1');
+      s.fetch.mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              responseStatus: 200,
+              responseData: { translatedText: 'backup' },
+            }),
+          ),
+      );
+      await invoke('translate', 'account-1', 'Hello', 'incoming');
+      const queued = invoke('translate', 'account-1', 'Are you OK', 'incoming');
+      config.translation.incoming = false;
+      await invoke('save', 'account-1', config);
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(await queued).toMatchObject({ text: '', error: true });
+      expect(s.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
   it('does not associate a new model response with an old cache key while session preparation is pending', async () => {
     const config = defaultTools();
     config.translation.incoming = true;

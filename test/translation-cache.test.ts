@@ -52,6 +52,20 @@ describe('bounded persistent translation cache', () => {
     expect(restored.get(key)).toBeUndefined();
     expect(restored.get(other)).toBe('two');
   });
+  it('expires temporary fallback entries after restart without expiring primary translations', () => {
+    const cache = new TranslationCache(path);
+    const primary = TranslationCache.key(['account', 'Google']);
+    const backup = TranslationCache.key(['account', 'MyMemory']);
+    cache.set('account', primary, 'primary');
+    cache.set('account', backup, 'temporary', 1000);
+    cache.flush();
+    const restored = new TranslationCache(path);
+    expect(restored.get(backup)).toBe('temporary');
+    jest.advanceTimersByTime(1001);
+    expect(restored.get(backup)).toBeUndefined();
+    expect(restored.get(primary)).toBe('primary');
+    expect(new TranslationCache(path).get(backup)).toBeUndefined();
+  });
   it('uses bounded LRU storage rather than clearing every cached translation at once', () => {
     const cache = new TranslationCache(path, 2, 10);
     const [a, b, c] = ['a', 'b', 'c'].map(v => TranslationCache.key([v]));

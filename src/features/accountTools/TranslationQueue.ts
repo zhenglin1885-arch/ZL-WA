@@ -2,6 +2,8 @@ interface ProviderResult {
   text?: string;
   error?: boolean;
   rateLimited?: boolean;
+  unavailable?: boolean;
+  fromCache?: boolean;
   retryAfterMs?: number;
   message?: string;
 }
@@ -11,6 +13,7 @@ interface Job {
   google: boolean;
   attempts: number;
   run: () => Promise<unknown>;
+  fallback?: () => Promise<unknown>;
   resolve: (value: any) => void;
   reject: (error: unknown) => void;
 }
@@ -27,31 +30,39 @@ export default class TranslationQueue {
 
   private googleFailures = 0;
 
+  private googleCooldown = 0;
+
   private timer?: ReturnType<typeof setTimeout>;
 
   private disposed = false;
 
-  enqueue<T>(
+  enqueue<T, F = T>(
     accountId: string,
     outgoing: boolean,
     run: () => Promise<T>,
     google = false,
-  ): Promise<T> {
+    fallback?: () => Promise<F>,
+  ): Promise<T | F> {
     if (this.disposed) return Promise.reject(new Error('翻译队列已停止'));
     if (this.waiting.length >= 240)
       return Promise.reject(new Error('翻译队列繁忙，请稍后重试'));
-    return new Promise<T>((resolve, reject) => {
+    return new Promise<T | F>((resolve, reject) => {
       this.waiting.push({
         accountId,
         outgoing,
         run,
         google,
+        fallback,
         attempts: 0,
         resolve,
         reject,
       });
       this.drain();
     });
+  }
+
+  googleUnavailable(): boolean {
+    return Date.now() < this.googleCooldown;
   }
 
   dispose(): void {
@@ -64,7 +75,10 @@ export default class TranslationQueue {
   private eligible(job: Job): boolean {
     return (
       !this.active.has(job.accountId) &&
-      (!job.google || (!this.googleActive && Date.now() >= this.googleNext))
+      (!job.google ||
+        (!this.googleActive &&
+          Date.now() >= this.googleNext &&
+          (Boolean(job.fallback) || !this.googleUnavailable())))
     );
   }
 
@@ -86,7 +100,22 @@ export default class TranslationQueue {
       ) {
         this.timer = setTimeout(
           () => this.drain(),
-          Math.min(2_147_483_647, Math.max(1, this.googleNext - Date.now())),
+          Math.min(
+            2_147_483_647,
+            Math.max(
+              1,
+              Math.min(
+                ...this.waiting
+                  .filter(job => job.google && !this.active.has(job.accountId))
+                  .map(job =>
+                    Math.max(
+                      this.googleNext,
+                      job.fallback ? 0 : this.googleCooldown,
+                    ),
+                  ),
+              ) - Date.now(),
+            ),
+          ),
         );
       }
       return;
@@ -98,23 +127,40 @@ export default class TranslationQueue {
       this.googleActive = true;
       this.googleNext = Date.now() + 1000;
     }
+    const usingFallback =
+      job.google && Boolean(job.fallback) && this.googleUnavailable();
     let task: Promise<unknown>;
     try {
-      task = job.run();
+      task = usingFallback ? job.fallback!() : job.run();
     } catch (error) {
       task = Promise.reject(error);
     }
     task
-      .then(value => {
+      .then(async value => {
         const result = value as ProviderResult | undefined;
-        if (job.google && result?.rateLimited) {
+        if (
+          job.google &&
+          !usingFallback &&
+          (result?.rateLimited || result?.unavailable)
+        ) {
           this.googleFailures += 1;
           const backoff = Math.min(
             120_000,
             5000 * 2 ** Math.min(5, this.googleFailures - 1),
           );
           const delay = Math.max(backoff, result.retryAfterMs || 0);
-          this.googleNext = Math.max(this.googleNext, Date.now() + delay);
+          this.googleCooldown = Math.max(
+            this.googleCooldown,
+            Date.now() + delay,
+          );
+          if (job.fallback && !this.disposed) {
+            try {
+              job.resolve(await job.fallback());
+            } catch (error) {
+              job.reject(error);
+            }
+            return;
+          }
           if (job.attempts < 3 && !this.disposed) {
             this.waiting.unshift(job);
             return;
@@ -125,7 +171,15 @@ export default class TranslationQueue {
             message: `Google 请求过于频繁，已自动重试 ${job.attempts - 1} 次；请约 ${Math.ceil(delay / 1000)} 秒后重试`,
           });
         } else {
-          if (job.google && result?.error === false) this.googleFailures = 0;
+          if (
+            job.google &&
+            !usingFallback &&
+            result?.error === false &&
+            !result.fromCache
+          ) {
+            this.googleFailures = 0;
+            this.googleCooldown = 0;
+          }
           job.resolve(value);
         }
       }, job.reject)

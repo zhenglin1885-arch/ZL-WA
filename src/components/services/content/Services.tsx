@@ -173,7 +173,7 @@ class Services extends Component<IProps, IState> {
                 style={{ maxHeight: '50vh' }}
               />
               <Appear transitionName="slideUp">
-                <Link to="/settings/recipes" className="button">
+                <Link to="/settings/services/add/whatsapp" className="button">
                   {intl.formatMessage(messages.getStarted)}
                 </Link>
               </Appear>

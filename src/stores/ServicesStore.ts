@@ -523,7 +523,7 @@ export default class ServicesStore extends TypedStore {
     this.actionStatus = response.status || [];
 
     if (redirect) {
-      this.stores.router.push('/settings/recipes');
+      this.stores.router.push('/settings/services');
     }
   }
 

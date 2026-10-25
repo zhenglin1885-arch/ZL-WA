@@ -60,10 +60,6 @@ const messages = defineMessages({
     id: 'settings.service.form.recipeVersion',
     defaultMessage: 'Recipe version:',
   },
-  availableServices: {
-    id: 'settings.service.form.availableServices',
-    defaultMessage: 'Available services',
-  },
   yourServices: {
     id: 'settings.service.form.yourServices',
     defaultMessage: 'Your services',
@@ -300,15 +296,9 @@ class EditServiceForm extends Component<IProps, IState> {
       <div className="settings__main">
         <div className="settings__header">
           <span className="settings__header-item">
-            {action === 'add' ? (
-              <Link to="/settings/recipes">
-                {intl.formatMessage(messages.availableServices)}
-              </Link>
-            ) : (
-              <Link to="/settings/services">
-                {intl.formatMessage(messages.yourServices)}
-              </Link>
-            )}
+            <Link to="/settings/services">
+              {intl.formatMessage(messages.yourServices)}
+            </Link>
           </span>
           <span className="separator" />
           <span className="settings__header-item">

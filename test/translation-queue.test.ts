@@ -188,3 +188,104 @@ describe('Google pacing and backoff', () => {
     expect(google).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('automatic MyMemory fallback lane', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+  it('switches immediately on Google 429, skips Google during cooldown, then probes Google first and recovers', async () => {
+    const queue = new TranslationQueue();
+    const google = jest
+      .fn()
+      .mockResolvedValueOnce({ text: '', error: true, rateLimited: true })
+      .mockResolvedValue({ text: 'Google result', error: false });
+    const fallback = jest.fn(async () => ({
+      text: 'MyMemory result',
+      error: false,
+      provider: 'MyMemory',
+    }));
+    const first = queue.enqueue('a', true, google, true, fallback);
+    expect(await first).toMatchObject({
+      text: 'MyMemory result',
+      error: false,
+    });
+    expect(google).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(1);
+    expect(queue.googleUnavailable()).toBe(true);
+    const next = queue.enqueue('b', false, google, true, fallback);
+    await jest.advanceTimersByTimeAsync(1000);
+    await next;
+    expect(google).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(4000);
+    const recovered = queue.enqueue('c', true, google, true, fallback);
+    expect(await recovered).toEqual({ text: 'Google result', error: false });
+    expect(google).toHaveBeenCalledTimes(2);
+    expect(fallback).toHaveBeenCalledTimes(2);
+    expect(queue.googleUnavailable()).toBe(false);
+    queue.dispose();
+  });
+  it('also switches on temporary unavailability and respects longer server Retry-After', async () => {
+    const queue = new TranslationQueue();
+    const google = jest.fn(async () => ({
+      text: '',
+      error: true,
+      unavailable: true,
+      retryAfterMs: 20_000,
+    }));
+    const fallback = jest.fn(async () => ({ text: 'backup', error: false }));
+    await queue.enqueue('a', false, google, true, fallback);
+    await jest.advanceTimersByTimeAsync(10_000);
+    await queue.enqueue('b', true, google, true, fallback);
+    expect(google).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(10_000);
+    await queue.enqueue('c', true, google, true, fallback);
+    expect(google).toHaveBeenCalledTimes(2);
+    queue.dispose();
+  });
+  it('does not use the backup when Google works or for a non-temporary error', async () => {
+    const queue = new TranslationQueue();
+    const backup = jest.fn();
+    await queue.enqueue(
+      'a',
+      true,
+      async () => ({ text: 'primary', error: false }),
+      true,
+      backup,
+    );
+    const invalid = queue.enqueue(
+      'b',
+      true,
+      async () => ({ text: '', error: true, message: 'invalid language' }),
+      true,
+      backup,
+    );
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(await invalid).toMatchObject({ error: true });
+    expect(backup).not.toHaveBeenCalled();
+    queue.dispose();
+  });
+  it('surfaces backup failure without repeated Google attempts or leaked pending jobs', async () => {
+    const queue = new TranslationQueue();
+    const google = jest.fn(async () => ({
+      text: '',
+      error: true,
+      rateLimited: true,
+    }));
+    const backup = jest.fn(async () => ({
+      text: '',
+      error: true,
+      message: 'both unavailable',
+    }));
+    expect(await queue.enqueue('a', true, google, true, backup)).toMatchObject({
+      text: '',
+      error: true,
+    });
+    expect(google).toHaveBeenCalledTimes(1);
+    expect(backup).toHaveBeenCalledTimes(1);
+    queue.dispose();
+  });
+});

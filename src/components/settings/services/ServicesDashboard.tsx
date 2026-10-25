@@ -33,10 +33,6 @@ const messages = defineMessages({
     id: 'settings.services.nothingFound',
     defaultMessage: 'Sorry, but no service matched your search term.',
   },
-  discoverServices: {
-    id: 'settings.services.discoverServices',
-    defaultMessage: 'Discover services',
-  },
   servicesRequestFailed: {
     id: 'settings.services.servicesRequestFailed',
     defaultMessage: 'Could not load your services',
@@ -143,8 +139,8 @@ class ServicesDashboard extends Component<IProps> {
                 </span>
                 {intl.formatMessage(messages.noServicesAdded)}
               </p>
-              <Link to="/settings/recipes" className="button">
-                {intl.formatMessage(messages.discoverServices)}
+              <Link to="/settings/services/add/whatsapp" className="button">
+                新增 WhatsApp 会话
               </Link>
             </div>
           )}
@@ -181,7 +177,7 @@ class ServicesDashboard extends Component<IProps> {
           )}
 
           <FAB className="FAB-class">
-            <Link to="/settings/recipes">+</Link>
+            <Link to="/settings/services/add/whatsapp">+</Link>
           </FAB>
         </div>
       </div>

@@ -10,17 +10,9 @@ import type { StoresProps } from '../../../@types/ferdium-components.types';
 import globalMessages from '../../../i18n/globalMessages';
 
 const messages = defineMessages({
-  availableServices: {
-    id: 'settings.navigation.availableServices',
-    defaultMessage: 'Available services',
-  },
   yourServices: {
     id: 'settings.navigation.yourServices',
     defaultMessage: 'Your services',
-  },
-  yourWorkspaces: {
-    id: 'settings.navigation.yourWorkspaces',
-    defaultMessage: 'Your workspaces',
   },
   account: {
     id: 'settings.navigation.account',
@@ -42,14 +34,13 @@ const messages = defineMessages({
 
 interface IProps extends Partial<StoresProps>, WrappedComponentProps {
   serviceCount: number;
-  workspaceCount: number;
 }
 
 @inject('stores', 'actions')
 @observer
 class SettingsNavigation extends Component<IProps> {
   render() {
-    const { serviceCount, workspaceCount, stores, intl } = this.props;
+    const { serviceCount, stores, intl } = this.props;
 
     return (
       <div className="settings-navigation">
@@ -61,7 +52,7 @@ class SettingsNavigation extends Component<IProps> {
               : 'settings-navigation__link'
           }
         >
-          {intl.formatMessage(messages.availableServices)}
+          可用的服务
         </NavLink>
         <NavLink
           to="/settings/services"
@@ -73,17 +64,6 @@ class SettingsNavigation extends Component<IProps> {
         >
           {intl.formatMessage(messages.yourServices)}{' '}
           <span className="badge">{serviceCount}</span>
-        </NavLink>
-        <NavLink
-          to="/settings/workspaces"
-          className={({ isActive }) =>
-            isActive
-              ? 'settings-navigation__link is-active'
-              : 'settings-navigation__link'
-          }
-        >
-          {intl.formatMessage(messages.yourWorkspaces)}{' '}
-          <span className="badge">{workspaceCount}</span>
         </NavLink>
         <NavLink
           to="/settings/app"

@@ -15,6 +15,7 @@ export async function translateAccount(
   error: boolean;
   message?: string;
   rateLimited?: boolean;
+  unavailable?: boolean;
   retryAfterMs?: number;
 }> {
   try {
@@ -112,6 +113,15 @@ export async function translateAccount(
               retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : 0,
             }
           : {}),
+        ...(engine === 'Google' &&
+        (response.status === 408 ||
+          response.status === 403 ||
+          response.status >= 500)
+          ? {
+              unavailable: true,
+              retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : 0,
+            }
+          : {}),
         message: `${engine} HTTP ${response.status}：${response.status === 401 || response.status === 403 ? '请检查 API Key、访问权限或网络地区' : response.status === 429 ? (engine === 'Google' ? '请求过于频繁，Google 已临时限流，请稍后重试' : '额度不足或请求过于频繁') : '请检查通道和账号代理连接'}`,
       };
     }
@@ -146,6 +156,7 @@ export async function translateAccount(
     return {
       text: '',
       error: true,
+      ...(engine === 'Google' ? { unavailable: true } : {}),
       message:
         error instanceof Error &&
         ['需要填写', '模型名称无效', '未返回有效'].some(s =>

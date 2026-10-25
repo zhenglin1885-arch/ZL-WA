@@ -10,6 +10,7 @@ import livereload from 'gulp-livereload';
 import moment from 'moment';
 import * as buildInfo from 'preval-build-info';
 import glob from 'tiny-glob';
+import prepareZLPicksRecipes from './build-helpers/prepare-zl-picks-recipes.cjs';
 
 const { log } = console;
 
@@ -26,18 +27,6 @@ const staticAssets = () => [
     assets: {
       from: ['./src/internal-server/ace'],
       to: ['./internal-server'],
-    },
-  }),
-  copy({
-    assets: {
-      from: ['./recipes/archives/*.tar.gz'],
-      to: ['./recipes'],
-    },
-  }),
-  copy({
-    assets: {
-      from: ['./recipes/*.json'],
-      to: ['./recipes'],
     },
   }),
   copy({
@@ -64,17 +53,7 @@ const copyManualAssets = () => {
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir);
   }
-  // Bundle catalogue icons instead of fetching the upstream recipe CDN.
-  fs.mkdirSync(`${outDir}/recipes/icons`, { recursive: true });
-  for (const recipe of JSON.parse(
-    fs.readFileSync('recipes/all.json', 'utf8'),
-  )) {
-    if (!/^\w[\w.-]{0,127}$/.test(recipe.id) || recipe.id.includes('..'))
-      throw new Error('Invalid recipe ID');
-    const source = `recipes/recipes/${recipe.id}/icon.svg`;
-    if (fs.existsSync(source))
-      fs.copyFileSync(source, `${outDir}/recipes/icons/${recipe.id}.svg`);
-  }
+  prepareZLPicksRecipes('recipes', `${outDir}/recipes`);
   fs.copyFileSync('package.json', `${outDir}/package.json`);
   fs.copyFileSync('electron-builder.npmrc', `${outDir}/.npmrc`);
   fs.copyFileSync(
