@@ -214,7 +214,7 @@ describe('two-phase native editor replacement guards', () => {
     expect(input.innerText).toBe('edited while translating');
   });
   it.each([undefined, 'MyMemory'] as const)(
-    'shows %s results without pinning backup results in the Google page cache',
+    'retains successful %s results in the page cache',
     provider => {
       const record: any = {
         container: { isConnected: true },
@@ -238,8 +238,9 @@ describe('two-phase native editor replacement guards', () => {
         provider,
       });
       expect(state.restore).toHaveBeenCalledWith(record, 'translated preview');
-      expect(state.remember).toHaveBeenCalledTimes(
-        provider === 'MyMemory' ? 0 : 1,
+      expect(state.remember).toHaveBeenCalledWith(
+        'primary-key',
+        'translated preview',
       );
     },
   );

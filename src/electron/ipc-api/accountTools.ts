@@ -486,10 +486,14 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       const pending = pendingTranslations.get(pendingKey);
       if (pending) return pending;
       const fallbackKey = TranslationCache.key([key, 'MyMemory']);
-      if (!force && engine === 'Google' && translations.googleUnavailable()) {
+      if (!force && engine === 'Google') {
         const previous = translationCache.get(fallbackKey);
-        if (previous !== undefined)
+        if (previous !== undefined) {
+          // Migrate a still-available legacy backup entry to the normal
+          // persistent cache. Successful translations never expire by time.
+          translationCache.set(id, key, previous);
           return { text: previous, error: false, provider: 'MyMemory' };
+        }
       }
       const perform = async (useFallback = false) => {
         if (
@@ -543,12 +547,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
               config.providers?.[engine]?.model,
             );
         if (!result.error && data.accounts[id])
-          translationCache.set(
-            id,
-            useFallback ? fallbackKey : key,
-            result.text,
-            useFallback ? 300_000 : undefined,
-          );
+          translationCache.set(id, key, result.text);
         return result;
       };
       const request = translations.enqueue(

@@ -17,6 +17,7 @@ import { listBulkContacts } from './bulkGuest';
 import { ensureBulkLibrary, getBulkQueue } from './bulkRuntime';
 import { validateBulkSpec } from './BulkQueue';
 import BulkHistory from './BulkHistory';
+import BulkMediaPreview from './BulkMediaPreview';
 import { normalizeAccountConfig } from '../accounts/state';
 import { normalizeBulkPreferences } from './bulkPreferences';
 
@@ -536,6 +537,7 @@ const BulkSend = observer(
                       选择{messageTypes.find(([value]) => value === type)?.[1]}
                       附件
                     </Button>
+                    {media && <BulkMediaPreview media={media} type={type} />}
                     {media ? (
                       <p>
                         {media.name}

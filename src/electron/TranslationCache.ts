@@ -5,7 +5,6 @@ interface Entry {
   accountId: string;
   key: string;
   text: string;
-  expiresAt?: number;
 }
 // Original message text and provider credentials are hashed, never persisted here.
 export default class TranslationCache {
@@ -29,12 +28,18 @@ export default class TranslationCache {
               typeof entry.accountId === 'string' &&
               /^[\da-f]{64}$/.test(entry.key) &&
               typeof entry.text === 'string' &&
-              entry.text.length <= 24_000 &&
-              (entry.expiresAt === undefined ||
-                (Number.isFinite(entry.expiresAt) &&
-                  entry.expiresAt > Date.now()))
+              entry.text.length <= 24_000
             )
-              this.put(entry, false);
+              // Preserve successful legacy backup translations as well,
+              // including entries previously marked with a short-lived TTL.
+              this.put(
+                {
+                  accountId: entry.accountId,
+                  key: entry.key,
+                  text: entry.text,
+                },
+                false,
+              );
       }
     } catch {
       /* A broken cache must never prevent application startup. */
@@ -48,28 +53,14 @@ export default class TranslationCache {
   get(key: string): string | undefined {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
-    if (entry.expiresAt !== undefined && entry.expiresAt <= Date.now()) {
-      this.entries.delete(key);
-      this.bytes -= Buffer.byteLength(entry.text, 'utf8');
-      this.schedule();
-      return undefined;
-    }
     this.entries.delete(key);
     this.entries.set(key, entry);
     return entry.text;
   }
 
-  set(accountId: string, key: string, text: string, ttlMs?: number) {
+  set(accountId: string, key: string, text: string) {
     if (text.trim() && text.length <= 24_000)
-      this.put(
-        {
-          accountId,
-          key,
-          text,
-          ...(ttlMs === undefined ? {} : { expiresAt: Date.now() + ttlMs }),
-        },
-        true,
-      );
+      this.put({ accountId, key, text }, true);
   }
 
   private put(entry: Entry, schedule: boolean) {

@@ -27,8 +27,13 @@ try {
     assert(previews.some(recipe => recipe.id === 'discord'));
     assert(previews.some(recipe => recipe.id === 'whatsapp'));
     await evaluate(
-      `window.ferdium.stores.router.push('/settings/recipes');true`,
+      `window.ferdium.stores.router.push('/settings/services');true`,
     );
+    await wait(
+      `!!document.querySelector('.FAB-class a[href="#/settings/recipes"]')`,
+      'original plus button target',
+    );
+    await click('.FAB-class a');
     await wait(
       `document.querySelectorAll('.zl-picks__item').length===16`,
       'ZL Picks original recommendations',

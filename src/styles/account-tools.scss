@@ -982,3 +982,23 @@ body:not(.theme__dark) .account-tools-rail button {
 body:not(.theme__dark) .account-tools-rail button[aria-pressed='true'] {
   background: #0754da;
 }
+
+.bulk-media-preview {
+  margin: 8px 0;
+
+  img {
+    display: block;
+    max-width: min(190px, 100%);
+    max-height: 190px;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+
+  video {
+    display: block;
+    width: 336px;
+    max-width: 100%;
+    max-height: 190px;
+    border-radius: 6px;
+  }
+}

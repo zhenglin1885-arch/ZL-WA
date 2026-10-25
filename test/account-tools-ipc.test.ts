@@ -269,7 +269,7 @@ describe('privileged account tools IPC', () => {
     expect(translate).toHaveBeenCalledTimes(1);
     enqueued.mockRestore();
   });
-  it('automatically uses MyMemory during Google cooldown, reuses only its separate cache, and returns to Google without changing settings', async () => {
+  it('persists successful MyMemory results across cooldown and restart; uses Google for new content and supports explicit refresh', async () => {
     jest.useFakeTimers();
     try {
       const config = defaultTools();
@@ -320,9 +320,44 @@ describe('privileged account tools IPC', () => {
       await jest.advanceTimersByTimeAsync(4000);
       expect(
         await invoke('translate', 'account-1', 'Hello', 'incoming'),
+      ).toMatchObject({ text: 'MyMemory result', error: false });
+      expect(google).toHaveBeenCalledTimes(1);
+      // Even after the old five-minute backup TTL, a restart can reuse the
+      // persisted successful translation without a new provider request.
+      beforeQuit();
+      const Cache = require('../src/electron/TranslationCache').default;
+      const persisted = new Cache(join(root, 'translation-cache.json'));
+      const key = Cache.key([
+        'account-1',
+        'Google',
+        'auto',
+        'zh-CN',
+        invoke('get', 'account-1').providers.Google.model,
+        undefined,
+        'Hello',
+      ]);
+      await jest.advanceTimersByTimeAsync(301_000);
+      expect(persisted.get(key)).toBe('MyMemory result');
+      require('../src/electron/ipc-api/accountTools').default({ mainWindow });
+      expect(
+        await invoke('translate', 'account-1', 'Hello', 'incoming'),
+      ).toMatchObject({ text: 'MyMemory result', error: false });
+      expect(google).toHaveBeenCalledTimes(1);
+      expect(
+        await invoke('translate', 'account-1', 'Hello again', 'incoming'),
       ).toEqual({ text: 'Google restored', error: false });
       expect(google).toHaveBeenCalledTimes(2);
       expect(s.fetch).toHaveBeenCalledTimes(2);
+      const refresh = invoke(
+        'translate',
+        'account-1',
+        'Hello',
+        'incoming',
+        true,
+      );
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(await refresh).toEqual({ text: 'Google restored', error: false });
+      expect(google).toHaveBeenCalledTimes(3);
       expect(invoke('get', 'account-1').translation.receiveEngine).toBe(
         'Google',
       );
@@ -330,6 +365,54 @@ describe('privileged account tools IPC', () => {
       jest.clearAllTimers();
       jest.useRealTimers();
     }
+  });
+  it('recovers legacy expired backup translations without a provider request or settings changes', async () => {
+    const config = defaultTools();
+    config.translation.incoming = true;
+    await invoke('save', 'account-1', config);
+    beforeQuit();
+    const Cache = require('../src/electron/TranslationCache').default;
+    const primary = Cache.key([
+      'account-1',
+      'Google',
+      'auto',
+      'zh-CN',
+      invoke('get', 'account-1').providers.Google.model,
+      undefined,
+      'Legacy source',
+    ]);
+    const legacy = Cache.key([primary, 'MyMemory']);
+    writeFileSync(
+      join(root, 'translation-cache.json'),
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            accountId: 'account-1',
+            key: legacy,
+            text: '保留旧译文',
+            expiresAt: Date.now() - 3_600_000,
+          },
+        ],
+      }),
+    );
+    require('../src/electron/ipc-api/accountTools').default({ mainWindow });
+    expect(
+      await invoke('translate', 'account-1', 'Legacy source', 'incoming'),
+    ).toMatchObject({ text: '保留旧译文', error: false });
+    expect(
+      require('../src/electron/accountTranslation').translateAccount,
+    ).not.toHaveBeenCalled();
+    expect(
+      sessions.get('persist:service-account-1').fetch,
+    ).not.toHaveBeenCalled();
+    beforeQuit();
+    expect(new Cache(join(root, 'translation-cache.json')).get(primary)).toBe(
+      '保留旧译文',
+    );
+    expect(
+      readFileSync(join(root, 'translation-cache.json'), 'utf8'),
+    ).not.toContain('expiresAt');
   });
   it('rechecks disabled translation settings before a queued MyMemory fallback can run', async () => {
     jest.useFakeTimers();

@@ -52,19 +52,32 @@ describe('bounded persistent translation cache', () => {
     expect(restored.get(key)).toBeUndefined();
     expect(restored.get(other)).toBe('two');
   });
-  it('expires temporary fallback entries after restart without expiring primary translations', () => {
-    const cache = new TranslationCache(path);
+  it('preserves old backup translations with expired TTL metadata across restart', () => {
     const primary = TranslationCache.key(['account', 'Google']);
     const backup = TranslationCache.key(['account', 'MyMemory']);
-    cache.set('account', primary, 'primary');
-    cache.set('account', backup, 'temporary', 1000);
-    cache.flush();
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        entries: [
+          { accountId: 'account', key: primary, text: 'primary' },
+          {
+            accountId: 'account',
+            key: backup,
+            text: 'saved backup',
+            expiresAt: Date.now() - 1000,
+          },
+        ],
+      }),
+    );
     const restored = new TranslationCache(path);
-    expect(restored.get(backup)).toBe('temporary');
-    jest.advanceTimersByTime(1001);
-    expect(restored.get(backup)).toBeUndefined();
+    expect(restored.get(backup)).toBe('saved backup');
+    jest.advanceTimersByTime(24 * 60 * 60 * 1000);
+    expect(restored.get(backup)).toBe('saved backup');
     expect(restored.get(primary)).toBe('primary');
-    expect(new TranslationCache(path).get(backup)).toBeUndefined();
+    restored.flush();
+    expect(new TranslationCache(path).get(backup)).toBe('saved backup');
+    expect(readFileSync(path, 'utf8')).not.toContain('expiresAt');
   });
   it('uses bounded LRU storage rather than clearing every cached translation at once', () => {
     const cache = new TranslationCache(path, 2, 10);

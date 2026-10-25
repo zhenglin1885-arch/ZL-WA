@@ -45,7 +45,7 @@ try {
             button: 'left',
             clickCount: 1,
           });
-          await exec('true');
+          await exec('new Promise(resolve=>requestAnimationFrame(resolve))');
           win.webContents.sendInputEvent({
             type: 'mouseMove',
             x: p.x + delta,
@@ -56,6 +56,7 @@ try {
           await exec(
             `(()=>{const line=getComputedStyle(document.querySelector('[data-zl-chat-divider]'));if(line.backgroundColor!=='rgba(0, 0, 0, 0)'||line.boxShadow!=='none'||parseFloat(line.borderLeftWidth)!==0)throw Error('Divider must stay invisible while dragging');return true})()`,
           );
+          await exec('new Promise(resolve=>requestAnimationFrame(resolve))');
           win.webContents.sendInputEvent({
             type: 'mouseUp',
             x: p.x + delta,
@@ -177,7 +178,7 @@ try {
     );
     assert(
       Math.abs(after.column.width - before.column.width - 70) < 1,
-      `${variant}: native drag must widen list`,
+      `${variant}: native drag must widen list ${JSON.stringify({ before: before.column, after: after.column })}`,
     );
     assert(
       Math.abs(after.side.width - before.side.width - 70) < 1,

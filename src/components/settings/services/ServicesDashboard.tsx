@@ -177,7 +177,7 @@ class ServicesDashboard extends Component<IProps> {
           )}
 
           <FAB className="FAB-class">
-            <Link to="/settings/services/add/whatsapp">+</Link>
+            <Link to="/settings/recipes">+</Link>
           </FAB>
         </div>
       </div>

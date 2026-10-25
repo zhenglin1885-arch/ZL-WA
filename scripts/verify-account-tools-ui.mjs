@@ -126,7 +126,7 @@ try {
     'window.ferdium.stores.services.all.map(s=>s.id)',
   );
   await vm(
-    `globalThis.__zlSessionPrototype = Object.getPrototypeOf(process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').session.defaultSession);globalThis.__zlToolsFetch=globalThis.__zlSessionPrototype.fetch;globalThis.__zlSessionPrototype.fetch=async function(url,options){if(String(url).startsWith('https://translate.googleapis.com/')){globalThis.__zlTranslationCalls=(globalThis.__zlTranslationCalls||0)+1;globalThis.__zlLastTranslationInput=new URLSearchParams(options.body).get('q');if(globalThis.__zlTranslateFail) throw Error('synthetic translation failure');await new Promise(r=>setTimeout(r,350));return new Response(JSON.stringify([[[new URLSearchParams(options.body).get('tl')==='zh-CN'?'你好，这是本地测试消息。':new URLSearchParams(options.body).get('q')==='你好🐭'?'Hello 🐭':'Hello translated']]]),{status:200,headers:{'Content-Type':'application/json'}})}return globalThis.__zlToolsFetch.call(this,url,options)};true`,
+    `globalThis.__zlSessionPrototype = Object.getPrototypeOf(process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json')('electron').session.defaultSession);globalThis.__zlToolsFetch=globalThis.__zlSessionPrototype.fetch;globalThis.__zlSessionPrototype.fetch=async function(url,options){if(String(url).startsWith('https://translate.googleapis.com/')){globalThis.__zlTranslationCalls=(globalThis.__zlTranslationCalls||0)+1;globalThis.__zlLastTranslationInput=new URLSearchParams(options.body).get('q');if(globalThis.__zlTranslateFail)return new Response('{}',{status:400});await new Promise(r=>setTimeout(r,350));return new Response(JSON.stringify([[[new URLSearchParams(options.body).get('tl')==='zh-CN'?'你好，这是本地测试消息。':new URLSearchParams(options.body).get('q')==='你好🐭'?'Hello 🐭':'Hello translated']]]),{status:200,headers:{'Content-Type':'application/json'}})}return globalThis.__zlToolsFetch.call(this,url,options)};true`,
   );
   mainPatched = true;
   for (let i = 0; i < 2; i += 1) {
@@ -1061,7 +1061,7 @@ try {
       `fixture.openEdit('编辑翻译失败 ${Date.now()}');document.querySelector('#fixture-edit [data-icon="checkmark"]').click();true`,
     );
     await wait(
-      `${service(first)}.webview.executeJavaScript('document.querySelector("#zl-translation-status")?.textContent.includes("失败")')`,
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#zl-translation-status")?.textContent.includes("消息尚未发送")')`,
       'edit translation failure stays unsaved',
     );
     assert.equal(await guest(first, 'fixture.edited.length'), 2);
@@ -1428,7 +1428,7 @@ try {
         first,
         `document.querySelector('#zl-translation-status').textContent`,
       ),
-      /失败/,
+      /消息尚未发送/,
     );
     await vm(`globalThis.__zlTranslateFail=false;true`);
     // Edit while translation is pending: stale result must never replace it.
@@ -1751,6 +1751,10 @@ try {
     await wait(
       `document.querySelector('.bulk-media')?.textContent.includes('fixture.png')`,
       'native picked and copied image',
+    );
+    await wait(
+      `document.querySelector('.bulk-media-preview img')?.naturalWidth>0`,
+      'selected bulk image shows a preview',
     );
     await clickText('检查并发送');
     await clickText('确认发送');
@@ -2437,6 +2441,15 @@ try {
   );
 } catch (error) {
   console.error(error);
+  for (const id of ids) {
+    console.error(
+      'Fixture composer diagnostic',
+      await guest(
+        id,
+        `({status:document.querySelector('#zl-translation-status')?.textContent,editor:document.querySelector('#fixture-media [contenteditable],#fixture-edit [contenteditable]')?.textContent,busy:window.__zlTranslation?.busy,pending:window.__zlTranslation?.pending?.size,approved:!!window.__zlTranslation?.approved})`,
+      ).catch(() => ({ unavailable: true })),
+    );
+  }
   console.error(
     'Dialog diagnostic',
     await evaluate(

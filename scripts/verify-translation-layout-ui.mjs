@@ -62,7 +62,7 @@ try {
           const containers=[...document.querySelectorAll('[data-zl-translation]')];
           const labels=[...document.querySelectorAll('[data-zl-translation-text]')];
           const font=getComputedStyle(source).font;
-          const details={before,manual,after,backupNotPinned:window.__zlTranslation.memo.size===1,paragraphs:labels.every(n=>n.textContent===${JSON.stringify(input.translated)}),fonts:containers.every(n=>getComputedStyle(n).font===font),wraps:labels.every(n=>getComputedStyle(n).whiteSpace==='pre-wrap'),noOverflow:containers.every(n=>n.scrollWidth<=n.clientWidth+1),originalUntouched:source.getAttribute('style')===originalStyle};
+          const details={before,manual,after,backupCached:window.__zlTranslation.memo.size===2,paragraphs:labels.every(n=>n.textContent===${JSON.stringify(input.translated)}),fonts:containers.every(n=>getComputedStyle(n).font===font),wraps:labels.every(n=>getComputedStyle(n).whiteSpace==='pre-wrap'),noOverflow:containers.every(n=>n.scrollWidth<=n.clientWidth+1),originalUntouched:source.getAttribute('style')===originalStyle};
           containers.forEach(n=>n.style.contain='none');
           details.uncontained=widths();
           containers.forEach(n=>n.style.contain='inline-size');
@@ -103,7 +103,7 @@ try {
     ),
   );
   for (const flag of [
-    'backupNotPinned',
+    'backupCached',
     'paragraphs',
     'fonts',
     'wraps',

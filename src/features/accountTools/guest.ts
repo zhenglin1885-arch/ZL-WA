@@ -110,7 +110,11 @@ export function translationTick(
       '[aria-label="Send message"], [aria-label="发送消息"], [aria-label="Enviar"], [aria-label="Enviar mensagem"], [aria-label="Send"], [aria-label="发送"], [data-icon="send"], [data-icon="wds-ic-send"], [data-icon^="wds-ic-send-"], [data-icon^="send-"], [data-testid="compose-btn-send"], [data-testid="media-send"], [data-testid="media-editor-send"]';
     const editDialogSelector =
       '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"], [role="dialog"], [data-animate-modal-popup="true"]';
-    const editSubmitSelector = `${sendSelector}, [data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-icon^="wds-ic-checkmark-"], [data-icon^="checkmark-"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"]`;
+    const editConfirmSelector =
+      '[data-testid="edit-message-send"], [data-testid="edit-message-submit"], [data-icon="checkmark"], [data-icon="wds-ic-checkmark"], [data-icon="checkmark-large"], [data-icon="wds-ic-checkmark-large"], [data-icon="checkmark-medium"], [data-icon^="wds-ic-checkmark-"], [data-icon^="checkmark-"], [data-testid="edit-message-confirm"], [role="button"][aria-label="Save"], [role="button"][aria-label="Salvar"], [role="button"][aria-label="保存"], button[aria-label="Save"], button[aria-label="保存"], button[aria-label="Confirm"], button[aria-label="确认"], button[aria-label="Salvar"], button[aria-label="Guardar"], [aria-label="Save changes"], [aria-label="保存修改"]';
+    const editSubmitSelector = `${sendSelector}, ${editConfirmSelector}`;
+    const editorSelector =
+      '[contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]';
     const documentSelector =
       '[data-testid="document-preview"], [data-testid="document-thumb"], [data-testid="document-preview-file"], [data-icon="document"], [data-icon="document-filled"], [data-icon^="document-"], [data-icon="wds-ic-document"], [data-icon^="wds-ic-document-"]';
     const visible = (node: HTMLElement) =>
@@ -128,7 +132,7 @@ export function translationTick(
         editing?: boolean;
       }[] = [];
       for (const input of document.querySelectorAll<HTMLElement>(
-        '[contenteditable="true"]',
+        editorSelector,
       )) {
         if (!visible(input)) continue;
         // WhatsApp also renders edit popups without dialog roles or modal
@@ -139,34 +143,35 @@ export function translationTick(
         const roots: HTMLElement[] = [];
         for (
           let root = input.parentElement;
-          root && !root.matches('body, #app, #main');
+          root && !root.matches('body, #app');
           root = root.parentElement
         ) {
-          const marked = root.matches(editDialogSelector);
-          const dismiss = root.querySelector(
-            '[data-icon="x"], [data-icon="x-viewer"], [data-icon="wds-ic-x"], [data-icon^="wds-ic-x-"], button[aria-label="Close"], button[aria-label="关闭"], [role="button"][aria-label="Close"]',
-          );
-          if (marked || dismiss) roots.push(root);
+          // New WhatsApp editors can live directly in #main with neither a
+          // modal marker nor an identifiable close icon. Examine each local
+          // ancestor; title + save control still distinguishes them from chat.
+          roots.push(root);
         }
         const editRoot = roots.find(
           root =>
             root.matches(
               '[data-testid="edit-message-dialog"], [data-testid="edit-message-modal"], [data-testid="edit-msg"]',
             ) ||
-            [
-              ...root.querySelectorAll<HTMLElement>(
-                'header, h1, h2, [role="heading"], [data-testid="dialog-title"], span',
-              ),
-            ].some(
-              node =>
-                !node.closest(
-                  '[contenteditable="true"], [data-id], .message-in, .message-out, [data-zl-translation]',
-                ) && editTitle.test((node.textContent || '').trim()),
-            ) ||
-            /(?:^|\n)\s*(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)\s*(?:\n|$)/i.test(
-              // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading line boundaries distinguish edit dialogs from other popups.
-              root.innerText || '',
-            ),
+            (Boolean(root.querySelector(editConfirmSelector)) &&
+              [
+                ...root.querySelectorAll<HTMLElement>(
+                  'header, h1, h2, [role="heading"], [data-testid="dialog-title"], span, div',
+                ),
+              ].some(
+                node =>
+                  !node.closest(
+                    `${editorSelector}, [data-id], .message-in, .message-out, [data-zl-translation]`,
+                  ) && editTitle.test((node.textContent || '').trim()),
+              )) ||
+            (Boolean(root.querySelector(editConfirmSelector)) &&
+              /(?:^|\n)\s*(?:edit message|编辑消息|编辑信息|編輯訊息|編輯消息|editar mensagem|editar mensaje|modifier le message|nachricht bearbeiten|modifica messaggio|редактировать сообщение)\s*(?:\n|$)/i.test(
+                // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- Visible heading line boundaries distinguish edit dialogs from other popups.
+                root.innerText || '',
+              )),
         );
         if (editRoot?.querySelector(editSubmitSelector)) {
           if (!state.mediaRoots.has(editRoot)) {
@@ -200,11 +205,7 @@ export function translationTick(
             input.getAttribute('aria-label') || '',
           );
         let root = input.parentElement;
-        for (
-          let depth = 0;
-          root && depth < 10 && !root.matches('body, #app, #main');
-          depth += 1, root = root.parentElement
-        ) {
+        for (; root && !root.matches('body, #app'); root = root.parentElement) {
           const media =
             root.matches('[data-testid="media-editor"]') ||
             [
@@ -215,7 +216,7 @@ export function translationTick(
               node =>
                 !input.contains(node) &&
                 !node.closest(
-                  'button, [role="button"], [data-testid*="quoted"], [data-testid="reply-context"], [data-testid="reply-preview"], [data-testid="quoted-message"], blockquote',
+                  'button, [role="button"], header, [data-id], .message-in, .message-out, [data-testid="msg-container"], [data-testid*="quoted"], [data-testid="reply-context"], [data-testid="reply-preview"], [data-testid="quoted-message"], blockquote',
                 ),
             );
           if (
@@ -278,25 +279,33 @@ export function translationTick(
         }
       }
       if (candidates.length > 0) {
-        const targeted =
+        const exact =
           preferred &&
           candidates.find(
-            item =>
-              item.input === preferred ||
-              item.input.contains(preferred) ||
-              item.root.contains(preferred),
+            item => item.input === preferred || item.input.contains(preferred),
           );
-        if (targeted) return targeted;
+        if (exact) return exact;
         const focused = candidates.find(
           item =>
             item.input === document.activeElement ||
             item.input.contains(document.activeElement),
         );
+        const targeted =
+          preferred &&
+          candidates
+            .filter(item => item.root.contains(preferred))
+            .sort((a, b) =>
+              a.root === b.root ? 0 : a.root.contains(b.root) ? 1 : -1,
+            );
+        if (targeted?.length) {
+          if (focused && targeted.includes(focused)) return focused;
+          return targeted[0];
+        }
         return focused || (candidates.length === 1 ? candidates[0] : undefined);
       }
       const inputs = [
         ...document.querySelectorAll<HTMLElement>(
-          '#main footer [contenteditable="true"], #main [data-testid="conversation-compose-box-input"] [contenteditable="true"], #main [data-testid="conversation-compose-box"] [contenteditable="true"]',
+          '#main footer :is([contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]), #main [data-testid="conversation-compose-box-input"] :is([contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]), #main [data-testid="conversation-compose-box"] :is([contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""])',
         ),
       ].filter(node => visible(node));
       const input =
@@ -461,6 +470,27 @@ export function translationTick(
       state.queue = [];
       state.busy = false;
     };
+    const discardStaleOutgoing = (context?: {
+      input: HTMLElement;
+      key: string;
+    }) => {
+      for (const [id, job] of state.pending) {
+        if (job.direction !== 'outgoing') continue;
+        if (
+          !job.input.isConnected ||
+          (context &&
+            (job.input !== context.input ||
+              job.context !== context.key ||
+              job.chat !== chatKey()))
+        ) {
+          state.pending.delete(id);
+          state.queue = state.queue.filter(item => item.id !== id);
+        }
+      }
+      state.busy = [...state.pending.values()].some(
+        job => job.direction === 'outgoing',
+      );
+    };
     const submissionEvents = [
       'pointerdown',
       'mousedown',
@@ -476,11 +506,16 @@ export function translationTick(
       if (event.type === 'pointerdown') blockedSubmission = null;
       const context = composerContext(event.target as Element);
       const input = context?.input;
+      // A cancelled edit/previous attachment must not keep a new composer busy
+      // until its provider request finishes. Its late result is then ignored.
+      discardStaleOutgoing(context);
       if (!input || !context) {
         const target = event.target as Element;
-        const root = target?.closest?.(`footer, ${editDialogSelector}`);
+        const root = target?.closest?.(
+          `footer, ${editDialogSelector}, #main, [data-testid="media-editor"]`,
+        );
         if (
-          root?.querySelector('[contenteditable="true"]') &&
+          root?.querySelector(editorSelector) &&
           ((pointer &&
             target.closest(`${sendSelector}, ${editSubmitSelector}`)) ||
             (event.type === 'keydown' &&
@@ -676,6 +711,7 @@ export function translationTick(
     );
     // Changing chats invalidates an approved composer, even if React reuses its node.
     state.observer = new MutationObserver(changes => {
+      discardStaleOutgoing();
       if (
         state.approved &&
         (!state.approved.input.isConnected ||
@@ -1136,12 +1172,7 @@ export function translationResult(
     record.refresh.disabled = false;
     record.refresh.removeAttribute('aria-busy');
   }
-  if (
-    !result.error &&
-    result.text?.trim() &&
-    job.cacheKey &&
-    result.provider !== 'MyMemory'
-  )
+  if (!result.error && result.text?.trim() && job.cacheKey)
     state.remember(job.cacheKey, result.text);
   state.dirty = true;
   if (
