@@ -24,7 +24,7 @@ export function configureWhatsAppLayout(): boolean {
     page.__zlChatListLayout = state;
     const style = document.createElement('style');
     style.textContent =
-      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;opacity:0;pointer-events:none;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][data-zl-visible="true"],[data-zl-chat-resize]:focus-visible{opacity:1;pointer-events:auto}[data-zl-chat-divider]{position:fixed!important;z-index:2147482999;width:10px;background:transparent;cursor:ew-resize;touch-action:none}[data-zl-chat-divider][data-zl-active="true"]{background:rgba(115,103,240,.35)}[data-zl-chat-divider][hidden],[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
+      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-edge="list"],[data-zl-chat-inner]{border-right-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="pane"],[data-zl-chat-edge="pane"] #main{border-left-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="list"]::after,[data-zl-chat-inner]::after{border-right-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="pane"]::before,[data-zl-chat-edge="pane"] #main::before{border-left-color:transparent!important;box-shadow:none!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;opacity:0;pointer-events:none;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][data-zl-visible="true"],[data-zl-chat-resize]:focus-visible{opacity:1;pointer-events:auto}[data-zl-chat-divider]{position:fixed!important;z-index:2147482999;width:10px;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;cursor:ew-resize;touch-action:none}[data-zl-chat-divider][hidden],[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
     document.head.append(style);
     state.apply = (value: number, persist = false) => {
       const rect = state.column.getBoundingClientRect();
@@ -258,6 +258,8 @@ export function configureWhatsAppLayout(): boolean {
     state.pane !== pane ||
     state.side !== side
   ) {
+    if (state.column) delete state.column.dataset.zlChatEdge;
+    if (state.pane) delete state.pane.dataset.zlChatEdge;
     state.column?.removeAttribute('data-zl-chat-column');
     state.column?.style.removeProperty('--zl-chat-list-width');
     for (const node of state.inner || []) delete node.dataset.zlChatInner;
@@ -278,6 +280,8 @@ export function configureWhatsAppLayout(): boolean {
     }
   }
   state.side = side;
+  state.column.dataset.zlChatEdge = 'list';
+  if (state.pane) state.pane.dataset.zlChatEdge = 'pane';
   if (state.width) state.apply(state.width);
   if (!state.button?.isConnected) {
     const button = document.createElement('button');
@@ -334,9 +338,6 @@ export function configureWhatsAppLayout(): boolean {
       Boolean(
         state.nearBoundary || state.drag || document.activeElement === button,
       ),
-    );
-    state.divider.dataset.zlActive = String(
-      Boolean(state.nearBoundary || state.drag),
     );
     state.divider.style.left = `${Math.round(rect.right - 5)}px`;
     state.divider.style.top = `${Math.round(rect.top)}px`;

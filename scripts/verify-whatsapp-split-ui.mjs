@@ -53,7 +53,9 @@ try {
             button: 'left',
             modifiers: ['leftButtonDown'],
           });
-          await exec('true');
+          await exec(
+            `(()=>{const line=getComputedStyle(document.querySelector('[data-zl-chat-divider]'));if(line.backgroundColor!=='rgba(0, 0, 0, 0)'||line.boxShadow!=='none'||parseFloat(line.borderLeftWidth)!==0)throw Error('Divider must stay invisible while dragging');return true})()`,
+          );
           win.webContents.sendInputEvent({
             type: 'mouseUp',
             x: p.x + delta,
@@ -88,7 +90,7 @@ try {
           #guest{flex:1;min-width:0}#app{height:100%;width:100%;display:${grid ? 'grid' : 'flex'};${grid ? 'grid-template-columns:48px 280px minmax(0,1fr)' : ''}}
           #wa-nav{width:48px;flex:0 0 48px}#list-col{overflow:hidden;width:280px;flex:0 0 280px;padding:8px;border:3px solid gray;min-width:280px}
           #side,.qa-side{width:280px;height:100%;display:flex;flex-direction:column}header,.wa-head{height:72px;flex:none;display:flex;align-items:center;justify-content:space-between;background:#202c33;color:white}
-          #chat-pane,#welcome-pane{height:100%;min-width:400px;width:calc(100% - 328px);flex:0 0 calc(100% - 328px);background:#eee}
+          #chat-pane,#welcome-pane{height:100%;min-width:400px;width:calc(100% - 328px);flex:0 0 calc(100% - 328px);background:#eee;border-left:1px solid #555;box-shadow:inset 1px 0 #555;position:relative}#chat-pane::before,#welcome-pane::before{content:"";position:absolute;left:0;top:0;height:100%;border-left:1px solid #555}
           </style><div id="software-accounts">Software accounts</div><div id="guest"><div id="app"><div id="wa-nav">WA nav</div><div id="list-col" data-testid="chat-list-pane"><div id="${variant === 'no-side-id' ? 'new-side' : 'side'}" class="qa-side"><${nativeHeader}><span>WhatsApp</span><button id="new-chat" aria-label="New chat">+</button></${closeHeader}><div id="pane-side" style="flex:1">Chat list</div></div></div><div id="${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}">Conversation or welcome</div></div></div><div id="software-tools">Software tools</div>`;
             await win.loadURL('https://web.whatsapp.com/');
             await exec(
@@ -139,6 +141,10 @@ try {
             );
             await exec('window.__qaConfigure();true');
             const resized = await geometry();
+            await exec(
+              `(()=>{const state=window.__zlChatListLayout;const pane=getComputedStyle(state.pane);const pseudo=getComputedStyle(state.pane,'::before');const column=getComputedStyle(state.column);if(column.borderRightColor!=='rgba(0, 0, 0, 0)'||pane.borderLeftColor!=='rgba(0, 0, 0, 0)'||pseudo.borderLeftColor!=='rgba(0, 0, 0, 0)'||pane.boxShadow!=='none')throw Error('Native seam must be invisible after resizing');const line=getComputedStyle(state.divider);if(line.backgroundColor!=='rgba(0, 0, 0, 0)'||line.boxShadow!=='none')throw Error('Hover strip must stay transparent');return true})()`,
+            );
+
             observations.push({
               variant,
               before,
@@ -218,7 +224,7 @@ try {
     if (variant === 'grid-welcome') assert.equal(after.grid, 'true');
   }
   console.log(
-    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, hover reveal at top of divider, hidden away from divider, full-divider drag, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
+    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, hover reveal at top of divider, hidden away from divider, invisible seam and hover strip during/after full-divider drag, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
   );
   console.log(
     JSON.stringify(
