@@ -9,6 +9,8 @@ export function configureWhatsAppLayout(): boolean {
   if (!side) {
     if (page.__zlChatListLayout?.button)
       page.__zlChatListLayout.button.hidden = true;
+    if (page.__zlChatListLayout?.divider)
+      page.__zlChatListLayout.divider.hidden = true;
     return false;
   }
   if (!page.__zlChatListLayout) {
@@ -22,7 +24,7 @@ export function configureWhatsAppLayout(): boolean {
     page.__zlChatListLayout = state;
     const style = document.createElement('style');
     style.textContent =
-      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;pointer-events:auto;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
+      '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;opacity:0;pointer-events:none;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][data-zl-visible="true"],[data-zl-chat-resize]:focus-visible{opacity:1;pointer-events:auto}[data-zl-chat-divider]{position:fixed!important;z-index:2147482999;width:10px;background:transparent;cursor:ew-resize;touch-action:none}[data-zl-chat-divider][data-zl-active="true"]{background:rgba(115,103,240,.35)}[data-zl-chat-divider][hidden],[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
     document.head.append(style);
     state.apply = (value: number, persist = false) => {
       const rect = state.column.getBoundingClientRect();
@@ -88,6 +90,7 @@ export function configureWhatsAppLayout(): boolean {
       document.documentElement.style.cursor = state.drag.cursor;
       document.documentElement.style.userSelect = state.drag.selection;
       state.drag = undefined;
+      state.position?.();
     };
     // Capture before React consumes the native header's pointer events. Keep
     // tracking at window level even if WhatsApp replaces the header mid-drag.
@@ -95,7 +98,7 @@ export function configureWhatsAppLayout(): boolean {
       'pointerdown',
       event => {
         const button = (event.target as Element)?.closest?.(
-          '[data-zl-chat-resize]',
+          '[data-zl-chat-resize], [data-zl-chat-divider]',
         );
         if (!button || event.button !== 0) return;
         event.preventDefault();
@@ -116,12 +119,28 @@ export function configureWhatsAppLayout(): boolean {
         };
         document.documentElement.style.cursor = 'ew-resize';
         document.documentElement.style.userSelect = 'none';
+        state.nearBoundary = true;
+        state.position?.();
       },
       true,
     );
     window.addEventListener(
       'pointermove',
       event => {
+        if (!state.drag && state.column) {
+          const rect = state.column.getBoundingClientRect();
+          const near =
+            (Math.abs(event.clientX - rect.right) <= 12 &&
+              event.clientY >= rect.top &&
+              event.clientY <= rect.bottom) ||
+            Boolean(
+              (event.target as Element)?.closest?.('[data-zl-chat-resize]'),
+            );
+          if (state.nearBoundary !== near) {
+            state.nearBoundary = near;
+            state.position?.();
+          }
+        }
         if (!state.drag || state.drag.id !== event.pointerId) return;
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -145,7 +164,21 @@ export function configureWhatsAppLayout(): boolean {
         },
         true,
       );
-    window.addEventListener('blur', finishDrag);
+    window.addEventListener('blur', () => {
+      finishDrag();
+      state.nearBoundary = false;
+      state.position?.();
+    });
+    window.addEventListener(
+      'pointerout',
+      event => {
+        if (!event.relatedTarget && !state.drag) {
+          state.nearBoundary = false;
+          state.position?.();
+        }
+      },
+      true,
+    );
     window.addEventListener(
       'click',
       event => {
@@ -264,10 +297,19 @@ export function configureWhatsAppLayout(): boolean {
         true,
       );
     });
+    button.addEventListener('focus', () => state.position?.());
+    button.addEventListener('blur', () => state.position?.());
     state.button = button;
     // Keep the handle outside React-owned headers and overflow-clipped list
     // wrappers. Its fixed position follows only the WhatsApp split boundary.
     document.body.append(button);
+  }
+  if (!state.divider?.isConnected) {
+    const divider = document.createElement('div');
+    divider.dataset.zlChatDivider = 'true';
+    divider.setAttribute('aria-hidden', 'true');
+    state.divider = divider;
+    document.body.append(divider);
   }
   state.position = () => {
     const button = state.button as HTMLButtonElement;
@@ -286,7 +328,19 @@ export function configureWhatsAppLayout(): boolean {
     ].some(node => node.getClientRects().length > 0 && !root.contains(node));
     button.hidden =
       !state.side.isConnected || rect.width <= 0 || rect.height <= 0 || modal;
+    state.divider.hidden = button.hidden;
     if (button.hidden) return;
+    button.dataset.zlVisible = String(
+      Boolean(
+        state.nearBoundary || state.drag || document.activeElement === button,
+      ),
+    );
+    state.divider.dataset.zlActive = String(
+      Boolean(state.nearBoundary || state.drag),
+    );
+    state.divider.style.left = `${Math.round(rect.right - 5)}px`;
+    state.divider.style.top = `${Math.round(rect.top)}px`;
+    state.divider.style.height = `${Math.round(rect.height)}px`;
     button.style.left = `${Math.round(rect.right - 14)}px`;
     button.style.top = `${Math.round((anchor && anchor.height > 0 ? anchor.top + anchor.height / 2 : rect.top + 36) - 17)}px`;
   };

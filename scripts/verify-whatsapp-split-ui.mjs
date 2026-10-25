@@ -23,15 +23,21 @@ try {
             new Response(html, { headers: { 'Content-Type': 'text/html' } }),
         );
         const win = new BrowserWindow({
-          show: false,
+          show: true,
           width: 1100,
           height: 750,
           webPreferences: { partition },
         });
-        const exec = code => win.webContents.executeJavaScript(code);
-        const drag = async delta => {
+        const exec = async code => {
+          const reply = await win.webContents.executeJavaScript(
+            `(async()=>{try{return {ok:true,value:await eval(${JSON.stringify(code)})}}catch(error){return {ok:false,error:String(error.stack||error)}}})()`,
+          );
+          if (!reply.ok) throw new Error(reply.error);
+          return reply.value;
+        };
+        const drag = async (delta, fromDivider = false) => {
           const p = await exec(
-            `(()=>{const r=document.querySelector('[data-zl-chat-resize]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+            `(()=>{const r=document.querySelector(${JSON.stringify(fromDivider ? '[data-zl-chat-divider]' : '[data-zl-chat-resize]')}).getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
           );
           win.webContents.sendInputEvent({
             type: 'mouseDown',
@@ -92,8 +98,25 @@ try {
               exec(
                 `(()=>{const box=id=>{const r=(id==='side'?document.querySelector('#side,.qa-side'):document.getElementById(id)).getBoundingClientRect();return {x:r.x,right:r.right,width:r.width}};const state=window.__zlChatListLayout;return {column:box('list-col'),side:box('side'),pane:box('${variant === 'flex-chat' ? 'chat-pane' : 'welcome-pane'}'),app:box('app'),guest:box('guest'),accounts:box('software-accounts'),tools:box('software-tools'),stored:localStorage.getItem('zl-chat-list-width'),selected:state.column.id,grid:state.split?.dataset.zlChatGrid}})()`,
               );
+            win.webContents.sendInputEvent({
+              type: 'mouseMove',
+              x: 30,
+              y: 100,
+            });
+            await exec('new Promise(resolve=>requestAnimationFrame(resolve))');
             await exec(
-              `(()=>{const b=document.querySelector('[data-zl-chat-resize]');if(!b||b.parentElement!==document.body)throw Error('Handle must be mounted outside native header');const r=b.getBoundingClientRect();const plus=document.querySelector('#new-chat').getBoundingClientRect();if(!document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-zl-chat-resize]'))throw Error('Handle is clipped or not hittable');if(Math.abs(r.y+r.height/2-plus.y-plus.height/2)>1)throw Error('Handle must align with green plus');b.remove();return true})()`,
+              `(()=>{const b=document.querySelector('[data-zl-chat-resize]');if(getComputedStyle(b).opacity!=='0')throw Error('Handle must hide away from divider');return true})()`,
+            );
+            const edge = await exec(
+              `(()=>{const r=document.querySelector('#list-col').getBoundingClientRect();return {x:Math.round(r.right),y:Math.round(r.top+200)}})()`,
+            );
+            win.webContents.sendInputEvent({ type: 'mouseMove', ...edge });
+            await exec('new Promise(resolve=>requestAnimationFrame(resolve))');
+            await exec(
+              `(()=>{const b=document.querySelector('[data-zl-chat-resize]');if(getComputedStyle(b).opacity!=='1')throw Error('Hovering divider must show top handle');return true})()`,
+            );
+            await exec(
+              `(()=>{const b=document.querySelector('[data-zl-chat-resize]');if(!b||b.parentElement!==document.body)throw Error('Handle must be mounted outside native header');const r=b.getBoundingClientRect();const plus=document.querySelector('#new-chat').getBoundingClientRect();if(!document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-zl-chat-resize]'))throw Error('Handle is clipped or not hittable '+JSON.stringify({rect:r.toJSON(),near:window.__zlChatListLayout.nearBoundary,opacity:getComputedStyle(b).opacity,pointer:getComputedStyle(b).pointerEvents,visible:b.dataset.zlVisible,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML}));if(Math.abs(r.y+r.height/2-plus.y-plus.height/2)>1)throw Error('Handle must align with green plus');b.remove();return true})()`,
             );
             await exec(
               'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
@@ -108,7 +131,7 @@ try {
             await exec(
               `document.querySelector('header,.wa-head').replaceChildren();window.__qaConfigure();true`,
             );
-            await drag(-35);
+            await drag(-35, true);
             const rerendered = await geometry();
             win.setContentSize(850, 750);
             await exec(
@@ -195,7 +218,7 @@ try {
     if (variant === 'grid-welcome') assert.equal(after.grid, 'true');
   }
   console.log(
-    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
+    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, hover reveal at top of divider, hidden away from divider, full-divider drag, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
   );
   console.log(
     JSON.stringify(

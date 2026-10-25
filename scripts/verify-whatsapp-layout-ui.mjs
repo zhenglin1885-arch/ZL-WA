@@ -38,6 +38,11 @@ export async function verifyWhatsAppLayout(id) {
       'native wrapper detected before drag',
     );
     let p = await point();
+    await send({ type: 'mouseMove', ...p });
+    await wait(
+      `${service}.webview.executeJavaScript('getComputedStyle(document.querySelector("[data-zl-chat-resize]")).opacity==="1"')`,
+      'hover reveals split handle',
+    );
     for (const type of ['mouseDown', 'mouseUp'])
       await send({ type, ...p, button: 'left', clickCount: 1 });
     const wide = await guest(
