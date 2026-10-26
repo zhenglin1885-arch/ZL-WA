@@ -34,9 +34,9 @@ export async function verifyGroups({
       'account refresh has a visible result',
     );
   };
-  const finish = async (success, approval = 0) =>
+  const finish = async (success, approval = 0, failed = 0) =>
     wait(
-      `document.querySelectorAll('.group-tools-log [data-task-status="success"]').length===${success} && document.querySelectorAll('.group-tools-log [data-task-status="approval"]').length===${approval} && ![...document.querySelectorAll('.group-tools-dialog button')].some(b=>b.textContent==='停止执行')`,
+      `document.querySelectorAll('.group-tools-log [data-task-status="success"]').length===${success} && document.querySelectorAll('.group-tools-log [data-task-status="approval"]').length===${approval} && document.querySelectorAll('.group-tools-log [data-task-status="failed"]').length===${failed} && ![...document.querySelectorAll('.group-tools-dialog button')].some(b=>b.textContent==='停止执行')`,
       'verified group batch complete',
     );
   const fill = async (selector, text) => {
@@ -140,6 +140,11 @@ export async function verifyGroups({
   );
   await shot('/workspace/ZL-WA-groups-speech.png');
   await click('[aria-label="关闭群组窗口"]');
+  const readsBeforeJoin = {};
+  for (const id of [first, second]) {
+    readsBeforeJoin[id] = await guest(id, 'fixture.groupReads');
+    await guest(id, 'fixture.groupReadLimited=true;true');
+  }
   await click('[aria-label="进群"]');
   await wait(
     `document.querySelector('[aria-label="群邀请链接"]')!==null`,
@@ -151,7 +156,7 @@ export async function verifyGroups({
   );
   await fill(
     '[aria-label="群邀请链接"]',
-    '欢迎加入群组！\nchat.whatsapp.com/invite/AAAAAAAAAAAAAAAAAAAAAA\nhttps://chat.whatsapp.com/BBBBBBBBBBBBBBBBBBBBBB\nhttps://chat.whatsapp.com/AAAAAAAAAAAAAAAAAAAAAA?mode=ac_t',
+    '欢迎加入群组！\nchat.whatsapp.com/invite/AAAAAAAAAAAAAAAAAAAAAA\nhttps://chat.whatsapp.com/BBBBBBBBBBBBBBBBBBBBBB\nhttps://evil.example/not-an-invite\nhttps://chat.whatsapp.com/CCCCCCCCCCCCCCCCCCCCCC\nhttps://chat.whatsapp.com/AAAAAAAAAAAAAAAAAAAAAA?mode=ac_t',
   );
   await fill('[aria-label="群组执行间隔"]', '1');
   await wait(
@@ -169,40 +174,56 @@ export async function verifyGroups({
     'group window closes while running',
   );
   await click('[aria-label="进群"]');
-  await finish(2, 2);
+  await finish(2, 2, 4);
+  assert(
+    await evaluate(
+      `document.querySelector('.group-tools-log').textContent.includes('rate-overlimit') && document.querySelector('.group-tools-log').textContent.includes('无效')`,
+    ),
+  );
   for (const id of [first, second])
     assert.equal(
       await guest(
         id,
         `fixture.groupCalls.filter(c=>c.operation==='join').length`,
       ),
-      2,
-      'each account joins each unique invite once',
+      3,
+      'each account attempts each valid invite once, including a server rejection',
     );
   for (const id of [first, second])
     assert.equal(
       await guest(id, 'fixture.groupLazyLoads'),
-      2,
+      3,
       'each new invitation bootloads the native invite job before submitting',
     );
   await shot('/workspace/ZL-WA-groups-join.png');
+  for (const id of [first, second])
+    assert.equal(
+      await guest(id, 'fixture.groupReads'),
+      readsBeforeJoin[id],
+      'joins must not fetch all groups',
+    );
   for (const id of [first, second])
     await guest(
       id,
       `fixture.groupRows.find(g=>g.id==='90002@g.us').member=true;fixture.groupRows.find(g=>g.id==='90002@g.us').chat=true;true`,
     );
   await clickText('刷新执行结果');
-  await finish(4);
+  await finish(4, 0, 4);
   for (const id of [first, second])
     assert.equal(
       await guest(
         id,
         `fixture.groupCalls.filter(c=>c.operation==='join').length`,
       ),
-      2,
+      3,
       'approval refresh is read-only',
     );
   await click('[aria-label="关闭群组窗口"]');
+  for (const id of [first, second])
+    await guest(
+      id,
+      `fixture.groupReadLimited=false;fixture.groupLeaveLimited='10004@g.us';true`,
+    );
   await click('[aria-label="退群"]');
   await wait(
     `!!document.querySelector('.group-tools-accounts')`,
@@ -231,7 +252,7 @@ export async function verifyGroups({
     'leave refresh reloads all joined groups',
   );
 
-  for (const groupId of ['10001@g.us', '10003@g.us'])
+  for (const groupId of ['10001@g.us', '10003@g.us', '10004@g.us'])
     await click(`.group-tools-group[data-group-id="${groupId}"] input`);
   assert.equal(
     await evaluate(
@@ -253,13 +274,18 @@ export async function verifyGroups({
     0,
   );
   await clickText('确认退出并删除');
-  await finish(2);
+  await finish(2, 0, 1);
+  assert(
+    await evaluate(
+      `document.querySelector('.group-tools-log [data-task-status="failed"]').textContent.includes('rate-overlimit')`,
+    ),
+  );
   assert.equal(
     await guest(
       first,
       `fixture.groupCalls.filter(c=>c.operation==='leave').length`,
     ),
-    2,
+    3,
   );
   assert.equal(
     await guest(

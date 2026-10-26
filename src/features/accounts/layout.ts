@@ -15,7 +15,7 @@ export function configureWhatsAppLayout(): boolean {
     return false;
   }
   const previous = page.__zlChatListLayout;
-  const revision = 3;
+  const revision = 5;
   if (
     !previous ||
     previous.revision !== revision ||
@@ -49,7 +49,42 @@ export function configureWhatsAppLayout(): boolean {
     style.textContent =
       '[data-zl-chat-column]{box-sizing:border-box!important;width:var(--zl-chat-list-width)!important;min-width:var(--zl-chat-list-width)!important;max-width:var(--zl-chat-list-width)!important;flex:0 0 var(--zl-chat-list-width)!important}[data-zl-chat-inner]{box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:100%!important;flex:1 1 0%!important}[data-zl-chat-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}[data-zl-chat-grid]{grid-template-columns:var(--zl-chat-grid-columns)!important}[data-zl-chat-edge="list"],[data-zl-chat-inner]{border-right-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="pane"],[data-zl-chat-edge="pane"] #main{border-left-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="list"]::after,[data-zl-chat-inner]::after{border-right-color:transparent!important;box-shadow:none!important}[data-zl-chat-edge="pane"]::before,[data-zl-chat-edge="pane"] #main::before{border-left-color:transparent!important;box-shadow:none!important}[data-zl-chat-seam]{box-shadow:none!important}[data-zl-chat-seam-line]{background:transparent!important;border-color:transparent!important;box-shadow:none!important}[data-zl-chat-seam-before]::before,[data-zl-chat-seam-after]::after,html body #app [data-zl-chat-seam-before]::before,html body #app [data-zl-chat-seam-after]::after{background:transparent!important;border-color:transparent!important;box-shadow:none!important}[data-zl-chat-resize]{position:fixed!important;left:0;top:0;z-index:2147483000;opacity:0;pointer-events:none;width:28px;height:34px;padding:3px;border:0;border-radius:5px;background:transparent;color:var(--primary,#8696a0);cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}[data-zl-chat-resize][data-zl-visible="true"],[data-zl-chat-resize]:focus-visible{opacity:1;pointer-events:auto}[data-zl-chat-divider]{position:fixed!important;z-index:2147482999;width:10px;background:transparent!important;border:0!important;outline:0!important;box-shadow:none!important;cursor:ew-resize;touch-action:none}[data-zl-chat-divider][hidden],[data-zl-chat-resize][hidden]{display:none!important}[data-zl-chat-resize]:hover,[data-zl-chat-resize]:focus-visible{background:rgba(128,128,128,.22);outline:2px solid currentColor;outline-offset:-2px}';
     document.head.append(style);
+    style.textContent +=
+      '[data-zl-chat-drawer-column]{box-sizing:border-box!important;width:var(--zl-chat-drawer-width)!important;min-width:var(--zl-chat-drawer-width)!important;max-width:var(--zl-chat-drawer-width)!important;flex:0 0 var(--zl-chat-drawer-width)!important}[data-zl-chat-drawer-pane]{min-width:0!important;width:auto!important;max-width:none!important;flex:1 1 0%!important}';
+    state.syncDrawers = () => {
+      const drawers = new Set<HTMLElement>();
+      if (state.width && state.split && state.column) {
+        const column = state.column.getBoundingClientRect();
+        for (const left of state.split.querySelectorAll(
+          '[data-testid="drawer-left"]',
+        )) {
+          if (!(left instanceof HTMLElement) || state.pane?.contains(left))
+            continue;
+          const middle = [...(left.parentElement?.children || [])].find(node =>
+            node.matches('[data-testid="drawer-middle"]'),
+          );
+          if (!(middle instanceof HTMLElement)) continue;
+          const rect = left.getBoundingClientRect();
+          if (rect.height < column.height * 0.8) continue;
+          left.dataset.zlChatDrawerColumn = 'true';
+          left.style.setProperty('--zl-chat-drawer-width', `${column.width}px`);
+          middle.dataset.zlChatDrawerPane = 'true';
+          drawers.add(left);
+          drawers.add(middle);
+        }
+      }
+      for (const node of state.drawers || []) {
+        if (drawers.has(node)) continue;
+        delete node.dataset.zlChatDrawerColumn;
+        delete node.dataset.zlChatDrawerPane;
+        node.style.removeProperty('--zl-chat-drawer-width');
+      }
+      state.drawers = drawers;
+    };
     state.apply = (value: number, persist = false) => {
+      // Persist only an actual drag. Retained click/keyboard callbacks from
+      // an older adapter must not resize the list after a live upgrade.
+      if (persist && !state.drag?.moved) return;
       const rect = state.column.getBoundingClientRect();
       const available =
         (state.split?.getBoundingClientRect().right || window.innerWidth) -
@@ -97,6 +132,7 @@ export function configureWhatsAppLayout(): boolean {
           }
         }
       }
+      state.syncDrawers();
       state.cleanSeams?.();
       state.position?.();
       if (persist) {
@@ -109,7 +145,8 @@ export function configureWhatsAppLayout(): boolean {
     };
     // Besides nested pane seams, WhatsApp keeps a separate drawer-middle
     // layer at the native split width. Its border remains at the old position
-    // after resizing the real panes. Leave its geometry and contents intact.
+    // after resizing the real panes. Hide only the separator; syncDrawers
+    // separately aligns archive drawers with the current list width.
     state.cleanSeams = () => {
       const pane = state.pane as HTMLElement | undefined;
       const bounds = pane?.getBoundingClientRect();
@@ -250,7 +287,6 @@ export function configureWhatsAppLayout(): boolean {
       const finishDrag = () => {
         if (!state.drag) return;
         if (state.drag.moved) state.apply(state.width, true);
-        state.suppressClick = state.drag.moved;
         document.documentElement.style.cursor = state.drag.cursor;
         document.documentElement.style.userSelect = state.drag.selection;
         state.drag = undefined;
@@ -267,7 +303,6 @@ export function configureWhatsAppLayout(): boolean {
           if (!button || event.button !== 0) return;
           event.preventDefault();
           event.stopImmediatePropagation();
-          state.suppressClick = false;
           try {
             (button as HTMLElement).setPointerCapture(event.pointerId);
           } catch {
@@ -350,20 +385,6 @@ export function configureWhatsAppLayout(): boolean {
             return;
           event.preventDefault();
           event.stopImmediatePropagation();
-          if (!state.suppressClick) {
-            const rect = state.column.getBoundingClientRect();
-            const available = window.innerWidth - rect.left;
-            const wide = Math.max(
-              240,
-              Math.min(560, available * 0.65, available - 300),
-            );
-            const narrow = Math.min(340, wide - 80);
-            state.apply(
-              rect.width < (Math.max(240, narrow) + wide) / 2 ? wide : narrow,
-              true,
-            );
-          }
-          state.suppressClick = false;
         },
         true,
       );
@@ -449,7 +470,10 @@ export function configureWhatsAppLayout(): boolean {
   state.column.dataset.zlChatEdge = 'list';
   if (state.pane) state.pane.dataset.zlChatEdge = 'pane';
   if (state.width) state.apply(state.width);
-  else state.cleanSeams();
+  else {
+    state.syncDrawers();
+    state.cleanSeams();
+  }
   if (!state.button?.isConnected) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -458,16 +482,6 @@ export function configureWhatsAppLayout(): boolean {
     button.title = '拖动调整宽度';
     button.innerHTML =
       '<svg width="20" height="22" viewBox="0 0 20 22" aria-hidden="true"><path d="M8 3v16M12 3v16M4 8l-2 3 2 3M16 8l2 3-2 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    button.addEventListener('keydown', event => {
-      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      state.apply(
-        state.column.getBoundingClientRect().width +
-          (event.key === 'ArrowLeft' ? -30 : 30),
-        true,
-      );
-    });
     button.addEventListener('focus', () => state.position?.());
     button.addEventListener('blur', () => state.position?.());
     state.button = button;

@@ -45,12 +45,39 @@ export async function verifyWhatsAppLayout(id) {
     );
     for (const type of ['mouseDown', 'mouseUp'])
       await send({ type, ...p, button: 'left', clickCount: 1 });
+    assert.equal(
+      await guest(
+        `document.querySelector('#side').getBoundingClientRect().width`,
+      ),
+      before.width,
+      'clicking the handle must not change the width',
+    );
+    assert.equal(
+      await guest(`localStorage.getItem('zl-chat-list-width')`),
+      before.stored,
+      'clicking the handle must not change the stored width',
+    );
+    await send({ type: 'mouseDown', ...p, button: 'left', clickCount: 1 });
+    await send({
+      type: 'mouseMove',
+      modifiers: ['leftButtonDown'],
+      x: p.x + 100,
+      y: p.y,
+      button: 'left',
+    });
+    await send({
+      type: 'mouseUp',
+      x: p.x + 100,
+      y: p.y,
+      button: 'left',
+      clickCount: 1,
+    });
     const wide = await guest(
       `document.querySelector('#side').getBoundingClientRect().width`,
     );
     assert(
       wide > before.width + 50,
-      `native click expands list: ${JSON.stringify(
+      `native drag expands list: ${JSON.stringify(
         await guest(
           `(()=>{const s=window.__zlChatListLayout;const b=document.querySelector('[data-zl-chat-resize]');const r=b.getBoundingClientRect();return {before:${before.width},wide:${wide},stateWidth:s.width,column:s.column?.id,side:s.side?.id,events:fixture.resizeEvents,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML,rect:r.toJSON()}})()`,
         ),
@@ -110,7 +137,7 @@ export async function verifyWhatsAppLayout(id) {
       'rgb(146, 153, 163)',
     ]);
     console.log(
-      'PASS native WhatsApp list click/drag/persistence, light purple sidebars and four distinct account status colors',
+      'PASS native WhatsApp list drag-only sizing, inert click, persistence, light purple sidebars and four distinct account status colors',
     );
   } finally {
     await guest(

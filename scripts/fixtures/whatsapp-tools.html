@@ -156,9 +156,18 @@
         nativeInputs: 0,
         ownPhone: '8613800000001',
       };
-      for (const type of ['pointerdown', 'pointerup', 'click']) window.addEventListener(type,event=>{
-        if (event.target.closest?.('[data-zl-chat-resize]')) (fixture.resizeEvents ||= []).push({type,target:event.target.tagName});
-      },true);
+      for (const type of ['pointerdown', 'pointerup', 'click'])
+        window.addEventListener(
+          type,
+          event => {
+            if (event.target.closest?.('[data-zl-chat-resize]'))
+              (fixture.resizeEvents ||= []).push({
+                type,
+                target: event.target.tagName,
+              });
+          },
+          true,
+        );
       // Simulate the affected editor: webpage execCommand cannot replace its text.
       document.execCommand = () => false;
       const chats = [
@@ -590,6 +599,8 @@
               ...previous.whatsapp?.functions,
               queryAllGroups: async () => {
                 fixture.groupReads = (fixture.groupReads || 0) + 1;
+                if (fixture.groupReadLimited)
+                  throw Error('ServerStatusCodeError: rate-overlimit');
                 return fixture.groupRows
                   .filter(g => g.member)
                   .map(g => ({ ...g }));
@@ -601,7 +612,11 @@
             iAmAdmin: async id => Boolean(row(id)?.admin),
             iAmMember: async id => Boolean(row(id)?.member),
             getGroupInfoFromInviteCode: async code => ({
-              id: code.startsWith('A') ? '90001@g.us' : '90002@g.us',
+              id: code.startsWith('A')
+                ? '90001@g.us'
+                : code.startsWith('C')
+                  ? '90003@g.us'
+                  : '90002@g.us',
               membershipApprovalMode: code.startsWith('B'),
             }),
             setProperty: async (id, property, value) => {
@@ -622,6 +637,8 @@
             join: async code => {
               const id = code.startsWith('A') ? '90001@g.us' : '90002@g.us';
               log('join', id);
+              if (code.startsWith('C'))
+                throw Error('ServerStatusCodeError: rate-overlimit');
               const pending = code.startsWith('B');
               if (!row(id))
                 fixture.groupRows.push({
@@ -636,6 +653,8 @@
             },
             leave: async id => {
               log('leave', id);
+              if (id === fixture.groupLeaveLimited)
+                throw Error('ServerStatusCodeError: rate-overlimit');
               row(id).member = false;
             },
           },

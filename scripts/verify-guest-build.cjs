@@ -219,7 +219,8 @@ const {
     stopImmediatePropagation() {},
   };
   handlers.click(gesture);
-  assert.equal(styles['--zl-chat-list-width'], '560px');
+  assert.equal(styles['--zl-chat-list-width'], undefined);
+  assert.equal(stored['zl-chat-list-width'], undefined);
   handlers.pointerdown(gesture);
   handlers.pointermove({ ...gesture, clientX: 390 });
   handlers.pointerup(gesture);

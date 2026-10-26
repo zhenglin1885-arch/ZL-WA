@@ -46,8 +46,8 @@ export async function groupGuest(request: {
       message: 'WhatsApp 登录身份已变化，请重新选择账号',
       retryable: false,
     };
-  // This native query requests the current joined groups rather than treating a
-  // successful mutation promise or an old local model as confirmation.
+  // Inventory and announcement settings require the current server group list.
+  // Join/leave verification below reads only the target group's membership.
   const fresh = async (): Promise<any[]> => {
     const api = wpp.whatsapp as typeof WhatsAppAPI | undefined;
     const query = api?.functions?.queryAllGroups;
@@ -84,6 +84,43 @@ export async function groupGuest(request: {
     return { groups };
   }
   const { task } = request;
+  if (task.operation === 'join' && !/^[\w-]{16,64}$/.test(task.target))
+    return {
+      status: 'failed',
+      message: '无效的 WhatsApp 群邀请链接，未提交进群请求',
+      retryable: false,
+    };
+  const describeError = (error: unknown) => {
+    const text = String(error).slice(0, 500);
+    const rateLimited = /rate[ _-]?overlimit|too many requests|\b429\b/i.test(
+      text,
+    );
+    const invalid =
+      /invalid_invite|invalid invite|expired|revoked|\b404\b|\b410\b/i.test(
+        text,
+      );
+    const forbidden = /forbidden|not_allowed|not_authorized|\b403\b/i.test(
+      text,
+    );
+    const full =
+      /group[ _-]full|too_many_participants|max[ _-]participants|group.*capacity/i.test(
+        text,
+      );
+    return {
+      text,
+      rateLimited,
+      rejected: rateLimited || invalid || forbidden || full,
+      reason: rateLimited
+        ? 'WhatsApp 请求过于频繁，服务器限流，请稍后重试'
+        : invalid
+          ? '群邀请链接无效、已过期或已被撤销'
+          : full
+            ? '群组人数已满，无法加入'
+            : forbidden
+              ? 'WhatsApp 拒绝此操作，可能没有权限或账号受到限制'
+              : '接口请求失败',
+    };
+  };
   page.__zlGroupOperations ??= new Map();
   const operations: Map<string, any> = page.__zlGroupOperations;
   const previous = task.token ? operations.get(task.token) : undefined;
@@ -102,19 +139,62 @@ export async function groupGuest(request: {
       return wpp.whatsapp?.ChatStore;
     }
   };
+  const membership = async (id: string): Promise<boolean> => {
+    try {
+      return Boolean(await wpp.group.iAmMember(id));
+    } catch (error) {
+      if (
+        /chat_not_found|chat not found/i.test(String(error)) &&
+        (task.operation === 'join' || !collection()?.get(id))
+      )
+        return false;
+      throw error;
+    }
+  };
+  // Do not let WA-JS turn a failed metadata request (including 429) into
+  // invalid_invite_code. Keep the native error and reuse a lookup in this call.
+  let inviteLookup: Promise<any> | undefined;
+  const inviteInfo = () => {
+    inviteLookup ??= (async () => {
+      const query = wpp.whatsapp?.functions?.sendQueryGroupInvite;
+      if (typeof query !== 'function')
+        return wpp.group.getGroupInfoFromInviteCode(task.target);
+      const response = await query(task.target);
+      if (!response?.groupInfo) throw new Error('invalid_invite_code');
+      return response.groupInfo;
+    })();
+    return inviteLookup;
+  };
   let attempted = false;
+  let mutationReturned = false;
+  let action =
+    task.operation === 'join'
+      ? '进群'
+      : task.operation === 'leave'
+        ? '退群'
+        : '修改发言权限';
   const check = async (): Promise<GroupResult> => {
     let id = task.operation === 'join' ? task.groupId : task.target;
     let invite: any;
     if (task.operation === 'join' && !id) {
-      invite = await wpp.group.getGroupInfoFromInviteCode(task.target);
+      invite = await inviteInfo();
       id = idOf(invite.id);
     }
     if (!id || !/^\d{1,40}(?:-\d{1,30})?@g\.us$/.test(id))
       throw new Error('群组编号未确认');
-    const currentGroups = await fresh();
-    const group = currentGroups.find(item => idOf(item.id) === id);
-    const member = group ? Boolean(await wpp.group.iAmMember(id)) : false;
+    // Joining/leaving needs only this group's membership. Repeatedly querying
+    // every group before and after every item exhausts WhatsApp's read quota.
+    const inventory =
+      task.operation === 'join' || task.operation === 'leave'
+        ? []
+        : await fresh();
+    const group = inventory.find(item => idOf(item.id) === id);
+    const member =
+      task.operation === 'join' || task.operation === 'leave'
+        ? await membership(id)
+        : group
+          ? Boolean(await wpp.group.iAmMember(id))
+          : false;
     if (task.operation === 'join') {
       if (member)
         return { status: 'success', message: '已确认加入群组', groupId: id };
@@ -132,8 +212,7 @@ export async function groupGuest(request: {
           groupId: id,
           submitted: true,
         };
-      if (!invite && task.attempts > 0)
-        invite = await wpp.group.getGroupInfoFromInviteCode(task.target);
+      if (!invite && task.attempts > 0) invite = await inviteInfo();
       if (
         invite?.membershipApprovalMode &&
         task.attempts > 0 &&
@@ -216,16 +295,31 @@ export async function groupGuest(request: {
   try {
     before = await check();
   } catch (error) {
-    return {
-      status:
-        /invalid_invite|expired|revoked|forbidden|not_allowed|not_authorized/i.test(
-          String(error),
-        )
-          ? 'failed'
-          : 'uncertain',
-      message: `核验失败：${String(error).slice(0, 500)}`,
-      retryable: false,
-    };
+    const failure = describeError(error);
+    if (
+      request.execute &&
+      (task.operation === 'join' || task.operation === 'leave') &&
+      !task.joinSubmitted &&
+      !previous &&
+      (!failure.rejected || failure.rateLimited)
+    )
+      before = {
+        status: 'not-done',
+        message: '状态读取暂不可用，按所选对象执行',
+        member: task.operation === 'leave',
+        groupId: task.groupId,
+      };
+    else
+      return {
+        status:
+          failure.rejected && !failure.rateLimited ? 'failed' : 'uncertain',
+        message: `${failure.reason}；暂未核验状态（${failure.text}）`,
+        retryable: false,
+        rateLimited: failure.rateLimited,
+        ...(task.joinSubmitted
+          ? { submitted: true, groupId: task.groupId }
+          : {}),
+      };
   }
   if (!request.execute || before.status !== 'not-done') return before;
   if (!own())
@@ -271,8 +365,6 @@ export async function groupGuest(request: {
       if (typeof wpp.loader?.ensureLazyModule === 'function')
         await wpp.loader.ensureLazyModule('WAWebGroupInviteJob');
       if (!own()) throw new Error('账号身份已变化，进群已取消');
-      const afterLoad = await check();
-      if (afterLoad.status !== 'not-done') return afterLoad;
       try {
         attempted = true;
         joined = await invokeJoin(() => wpp.group.join(task.target));
@@ -283,9 +375,14 @@ export async function groupGuest(request: {
         if (!/joinGroupViaInvite.*not a function/.test(String(error)))
           throw error;
         attempted = false; // The missing callable never submitted a join request.
-        const verified = await check();
-        if (verified.status !== 'not-done') return verified;
-        const info = await wpp.group.getGroupInfoFromInviteCode(task.target);
+        let info: any;
+        try {
+          info = await inviteInfo();
+        } catch (error) {
+          const failure = describeError(error);
+          if (failure.rejected && !failure.rateLimited) throw error;
+          info = { membershipApprovalMode: false };
+        }
         let native: any;
         let host: any;
         const registry = page.require?.('__debug')?.modulesMap;
@@ -340,6 +437,7 @@ export async function groupGuest(request: {
           };
         }
       }
+      mutationReturned = true;
       const id = idOf(joined?.id || joined);
       task.groupId = id || before.groupId;
       if (joined?.pendingApproval) {
@@ -358,25 +456,30 @@ export async function groupGuest(request: {
       }
     } else if (task.operation === 'leave') {
       // A retry after an acknowledged exit only performs the missing deletion.
-      if (before.member) await wpp.group.leave(task.target);
-      const memberships = await fresh();
-      const membership = memberships.some(item => idOf(item.id) === task.target)
-        ? await wpp.group.iAmMember(task.target)
-        : false;
-      if (membership)
+      if (before.member) {
+        await wpp.group.leave(task.target);
+        mutationReturned = true;
+      }
+      if (await membership(task.target))
         return {
           status: 'not-done',
           message: '退出尚未确认，未删除聊天',
           retryable: true,
         };
-      if (task.deleteGroup && collection()?.get(task.target))
+      if (task.deleteGroup && collection()?.get(task.target)) {
+        action = '删除已退出群组的聊天记录';
+        // eslint-disable-next-line sonar/no-dead-store -- The catch distinguishes a rejected deletion from failed readback after a successful exit.
+        mutationReturned = false;
         await wpp.chat.delete(task.target);
+        mutationReturned = true;
+      }
     } else {
       await wpp.group.setProperty(
         task.target,
         'announcement',
         task.operation === 'mute',
       );
+      mutationReturned = true;
     }
     let result = await check();
     if (task.operation === 'join' && task.joinSubmitted) {
@@ -402,6 +505,24 @@ export async function groupGuest(request: {
         ...(task.joinSubmitted
           ? { submitted: true, groupId: task.groupId }
           : {}),
+      };
+    const failure = describeError(error);
+    if (failure.rejected && !mutationReturned) {
+      current.result = {
+        status: 'failed',
+        message: `${action}失败：${failure.reason}（${failure.text}）`,
+        retryable: false,
+        rateLimited: failure.rateLimited,
+      };
+      return current.result;
+    }
+    if (failure.rateLimited && mutationReturned)
+      return {
+        status: 'uncertain',
+        message: `${action}请求已提交，但核验受到 WhatsApp 限流，结果待确认（${failure.text}）`,
+        rateLimited: true,
+        groupId: task.groupId || before.groupId,
+        ...(task.joinSubmitted ? { submitted: true } : {}),
       };
     // An exception can arrive after the server applied a change. Read it back
     // before allowing the queue to retry any mutation.

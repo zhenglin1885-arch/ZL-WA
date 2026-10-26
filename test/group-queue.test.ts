@@ -307,25 +307,148 @@ describe('verified group queue', () => {
     'evilchat.whatsapp.com/Abcdefghijklmnopqrstuv',
     'https://chat.whatsapp.com@evil.example/Abcdefghijklmnopqrstuv',
     'chat.whatsapp.com/invite/short',
-  ])('rejects malformed or disguised invitation hosts: %s', value => {
-    expect(() => parseGroupLinks(value)).toThrow();
-  });
+  ])(
+    'keeps malformed invitations as individual execution results: %s',
+    value => {
+      expect(parseGroupLinks(value)).toEqual([value]);
+    },
+  );
   it('validates invitation hosts, lines and intervals while merging duplicate links', () => {
     expect(
       parseGroupLinks(
         'https://chat.whatsapp.com/Abcdefghijklmnopqrstuv?mode=ac_t\n\nhttps://chat.whatsapp.com/Abcdefghijklmnopqrstuv',
       ),
     ).toEqual(['Abcdefghijklmnopqrstuv']);
-    expect(() =>
+    expect(
       parseGroupLinks(
         'https://chat.whatsapp.com/Abcdefghijklmnopqrstuv\nhttps://evil.example/Abcdefghijklmnopqrstuv',
       ),
-    ).toThrow('第 2 行');
-    expect(() =>
+    ).toEqual([
+      'Abcdefghijklmnopqrstuv',
+      'https://evil.example/Abcdefghijklmnopqrstuv',
+    ]);
+    expect(
       parseGroupLinks('http://chat.whatsapp.com/Abcdefghijklmnopqrstuv'),
-    ).toThrow();
+    ).toEqual(['http://chat.whatsapp.com/Abcdefghijklmnopqrstuv']);
     const state = defaultGroupState();
     state.intervals.speech = 0;
     expect(() => validateGroupState(state)).toThrow('执行间隔');
+  });
+  it.each(['join', 'leave'] as const)(
+    'executes a new %s even when the redundant batch precheck is rate-limited',
+    async operation => {
+      const { queue, adapter } = setup({
+        check: async () => ({
+          status: 'uncertain',
+          message: 'rate-overlimit',
+          rateLimited: true,
+        }),
+        execute: async () => ({
+          status: 'failed',
+          message: 'WhatsApp 服务器限流（rate-overlimit）',
+          retryable: false,
+        }),
+      });
+      await queue.start(
+        operation,
+        [
+          {
+            ...target,
+            target:
+              operation === 'join' ? 'Abcdefghijklmnopqrstuv' : target.target,
+          },
+        ],
+        5,
+      );
+      expect(adapter.check).not.toHaveBeenCalled();
+      expect(adapter.execute).toHaveBeenCalledTimes(1);
+      expect(queue.state.batches[0].tasks[0]).toMatchObject({
+        status: 'failed',
+        attempts: 1,
+        message: expect.stringContaining('rate-overlimit'),
+      });
+    },
+  );
+  it('records bad invitation entries and continues executing the remaining links', async () => {
+    const { queue, adapter } = setup({
+      execute: async t =>
+        t.target === 'Abcdefghijklmnopqrstuv'
+          ? success()
+          : { status: 'failed', message: '无效链接', retryable: false },
+    });
+    const links = parseGroupLinks(
+      'https://evil.example/nope\nhttps://chat.whatsapp.com/Abcdefghijklmnopqrstuv\nchat.whatsapp.com/short',
+    );
+    await queue.start(
+      'join',
+      links.map(code => ({ ...target, target: code })),
+      5,
+    );
+    expect(adapter.execute).toHaveBeenCalledTimes(3);
+    expect(queue.state.batches[0].tasks.map(t => t.status)).toEqual([
+      'failed',
+      'success',
+      'failed',
+    ]);
+    expect(() => validateGroupState(queue.state)).not.toThrow();
+  });
+  it('paces result refreshes and does not repeat rate-limited reads for the same account', async () => {
+    const { queue, adapter } = setup({
+      execute: async () => ({ status: 'uncertain', message: '核验受限' }),
+    });
+    await queue.start(
+      'leave',
+      [
+        target,
+        { ...target, target: '10002@g.us' },
+        { ...target, accountId: 'account-b' },
+      ],
+      5,
+    );
+    adapter.check.mockResolvedValue({
+      status: 'uncertain',
+      message: 'WhatsApp 核验限流',
+      rateLimited: true,
+    });
+    adapter.wait.mockClear();
+    await queue.reconcile(queue.state.batches[0].id);
+    expect(adapter.check).toHaveBeenCalledTimes(2);
+    expect(adapter.wait).toHaveBeenCalledTimes(1);
+    expect(adapter.execute).toHaveBeenCalledTimes(3);
+  });
+  it('keeps the original server rejection reason when read-only refresh finds the target incomplete', async () => {
+    const { queue, adapter } = setup({
+      execute: async () => ({
+        status: 'failed',
+        message: '进群失败：rate-overlimit',
+        retryable: false,
+      }),
+    });
+    await queue.start(
+      'join',
+      [{ ...target, target: 'Abcdefghijklmnopqrstuv' }],
+      5,
+    );
+    await queue.reconcile(queue.state.batches[0].id);
+    expect(queue.state.batches[0].tasks[0]).toMatchObject({
+      status: 'failed',
+      message: expect.stringContaining('rate-overlimit'),
+    });
+    expect(adapter.execute).toHaveBeenCalledTimes(1);
+  });
+  it('can explicitly retry old zero-attempt unconfirmed items without repeating a rate-limited precheck', async () => {
+    const { queue, adapter } = setup({
+      check: async () => ({ status: 'uncertain', message: 'rate-overlimit' }),
+    });
+    await queue.start('leave', [target], 5);
+    const batch = queue.state.batches[0];
+    batch.tasks[0].status = 'uncertain';
+    batch.tasks[0].attempts = 0;
+    delete batch.tasks[0].token;
+    adapter.execute.mockClear();
+    await queue.retry(batch.id);
+    expect(adapter.check).not.toHaveBeenCalled();
+    expect(adapter.execute).toHaveBeenCalledTimes(1);
+    expect(batch.tasks[0]).toMatchObject({ status: 'success', attempts: 1 });
   });
 });

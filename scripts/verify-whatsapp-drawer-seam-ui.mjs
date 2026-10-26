@@ -91,7 +91,7 @@ try {
                   const pixels = image.toBitmap();
                   const scale = width / (await execute('innerWidth'));
                   const y = Math.round(150 * scale);
-                  const x = Math.floor(after.drawerX * scale);
+                  const x = Math.floor(before.drawerX * scale);
                   const reference = (y * width + x + 6) * 4;
                   let lineVisible = false;
                   for (let offset = -1; offset <= 2; offset += 1) {
@@ -143,8 +143,17 @@ try {
   for (const { mode, screen, version, target, before, after } of results) {
     assert.equal(after.list, target, `${mode}/${screen}/${version} drag`);
     assert.equal(after.boundary, 64 + target);
-    assert.equal(after.drawerX, before.drawerX, 'drawer geometry preserved');
-    assert.equal(after.drawerWidth, before.drawerWidth);
+    assert.equal(
+      after.drawerX,
+      version === 'released' ? before.drawerX : after.boundary,
+      'drawer follows the resized pane boundary',
+    );
+    assert.equal(
+      after.drawerWidth,
+      version === 'released'
+        ? before.drawerWidth
+        : after.outer - after.boundary,
+    );
     assert.equal(after.drawerBorderWidth, before.drawerBorderWidth);
     assert.equal(after.drawerBackground, before.drawerBackground);
     assert.equal(after.drawerContent, before.drawerContent);

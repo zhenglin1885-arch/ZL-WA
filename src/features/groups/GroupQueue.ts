@@ -202,14 +202,26 @@ export default class GroupQueue {
     this.stopped = false;
     this.notify();
     try {
+      let paced = false;
+      const limited = new Set<string>();
       for (const task of batch.tasks) {
         if (this.stopped) break;
         if (!['uncertain', 'approval', 'failed'].includes(task.status))
           continue;
+        if (limited.has(task.accountId)) {
+          task.message = `${task.message.slice(0, 1000)}；WhatsApp 核验限流，暂未再次查询；请稍后刷新执行结果`;
+          await this.persist();
+          continue;
+        }
+        if (paced) await this.pause(batch.interval * 1000);
+        if (this.stopped) break;
+        paced = true;
         const previous = task.status;
+        const previousMessage = task.message;
         task.message = '正在核验结果（不重复执行）';
         this.notify();
         const result = await this.bounded(this.adapter.check({ ...task }));
+        if (result.rateLimited) limited.add(task.accountId);
         task.groupId = result.groupId || task.groupId;
         if (result.submitted) task.joinSubmitted = true;
         task.status =
@@ -218,7 +230,13 @@ export default class GroupQueue {
               ? 'approval'
               : 'failed'
             : result.status;
-        task.message = result.message;
+        task.message =
+          result.status === 'not-done' && previous === 'failed'
+            ? `${previousMessage.slice(0, 1000)}；核验：${result.message}`.slice(
+                0,
+                2000,
+              )
+            : result.message;
         await this.persist();
         if (result.inFlight) break;
       }
@@ -240,6 +258,7 @@ export default class GroupQueue {
     try {
       const work = [...tasks];
       const deferred = new Set<string>();
+      const limited = new Set<string>();
       for (const task of work) {
         if (this.stopped) break;
         if (paced) await this.pause(batch.interval * 1000);
@@ -251,10 +270,16 @@ export default class GroupQueue {
           attempt += 1
         ) {
           if (this.stopped) break;
+          const direct =
+            (task.operation === 'join' || task.operation === 'leave') &&
+            !task.joinSubmitted &&
+            (task.attempts === 0 || task.status === 'failed');
           task.status = 'running';
-          task.message = '正在核验当前状态';
+          task.message = direct ? '准备执行' : '正在核验当前状态';
           await this.persist();
-          let result = await this.bounded(this.adapter.check({ ...task }));
+          let result: GroupResult = direct
+            ? { status: 'not-done', message: '准备执行' }
+            : await this.bounded(this.adapter.check({ ...task }));
           if (result.status === 'not-done') {
             if (this.stopped) {
               task.status = 'stopped';
@@ -270,6 +295,7 @@ export default class GroupQueue {
             result = await this.bounded(this.adapter.execute({ ...task }));
           }
           task.groupId = result.groupId || task.groupId;
+          if (result.rateLimited) limited.add(task.accountId);
           if (result.submitted) task.joinSubmitted = true;
           task.status = result.status === 'not-done' ? 'failed' : result.status;
           task.message = result.message;
@@ -307,7 +333,12 @@ export default class GroupQueue {
       // catches delayed membership without holding every group or resubmitting.
       if (batch.mode === 'join' && !this.stopped)
         for (const task of tasks) {
-          if (!task.joinSubmitted || task.status !== 'uncertain') continue;
+          if (
+            !task.joinSubmitted ||
+            task.status !== 'uncertain' ||
+            limited.has(task.accountId)
+          )
+            continue;
           const result = await this.bounded(this.adapter.check({ ...task }));
           task.groupId = result.groupId || task.groupId;
           task.message = result.message;

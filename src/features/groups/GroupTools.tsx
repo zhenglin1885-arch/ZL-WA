@@ -186,7 +186,10 @@ export default observer(function GroupTools({
           parseGroupLinks(links).map(code => ({
             ...a,
             target: code,
-            name: `https://chat.whatsapp.com/${code}`,
+            name: (/^[\w-]{16,64}$/.test(code)
+              ? `https://chat.whatsapp.com/${code}`
+              : code
+            ).slice(0, 500),
           })),
         )
       : groups.filter(
@@ -358,6 +361,7 @@ export default observer(function GroupTools({
               <>
                 <p>
                   可粘贴邀请消息或群链接；每个选中账号加入全部链接，重复链接自动合并。
+                  无效链接单独记录失败原因，不影响其他链接执行。
                 </p>
                 <textarea
                   aria-label="群邀请链接"

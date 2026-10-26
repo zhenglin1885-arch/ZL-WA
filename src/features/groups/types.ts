@@ -46,6 +46,7 @@ export interface GroupResult {
   inFlight?: boolean;
   retryable?: boolean;
   submitted?: boolean;
+  rateLimited?: boolean;
 }
 export interface GroupChoice extends GroupTarget {
   admin: boolean;
@@ -58,7 +59,7 @@ export const defaultGroupState = (): GroupToolsState => ({
 export function parseGroupLinks(text: string): string[] {
   const links = new Set<string>();
   const lines = text.split(/\r?\n/);
-  for (const [index, value] of lines.entries()) {
+  for (const value of lines) {
     if (!value.trim()) continue;
     const candidates =
       value.match(
@@ -75,7 +76,8 @@ export function parseGroupLinks(text: string): string[] {
             : `https://${normalized}`,
         );
       } catch {
-        throw new Error(`第 ${index + 1} 行不是有效的群链接`);
+        links.add(normalized.slice(0, 2000));
+        continue;
       }
       const match = /^\/(?:invite\/)?([\w-]{16,64})\/?$/.exec(url.pathname);
       if (
@@ -86,12 +88,15 @@ export function parseGroupLinks(text: string): string[] {
         url.port ||
         !match
       )
-        throw new Error(`第 ${index + 1} 行不是 WhatsApp 群邀请链接`);
-      links.add(match[1]);
+        links.add(normalized.slice(0, 2000));
+      else links.add(match[1]);
     }
     if (candidates.length === 0 && /https?:|chat\.whatsapp\.com/i.test(value))
-      throw new Error(`第 ${index + 1} 行不是有效的群链接`);
+      links.add(value.trim().slice(0, 2000));
   }
+  if (links.size === 0)
+    for (const value of lines)
+      if (value.trim()) links.add(value.trim().slice(0, 2000));
   if (links.size === 0) throw new Error('请填写群邀请链接，一行一条');
   return [...links];
 }
@@ -153,11 +158,9 @@ export function validateGroupState(input: unknown): GroupToolsState {
         (task.token !== undefined && !shortString(task.token, 100)) ||
         (task.groupId !== undefined &&
           !/^\d{1,40}(?:-\d{1,30})?@g\.us$/.test(task.groupId)) ||
-        !(
-          task.operation === 'join'
-            ? /^[\w-]{16,64}$/
-            : /^\d{1,40}(?:-\d{1,30})?@g\.us$/
-        ).test(task.target)
+        !(task.operation === 'join'
+          ? shortString(task.target, 2000) && Boolean(task.target.trim())
+          : /^\d{1,40}(?:-\d{1,30})?@g\.us$/.test(task.target))
       )
         throw new Error('无效群组执行对象');
   }
