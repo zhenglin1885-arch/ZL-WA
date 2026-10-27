@@ -85,6 +85,108 @@ export async function verifyReactions({
       `document.querySelectorAll('.reaction-preview article').length===4 && [...document.querySelectorAll('.reaction-tools-dialog button')].some(b=>b.textContent==='开始点赞'&&!b.disabled)`,
       'four newest matched messages previewed',
     );
+    // Large account/group previews remain bounded; counts refer to executable
+    // account/group tasks, not the number of merged group rows or cards shown.
+    for (const id of [first, second])
+      await guest(
+        id,
+        `(()=>{
+        for(let i=0;i<5;i++){
+          const g=(20001+i)+'@g.us';
+          fixture.groupRows.push({id:g,subject:'折叠测试群 '+i,member:true,admin:true,chat:true});
+          fixture.reactionMessages.push({id:'false_'+g+'_NEW',body:i===4?'没有匹配':'点赞验证消息',type:'chat',t:2});
+        }return true;
+      })()`,
+      );
+    await clickText('刷新群组');
+    await wait(
+      `document.querySelectorAll('.reaction-groups .group-tools-group').length===8 && !document.querySelector('.reaction-groups button').disabled`,
+      'large group inventory',
+    );
+    for (let i = 0; i < 5; i += 1)
+      await click(
+        `.reaction-groups [data-group-id="${20_001 + i}@g.us"] input`,
+      );
+    await clickText('查找匹配消息');
+    await wait(
+      `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 12 项') && document.querySelector('.reaction-find-progress').textContent.includes('14/14')`,
+      'two-account matching task sum excludes misses',
+    );
+    assert.equal(
+      await evaluate(
+        `document.querySelectorAll('.reaction-preview article').length`,
+      ),
+      10,
+    );
+    assert(
+      await evaluate(
+        `document.querySelector('.reaction-preview').getBoundingClientRect().height<=360`,
+      ),
+      'preview height bounded',
+    );
+    await clickText('展开全部 14 条结果');
+    assert.equal(
+      await evaluate(
+        `document.querySelectorAll('.reaction-preview article').length`,
+      ),
+      14,
+    );
+    assert(
+      await evaluate(
+        `document.querySelector('.reaction-preview').getBoundingClientRect().height<=360`,
+      ),
+      'expanded preview still bounded',
+    );
+    await clickText('收起，仅显示前10条');
+    assert.equal(
+      await evaluate(
+        `document.querySelectorAll('.reaction-preview article').length`,
+      ),
+      10,
+    );
+    await evaluate(
+      `document.querySelector('.reaction-execution-actions').scrollIntoView({block:'center'})`,
+    );
+    assert(
+      await evaluate(
+        `(()=>{const b=document.querySelector('.reaction-execution-actions button'),r=b.getBoundingClientRect();return !b.disabled&&r.top>=0&&r.bottom<=innerHeight})()`,
+      ),
+      'execute remains reachable',
+    );
+    await shot('/workspace/ZL-WA-reactions-folded.png');
+    await click(`.reaction-accounts [data-account-id="${second}"] input`);
+    await wait(
+      `document.querySelectorAll('.reaction-groups .group-tools-group').length===8 && !document.querySelector('.reaction-groups button').disabled`,
+      'single-account inventory',
+    );
+    await clickText('查找匹配消息');
+    await wait(
+      `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 6 项') && document.querySelector('.reaction-find-progress').textContent.includes('7/7')`,
+      'single-account total',
+    );
+    await click(`.reaction-accounts [data-account-id="${second}"] input`);
+    await wait(
+      `document.querySelectorAll('.reaction-groups .group-tools-group').length===8 && !document.querySelector('.reaction-groups button').disabled`,
+      'restore two accounts',
+    );
+    for (const id of [first, second])
+      await guest(
+        id,
+        `fixture.groupRows=fixture.groupRows.filter(g=>!g.id.startsWith('2000'));true`,
+      );
+    await clickText('刷新群组');
+    await wait(
+      `document.querySelectorAll('.reaction-groups .group-tools-group').length===3 && !document.querySelector('.reaction-groups button').disabled`,
+      'restore original inventory',
+    );
+    await clickText('查找匹配消息');
+    await wait(
+      `document.querySelectorAll('.reaction-preview article').length===4 && document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 4 项')`,
+      'original preview restored',
+    );
+    console.log(
+      'PASS reaction result folding at ten rows, bounded expanded list, reachable execution action, and live multi-account task totals excluding misses',
+    );
     for (const id of [first, second])
       assert.equal(
         await guest(id, 'fixture.reactionCalls.length'),

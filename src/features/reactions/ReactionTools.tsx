@@ -1,7 +1,7 @@
 /* eslint-disable no-void, no-await-in-loop -- UI operations handle their own failures; searches are sequential. */
 import { Button, Dialog, DialogTitle, DialogContent } from '@mui/material';
 import { observer } from 'mobx-react';
-import { useEffect, useId, useReducer, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import type { RealStores } from '../../stores';
 import { normalizeAccountConfig } from '../accounts/state';
 import type { GroupChoice } from '../groups/types';
@@ -46,6 +46,7 @@ export default observer(function ReactionTools({
   const [accountFilter, setAccountFilter] = useState('');
   const [rules, setRules] = useState(defaultReactionPreferences);
   const [preview, setPreview] = useState<ReactionMatch[]>([]);
+  const [expandedPreview, setExpandedPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pictureLoading, setPictureLoading] = useState(false);
   const pictureInput = useRef<HTMLInputElement>(null);
@@ -150,10 +151,23 @@ export default observer(function ReactionTools({
       setPreview([]);
     }
   };
-  const groupRows = [...new Set(groups.map(g => g.target))].map(id => {
-    const members = groups.filter(g => g.target === id);
-    return { id, name: members[0].name, members };
-  });
+  const groupRows = useMemo(() => {
+    const rows = new Map<
+      string,
+      { id: string; name: string; members: GroupChoice[] }
+    >();
+    for (const group of groups) {
+      const row = rows.get(group.target);
+      if (row) row.members.push(group);
+      else
+        rows.set(group.target, {
+          id: group.target,
+          name: group.name,
+          members: [group],
+        });
+    }
+    return [...rows.values()];
+  }, [groups]);
   const visibleGroups = groupRows.filter(
     g =>
       (!accountFilter || g.members.some(m => m.accountId === accountFilter)) &&
@@ -168,11 +182,19 @@ export default observer(function ReactionTools({
       s.id,
     ].some(v => v?.toLowerCase().includes(accountSearch.toLowerCase())),
   );
-  const targets = groups.filter(g => selected.includes(g.target));
+  const targets = useMemo(() => {
+    const ids = new Set(selected);
+    return groups.filter(group => ids.has(group.target));
+  }, [groups, selected]);
+  const matchedCount = preview.filter(
+    row => row.messageId && !row.error,
+  ).length;
+  const visiblePreview = expandedPreview ? preview : preview.slice(0, 10);
   const selectedKey = JSON.stringify(targets);
   useEffect(() => {
     generation.current += 1;
     setPreview([]);
+    setExpandedPreview(false);
   }, [selectedKey]);
   const find = async () => {
     generation.current += 1;
@@ -180,6 +202,7 @@ export default observer(function ReactionTools({
     setBusy(true);
     setNotice('');
     setPreview([]);
+    setExpandedPreview(false);
     const rows: ReactionMatch[] = [];
     try {
       for (const target of targets) {
@@ -632,20 +655,47 @@ export default observer(function ReactionTools({
             <p>
               全部账号共用设置，随机错开并逐项执行。请保持软件运行；关闭本窗口继续执行，退出软件暂停，重开后需手动继续。超过结束时间不补发。
             </p>
-            <Button
-              disabled={
-                locked ||
-                reading ||
-                !hasMatchInput ||
-                targets.length === 0 ||
-                targets.length > 1000
-              }
-              onClick={() => void find()}
+            <div className="reaction-find-actions">
+              <Button
+                disabled={
+                  locked ||
+                  reading ||
+                  !hasMatchInput ||
+                  targets.length === 0 ||
+                  targets.length > 1000
+                }
+                onClick={() => void find()}
+              >
+                {busy ? '查找中…' : '查找匹配消息'}
+              </Button>
+              <span
+                className="reaction-match-summary"
+                role="status"
+                aria-live="polite"
+              >
+                匹配任务 {matchedCount} 项
+              </span>
+            </div>
+            <small className="reaction-find-progress">
+              已检查 {preview.length}/{targets.length} 个账号群组对象
+            </small>
+            {preview.length > 10 && (
+              <Button
+                aria-expanded={expandedPreview}
+                aria-controls={`${uid}-reaction-preview`}
+                onClick={() => setExpandedPreview(value => !value)}
+              >
+                {expandedPreview
+                  ? '收起，仅显示前10条'
+                  : `展开全部 ${preview.length} 条结果`}
+              </Button>
+            )}
+            <div
+              className="reaction-preview"
+              id={`${uid}-reaction-preview`}
+              aria-label="匹配消息结果"
             >
-              {busy ? '查找中…' : '查找匹配消息'}
-            </Button>
-            <div className="reaction-preview">
-              {preview.map(m => (
+              {visiblePreview.map(m => (
                 <article key={`${m.accountId}:${m.target}`}>
                   <strong>
                     {m.accountName} · {m.name}

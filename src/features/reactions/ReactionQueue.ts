@@ -147,12 +147,21 @@ export default class ReactionQueue {
           result: usable ? '等待计划时间' : m.error || '未找到匹配消息',
         };
       });
-      this.state.preferences = rules;
-      this.state.batches = [
-        { id: batchId, created: now, rules, tasks },
-        ...this.state.batches,
-      ].slice(0, 20);
-      await this.save();
+      const previous = this.state;
+      this.state = {
+        preferences: rules,
+        batches: [
+          { id: batchId, created: now, rules, tasks },
+          ...previous.batches,
+        ].slice(0, 20),
+      };
+      try {
+        await this.save();
+      } catch (error) {
+        this.state = previous;
+        this.emit();
+        throw error;
+      }
       this.resume(batchId);
       return batchId;
     } finally {

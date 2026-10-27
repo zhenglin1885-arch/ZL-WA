@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultTools } from '../src/features/accountTools/config';
+import { encodeReactionState } from '../src/features/reactions/types';
 
 describe('privileged account tools IPC', () => {
   let root: string;
@@ -103,10 +104,14 @@ describe('privileged account tools IPC', () => {
     ).toThrow('禁止访问');
     state.preferences.text = '你好吗';
     handlers['reaction-tools-save'](event, state);
-    expect(
-      JSON.parse(readFileSync(join(root, 'reaction-tools.json'), 'utf8'))
-        .preferences.text,
-    ).toBe('你好吗');
+    const stored = JSON.parse(
+      readFileSync(join(root, 'reaction-tools-v2.json'), 'utf8'),
+    );
+    expect(stored.format).toBe('zl-reactions-1');
+    expect(stored.texts[stored.preferences.textIndex]).toBe('你好吗');
+    expect(handlers['reaction-tools-load'](event).preferences.text).toBe(
+      '你好吗',
+    );
     state.preferences.emojis = ['invalid'];
     expect(() => handlers['reaction-tools-save'](event, state)).toThrow();
     expect(handlers['reaction-tools-load'](event).preferences.emojis).toEqual([
@@ -117,6 +122,65 @@ describe('privileged account tools IPC', () => {
       join: 5,
       leave: 5,
     });
+  });
+  it('reads legacy reaction history and preserves its file when saving the compact format', () => {
+    const state = handlers['reaction-tools-load'](event);
+    state.preferences.text = '保留旧匹配正文';
+    const legacy = JSON.stringify(state);
+    writeFileSync(join(root, 'reaction-tools.json'), legacy);
+    expect(handlers['reaction-tools-load'](event)).toEqual(state);
+    handlers['reaction-tools-save'](event, state);
+    expect(readFileSync(join(root, 'reaction-tools.json'), 'utf8')).toBe(
+      legacy,
+    );
+    const stored = JSON.parse(
+      readFileSync(join(root, 'reaction-tools-v2.json'), 'utf8'),
+    );
+    stored.preferences.textIndex = -1;
+    const before = readFileSync(join(root, 'reaction-tools-v2.json'), 'utf8');
+    expect(() => handlers['reaction-tools-save'](event, stored)).toThrow(
+      '压缩记录无效',
+    );
+    expect(readFileSync(join(root, 'reaction-tools-v2.json'), 'utf8')).toBe(
+      before,
+    );
+    expect(handlers['reaction-tools-load'](event)).toEqual(state);
+  });
+  it('persists large multi-account reaction checkpoints through compact IPC without dropping uncertain results', () => {
+    const state = handlers['reaction-tools-load'](event);
+    const body = 'x'.repeat(19_000);
+    state.preferences.text = body;
+    state.batches = [
+      {
+        id: 'multi-account',
+        created: 1000,
+        rules: state.preferences,
+        tasks: Array.from({ length: 432 }, (_value, i) => ({
+          id: `task-${i}`,
+          accountId: `account-${i % 3}`,
+          accountName: `账号${i % 3}`,
+          ownerId: `861380000000${i % 3}@c.us`,
+          target: `${10_001 + Math.floor(i / 3)}@g.us`,
+          name: `群${Math.floor(i / 3)}`,
+          messageId: `false_${10_001 + Math.floor(i / 3)}@g.us_M`,
+          text: body,
+          timestamp: 1000,
+          emoji: '👍',
+          plannedAt: 2000,
+          status: i === 0 ? 'uncertain' : 'queued',
+          result: i === 0 ? '保留未确认结果' : '等待计划时间',
+        })),
+      },
+    ];
+    expect(JSON.stringify(state).length).toBeGreaterThan(5_000_000);
+    handlers['reaction-tools-save'](event, encodeReactionState(state));
+    const transfer = handlers['reaction-tools-load'](event, 'compact');
+    expect(transfer.format).toBe('zl-reactions-1');
+    expect(transfer.texts).toHaveLength(1);
+    expect(
+      readFileSync(join(root, 'reaction-tools-v2.json'), 'utf8').length,
+    ).toBeLessThan(1_000_000);
+    expect(handlers['reaction-tools-load'](event)).toEqual(state);
   });
   it('keeps reply composer preferences independent of ordinary bulk preferences', () => {
     const bulk = invoke('bulk-preferences');

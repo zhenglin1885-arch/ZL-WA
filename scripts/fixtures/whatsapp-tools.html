@@ -156,6 +156,9 @@
         nativeInputs: 0,
         ownPhone: '8613800000001',
       };
+      // Offline fixtures expose their own native API. Prevent the Audio
+      // bootstrap from loading the live WA-JS library into this synthetic page.
+      window.WPP = { isReady: true };
       for (const type of ['pointerdown', 'pointerup', 'click'])
         window.addEventListener(
           type,

@@ -70,6 +70,135 @@ export interface ReactionState {
   preferences: ReactionPreferences;
   batches: ReactionBatch[];
 }
+type StoredRules = Omit<ReactionPreferences, 'text' | 'picture'> & {
+  textIndex: number;
+  pictureIndex?: number;
+};
+type StoredTask = Omit<ReactionTask, 'text' | 'imagePreview'> & {
+  textIndex?: number;
+};
+interface StoredReactions {
+  format: 'zl-reactions-1';
+  texts: string[];
+  pictures: ReactionPicture[];
+  preferences: StoredRules;
+  batches: (Omit<ReactionBatch, 'rules' | 'tasks'> & {
+    rules: StoredRules;
+    tasks: StoredTask[];
+  })[];
+}
+
+// Keep full matching text for later read-only verification, but persist each
+// distinct body/reference picture once across all accounts and history.
+export function encodeReactionState(state: ReactionState): StoredReactions {
+  const texts: string[] = [];
+  const pictures: ReactionPicture[] = [];
+  const textIndices = new Map<string, number>();
+  const pictureIndices = new Map<string, number>();
+  const textIndex = (value: string) => {
+    if (!textIndices.has(value)) {
+      textIndices.set(value, texts.length);
+      texts.push(value);
+    }
+    return textIndices.get(value)!;
+  };
+  const rulesOf = (rules: ReactionPreferences): StoredRules => {
+    const { text: body, picture, ...fields } = rules;
+    let pictureIndex: number | undefined;
+    if (picture) {
+      const key = JSON.stringify(picture);
+      if (!pictureIndices.has(key)) {
+        pictureIndices.set(key, pictures.length);
+        pictures.push(picture);
+      }
+      pictureIndex = pictureIndices.get(key)!;
+    }
+    return {
+      ...fields,
+      textIndex: textIndex(body),
+      ...(picture ? { pictureIndex } : {}),
+    };
+  };
+  return {
+    format: 'zl-reactions-1',
+    texts,
+    pictures,
+    preferences: rulesOf(state.preferences),
+    batches: state.batches.map(batch => ({
+      ...batch,
+      rules: rulesOf(batch.rules),
+      tasks: batch.tasks.map(task => {
+        const { text: body, ...fields } = task;
+        delete fields.imagePreview;
+        return {
+          ...fields,
+          ...(body === undefined ? {} : { textIndex: textIndex(body) }),
+        };
+      }),
+    })),
+  };
+}
+
+const invalidStoredReactions = () => new Error('点赞压缩记录无效');
+
+function expandReactionState(stored: StoredReactions): ReactionState {
+  if (
+    !Array.isArray(stored.texts) ||
+    stored.texts.length > 20_021 ||
+    stored.texts.some(
+      value => typeof value !== 'string' || value.length > 20_000,
+    ) ||
+    !Array.isArray(stored.pictures) ||
+    stored.pictures.length > 21 ||
+    !Array.isArray(stored.batches) ||
+    stored.batches.length > 20 ||
+    JSON.stringify(stored).length > 5_000_000
+  )
+    throw invalidStoredReactions();
+  const textAt = (index: number) => {
+    if (!Number.isInteger(index) || index < 0 || index >= stored.texts.length)
+      throw invalidStoredReactions();
+    return stored.texts[index];
+  };
+  const rulesOf = (rules: StoredRules): ReactionPreferences => {
+    if (!rules) throw invalidStoredReactions();
+    const { textIndex, pictureIndex, ...fields } = rules;
+    if (
+      pictureIndex !== undefined &&
+      (!Number.isInteger(pictureIndex) ||
+        pictureIndex < 0 ||
+        pictureIndex >= stored.pictures.length)
+    )
+      throw invalidStoredReactions();
+    return {
+      ...fields,
+      text: textAt(textIndex),
+      ...(pictureIndex === undefined
+        ? {}
+        : { picture: stored.pictures[pictureIndex] }),
+    };
+  };
+  return {
+    preferences: rulesOf(stored.preferences),
+    batches: stored.batches.map(batch => {
+      if (!batch || !Array.isArray(batch.tasks) || batch.tasks.length > 1000)
+        throw invalidStoredReactions();
+      return {
+        ...batch,
+        rules: rulesOf(batch.rules),
+        tasks: batch.tasks.map(task => {
+          if (!task) throw invalidStoredReactions();
+          const { textIndex, ...fields } = task;
+          return {
+            ...fields,
+            ...(textIndex === undefined ? {} : { text: textAt(textIndex) }),
+          };
+        }),
+      };
+    }),
+  };
+}
+
 export interface ReactionResult {
   status: 'success' | 'failed' | 'uncertain';
   message: string;
@@ -194,6 +323,19 @@ export function validateReactionState(input: unknown): ReactionState {
       taskIds.add(t.id);
     }
   }
-  if (JSON.stringify(s).length > 5_000_000) throw new Error('点赞任务记录过大');
-  return structuredClone(s);
+  const stored = encodeReactionState(s);
+  if (JSON.stringify(stored).length > 5_000_000)
+    throw new Error(
+      '点赞任务记录过大（重复内容已合并，请减少本次对象或匹配正文长度）',
+    );
+  // Clone the compact pool rather than copying the same large body once per task.
+  return expandReactionState(structuredClone(stored));
+}
+
+// Accept previous uncompressed files and the compact IPC/disk representation.
+export function decodeReactionState(input: unknown): ReactionState {
+  const stored = input as StoredReactions;
+  return validateReactionState(
+    stored?.format === 'zl-reactions-1' ? expandReactionState(stored) : input,
+  );
 }

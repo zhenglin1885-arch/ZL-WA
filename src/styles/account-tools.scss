@@ -1,5 +1,19 @@
 // ZL-WA right-hand account tools, scoped against upstream div { height:100% }.
 .reaction-tools-dialog {
+  .reaction-find-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .reaction-match-summary {
+    font-size: 13px;
+  }
+  .reaction-preview {
+    max-height: min(360px, 40vh);
+    overflow-y: auto;
+    min-height: 0;
+  }
   .reaction-execution-actions {
     display: flex;
     flex-wrap: wrap;

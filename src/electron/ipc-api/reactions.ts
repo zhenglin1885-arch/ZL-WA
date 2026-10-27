@@ -3,22 +3,26 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   defaultReactionState,
-  validateReactionState,
+  decodeReactionState,
+  encodeReactionState,
 } from '../../features/reactions/types';
 
 export default function initReactions(
   check: (event: Electron.IpcMainInvokeEvent) => void,
 ) {
-  const path = join(app.getPath('userData'), 'reaction-tools.json');
-  ipcMain.handle('reaction-tools-load', event => {
+  const legacyPath = join(app.getPath('userData'), 'reaction-tools.json');
+  const path = join(app.getPath('userData'), 'reaction-tools-v2.json');
+  ipcMain.handle('reaction-tools-load', (event, format?: unknown) => {
     check(event);
-    return existsSync(path)
-      ? validateReactionState(JSON.parse(readFileSync(path, 'utf8')))
+    const source = existsSync(path) ? path : legacyPath;
+    const state = existsSync(source)
+      ? decodeReactionState(JSON.parse(readFileSync(source, 'utf8')))
       : defaultReactionState();
+    return format === 'compact' ? encodeReactionState(state) : state;
   });
   ipcMain.handle('reaction-tools-save', (event, input: unknown) => {
     check(event);
-    const next = validateReactionState(input);
+    const next = encodeReactionState(decodeReactionState(input));
     writeFileSync(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 });
     renameSync(`${path}.tmp`, path);
     return true;

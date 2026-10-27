@@ -6,6 +6,7 @@ import type { GroupTarget } from '../groups/types';
 import ReactionQueue from './ReactionQueue';
 import { reactionGuest } from './guest';
 import { prepareReactionImage } from './image';
+import { encodeReactionState, decodeReactionState } from './types';
 import type {
   ReactionMatch,
   ReactionPreferences,
@@ -20,8 +21,12 @@ export class ReactionRuntime {
 
   constructor(private stores: RealStores) {
     this.queue = new ReactionQueue({
-      load: () => ipcRenderer.invoke('reaction-tools-load'),
-      save: state => ipcRenderer.invoke('reaction-tools-save', state),
+      load: async () =>
+        decodeReactionState(
+          await ipcRenderer.invoke('reaction-tools-load', 'compact'),
+        ),
+      save: state =>
+        ipcRenderer.invoke('reaction-tools-save', encodeReactionState(state)),
       execute: (task, rules) => this.execute(task, rules),
       check: (task, rules) => this.check(task, rules),
     });
