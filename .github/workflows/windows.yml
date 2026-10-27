@@ -3,7 +3,7 @@ name: ZL-WA Windows
 on:
   # Isolated fallback for this test build while the local GitHub API is unavailable.
   push:
-    branches: ['test/7.3.5-20261027-4']
+    branches: ['test/7.3.5-20261027-5']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -45,7 +45,7 @@ jobs:
         if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-4' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-5' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
@@ -121,10 +121,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-4' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-5' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-4 语音下载与群发修复测试包" --notes '独立测试包：补充 Audio 上传语音接口兼容和真实波形处理；修正下载接口的属性检测兼容；群发增加原消息编号的短暂回执核验，并让有编号、请求已返回的待确认项遵循继续策略，不重发原消息。真实账号效果仍需测试。保留此前客户功能、下载和图文翻译修复。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-5 语音下载与群发修复测试包" --notes '独立测试包：补充 Audio 上传语音接口兼容和真实波形处理；修正下载接口的属性检测兼容；群发增加原消息编号的短暂回执核验，并让有编号、请求已返回的待确认项遵循继续策略，不重发原消息。真实账号效果仍需测试。保留此前客户功能、下载和图文翻译修复。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
           if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }

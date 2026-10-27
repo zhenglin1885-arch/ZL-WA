@@ -216,6 +216,7 @@ describe('WhatsApp recipient/send adapter (synthetic modules, no real messages)'
       expect(await request).toMatchObject({
         messageId: 'synthetic-key',
         confirmed: false,
+        timedOut: true,
       });
       expect(submit).toHaveBeenCalledTimes(1);
     } finally {

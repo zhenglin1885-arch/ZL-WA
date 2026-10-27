@@ -1686,6 +1686,7 @@ export async function sendTextToChat(
   return {
     messageId,
     confirmed: confirmed && Boolean(messageId),
+    ...(settled === null ? { timedOut: true } : {}),
     ...(confirmed && messageId
       ? {}
       : {

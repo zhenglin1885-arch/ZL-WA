@@ -313,7 +313,9 @@ export default class BulkQueue {
           // Unidentified submissions and still-running timeouts remain stops.
           if (
             !confirmed &&
-            (spec.failure !== 'continue' || !delivery.messageId)
+            (spec.failure !== 'continue' ||
+              !delivery.messageId ||
+              (typeof result !== 'string' && result.timedOut))
           )
             this.stopped.add(record.id);
         } catch (error) {

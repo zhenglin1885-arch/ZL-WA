@@ -220,6 +220,19 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.send).toHaveBeenCalledTimes(1);
     expect(queue.records[0].status).toBe('待确认');
   });
+  it('stops on an internally timed-out native send even with a known ID and continue selected', async () => {
+    (adapter.send as jest.Mock).mockResolvedValue({
+      messageId: 'pending-native-send',
+      confirmed: false,
+      timedOut: true,
+    });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(queue.records[0]).toMatchObject({
+      status: '待确认',
+      deliveries: [{ messageId: 'pending-native-send', status: 'uncertain' }],
+    });
+  });
   it('lets the user revoke a selected target without touching other recipients', async () => {
     await finish(queue.submit(spec()));
     await queue.revoke(queue.records[0].id, ['account-2:two@c.us']);

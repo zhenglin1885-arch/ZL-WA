@@ -162,6 +162,7 @@ export interface BulkDelivery {
   editRequestedAt?: string;
 }
 export interface BulkSendOutcome {
+  timedOut?: boolean;
   quotedMessageId?: string;
   messageId: string;
   confirmed: boolean;
