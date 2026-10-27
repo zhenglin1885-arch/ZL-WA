@@ -71,6 +71,7 @@ const {
       token: 'synthetic-document',
       owners: ['8613800000001@c.us'],
       needsLibrary: false,
+      canInitialize: true,
     },
   );
   context.window.__zlCustomers = { queue: [], data: undefined };
