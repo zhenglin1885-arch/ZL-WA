@@ -205,6 +205,15 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(wpp.chat.sendVCardContactMessage.mock.calls[0][2].quotedMsg).toBe(
       'false_10001@g.us_NEW',
     );
+    expect(
+      wpp.chat.sendFileMessage.mock.calls.find(c => c[2].type === 'audio')[2],
+    ).toEqual(
+      expect.objectContaining({
+        quotedMsg: 'false_10001@g.us_NEW',
+        isPtt: true,
+        waveform: true,
+      }),
+    );
   });
   it('does not identify an ordinary message as a sent reply when its response ID is missing', async () => {
     setupReplies();
@@ -233,6 +242,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
           waitForAck: true,
           delay: 2000,
           isPtt: type === 'audio',
+          ...(type === 'audio' ? { waveform: true } : {}),
           caption: type === 'image' || type === 'audio' ? undefined : 'hello',
         }),
       );

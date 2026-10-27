@@ -309,7 +309,7 @@ describe('DownloadController', () => {
 
     session.emit('will-download', event, item, secondWebContents);
 
-    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).not.toHaveBeenCalled();
     expect(actions.addDownload).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'download-1',

@@ -22,6 +22,7 @@ import {
 } from '../../../features/accounts/whatsapp';
 import { configureWhatsAppLayout } from '../../../features/accounts/layout';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
+import { configureWhatsAppVoice } from '../../../features/accounts/voice';
 import { configureTranslation } from '../../../features/accountTools/runtime';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
@@ -129,6 +130,11 @@ class ServiceWebview extends Component<IProps> {
       await view
         .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
         .catch(error => debug('Could not mount WhatsApp split handle', error));
+      await view
+        .executeJavaScript(`(${configureWhatsAppVoice.toString()})()`)
+        .catch(error =>
+          debug('Could not configure WhatsApp voice uploads', error),
+        );
       await view.executeJavaScript(`(${watchWhatsAppUnread.toString()})()`);
       await view.executeJavaScript(
         `(${applyWhatsAppTheme.toString()})(${Boolean(stores?.ui.isDarkThemeActive || service.isDarkModeEnabled)})`,

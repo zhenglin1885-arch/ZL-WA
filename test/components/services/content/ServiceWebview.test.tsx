@@ -124,19 +124,23 @@ describe('ServiceWebview', () => {
     });
     const component = new ServiceWebview(props as any) as ServiceWebviewClass;
     const view = Object.assign(createMockWebviewElement(), {
-      executeJavaScript: jest
-        .fn()
-        .mockResolvedValueOnce(true)
-        .mockRejectedValueOnce(new Error('Unread module not ready')),
+      executeJavaScript: jest.fn(async (code: string) => {
+        if (code.includes('watchWhatsAppUnread'))
+          throw new Error('Unread module not ready');
+        return true;
+      }),
     });
     component._setWebview(createMockWebview(view) as any);
     try {
       await component.pollAccount();
-      expect(view.executeJavaScript).toHaveBeenCalledTimes(2);
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(3);
       expect(view.executeJavaScript.mock.calls[0][0]).toContain(
         'configureWhatsAppLayout',
       );
       expect(view.executeJavaScript.mock.calls[1][0]).toContain(
+        'configureWhatsAppVoice',
+      );
+      expect(view.executeJavaScript.mock.calls[2][0]).toContain(
         'watchWhatsAppUnread',
       );
     } finally {

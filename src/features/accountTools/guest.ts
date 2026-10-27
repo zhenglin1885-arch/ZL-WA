@@ -21,7 +21,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 8;
+  const revision = 9;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -63,6 +63,7 @@ export function translationTick(
       busy: false,
       config,
       incoming: new WeakMap(),
+      incomingByBubble: new WeakMap(),
       controls: new WeakMap(),
       activeChat: '',
       memo: previous?.memo instanceof Map ? previous.memo : new Map(),
@@ -92,7 +93,7 @@ export function translationTick(
     // loses them, so read only message text and reconstruct emoji alt characters.
     state.readText = (root: Node): string => {
       const metadata =
-        '[data-zl-translation], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
+        '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
       const excluded = (element: Element) => {
         if (element.matches(metadata)) return true;
         const text = (element.textContent || '').trim();
@@ -848,6 +849,7 @@ export function translationTick(
     state.cancelPending();
     if (state.signature !== state.receiveKey(config) || !config.incoming) {
       state.incoming = new WeakMap();
+      state.incomingByBubble = new WeakMap();
       state.withScroll(document.querySelector('[data-zl-translation]'), () =>
         document
           .querySelectorAll('[data-zl-translation]')
@@ -900,6 +902,7 @@ export function translationTick(
       }
     }
     const seen = new Set<HTMLElement>();
+    const seenBubbles = new Set<HTMLElement>();
     let processed = 0;
     for (const body of bodies) {
       const rect = body.getBoundingClientRect();
@@ -956,16 +959,19 @@ export function translationTick(
       if (processed >= 24) break;
       processed += 1;
       const bubble =
+        textNode.closest<HTMLElement>('[data-id]') ||
         textNode.closest<HTMLElement>(
           '.message-in, .message-out, [data-id], [data-testid="msg-container"], [role="row"]',
         ) ||
         textNode.parentElement ||
         textNode;
+      if (seenBubbles.has(bubble)) continue;
+      seenBubbles.add(bubble);
       const text = state.readText(textNode).trim();
       if (!text.trim() || text.length > 12_000 || !state.needsTranslation(text))
         continue;
       const identity = `${state.chatKey()}:${bubble.closest('[data-id]')?.getAttribute('data-id') || ''}`;
-      let record = state.incoming.get(textNode);
+      let record = state.incomingByBubble.get(bubble);
       if (
         !record ||
         record.text !== text ||
@@ -973,6 +979,12 @@ export function translationTick(
         !record.container.isConnected
       ) {
         record?.container.remove();
+        // A rebuilt bubble may carry a cloned decoration without its WeakMap
+        // record. It is ours to replace; never append a second copy beside it.
+        for (const decoration of bubble.querySelectorAll(
+          '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate]',
+        ))
+          decoration.remove();
         const container = document.createElement('div');
         container.dataset.zlTranslation = 'true';
         container.style.cssText =
@@ -1009,9 +1021,11 @@ export function translationTick(
         const mount = textNode.closest('.copyable-text');
         state.withScroll(textNode, () => {
           if (mount && mount !== textNode) mount.append(container);
+          else if (textNode === bubble) bubble.append(container);
           else textNode.after(container);
         });
         record = {
+          input: textNode,
           text,
           identity,
           chat: state.chatKey(),
@@ -1023,14 +1037,13 @@ export function translationTick(
           status: 'idle',
           autoAttempted: false,
         };
-        state.incoming.set(textNode, record);
         state.controls.set(container, record);
         const current = record;
         current.request = (manual: boolean, force = false) => {
           if (
             !state.config.incoming ||
             current.chat !== state.chatKey() ||
-            !textNode.isConnected
+            !current.input.isConnected
           ) {
             if (manual) state.notice('消息或翻译设置已变化，请在当前聊天重试');
             state.dirty = true;
@@ -1040,7 +1053,7 @@ export function translationTick(
             if (manual) state.notice('正在翻译，请稍候');
             return;
           }
-          const latestText = state.readText(textNode).trim();
+          const latestText = state.readText(current.input).trim();
           if (!latestText.trim() || latestText.length > 12_000) {
             if (manual) state.notice('消息为空或超过 12000 字符，无法翻译');
             return;
@@ -1069,7 +1082,7 @@ export function translationTick(
           const id = state.sequence;
           state.pending.set(id, {
             direction: 'incoming',
-            input: textNode,
+            input: current.input,
             text: current.text,
             bubble,
             record: current,
@@ -1087,6 +1100,16 @@ export function translationTick(
           else state.queue.push(request);
         };
       }
+      // React can replace the complete caption while leaving our sibling
+      // decoration intact. Keep ownership on the message and rebind pending
+      // results instead of inserting another translation for the new node.
+      if (record.input !== textNode) {
+        for (const job of state.pending.values())
+          if (job.record === record) job.input = textNode;
+        record.input = textNode;
+      }
+      state.incoming.set(textNode, record);
+      state.incomingByBubble.set(bubble, record);
       const cached = state.memo.get(record.cacheKey);
       if (cached && record.status !== 'done' && record.status !== 'pending')
         state.restore(record, cached);

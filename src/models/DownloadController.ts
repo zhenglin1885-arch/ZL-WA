@@ -315,12 +315,12 @@ export default class DownloadController {
 
   private handleWillDownload = (
     session: DownloadSessionLike,
-    event: { preventDefault: () => void },
+    _event: { preventDefault: () => void },
     item: DownloadItemLike,
     webContents?: DownloadWebContentsLike,
   ): void => {
-    event.preventDefault();
-
+    // Observe the native download. preventDefault() cancels it and destroys
+    // the DownloadItem; tracking progress must not suppress saving the file.
     this.trackDownload({
       item,
       serviceId: this.getServiceIdForDownload(session, webContents),

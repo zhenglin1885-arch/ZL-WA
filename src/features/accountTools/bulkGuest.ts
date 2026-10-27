@@ -169,6 +169,7 @@ export async function sendBulkMessage(
       caption:
         spec.type === 'image' || spec.type === 'audio' ? undefined : content,
       isPtt: spec.type === 'audio',
+      ...(spec.type === 'audio' ? { waveform: true } : {}),
     });
   }
   const key = result?.id;

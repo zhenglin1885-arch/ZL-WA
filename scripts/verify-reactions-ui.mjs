@@ -170,6 +170,15 @@ export async function verifyReactions({
     await evaluate(
       `(()=>{const n=document.querySelector('[aria-label="点赞执行时间方式"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(n,'window');n.dispatchEvent(new Event('change',{bubbles:true}))})()`,
     );
+    // Saved preferences may contain yesterday's window. Give this scheduling
+    // fixture its own future times instead of depending on persisted defaults.
+    for (const [label, minutes] of [
+      ['点赞开始时间', 5],
+      ['点赞结束时间', 15],
+    ])
+      await evaluate(
+        `(()=>{const d=new Date(Date.now()+${minutes}*60000);const value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);const n=document.querySelector('[aria-label="${label}"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,value);n.dispatchEvent(new Event('input',{bubbles:true}));n.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+      );
     await clickText('查找匹配消息');
     await wait(
       `document.querySelectorAll('.reaction-preview article').length===1 && [...document.querySelectorAll('.reaction-tools-dialog button')].some(b=>b.textContent==='开始点赞'&&!b.disabled)`,
