@@ -1,20 +1,28 @@
 /* eslint-disable no-await-in-loop, unicorn/consistent-function-scoping -- Self-contained serialized guest, paginated newest-first reads and a single reaction mutation. */
 import type { ReactionPreferences, ReactionResult } from './types';
+import type { prepareReactionImage } from './image';
 
-export async function reactionGuest(request: {
-  ownerId: string;
-  groupId: string;
-  rules: ReactionPreferences;
-  messageId?: string;
-  expectedText?: string;
-  emoji?: string;
-  token?: string;
-}): Promise<
+export async function reactionGuest(
+  request: {
+    ownerId: string;
+    groupId: string;
+    rules: ReactionPreferences;
+    messageId?: string;
+    expectedText?: string;
+    emoji?: string;
+    token?: string;
+    verifyOnly?: boolean;
+    expectedImageHash?: string;
+  },
+  imageReader?: typeof prepareReactionImage,
+): Promise<
   | {
       messageId?: string;
       text?: string;
       timestamp?: number;
       error?: string;
+      imageHash?: string;
+      imagePreview?: string;
     }
   | ReactionResult
 > {
@@ -27,7 +35,7 @@ export async function reactionGuest(request: {
       ? id
       : id?._serialized ||
         (id?.user && id?.server ? `${id.user}@${id.server}` : '');
-  const own = () => {
+  const ownIds = () => {
     let prefs: any;
     try {
       prefs = page.require?.('WAWebUserPrefsMeUser');
@@ -39,16 +47,15 @@ export async function reactionGuest(request: {
       () => prefs?.getMaybeMeLidUser?.(),
       () => wpp?.conn?.getMyUserWid?.(),
       () => wpp?.conn?.getMyUserLid?.(),
-    ]
-      .map(read => {
-        try {
-          return idOf(read()).replace(/:\d+@/, '@');
-        } catch {
-          return '';
-        }
-      })
-      .includes(request.ownerId);
+    ].map(read => {
+      try {
+        return idOf(read()).replace(/:\d+@/, '@');
+      } catch {
+        return '';
+      }
+    });
   };
+  const own = () => ownIds().includes(request.ownerId);
   if (!wpp?.isReady || !wpp.chat?.getMessages)
     throw new Error('WhatsApp 消息接口未就绪');
   if (!own()) throw new Error('登录身份已变化，请重新选择账号');
@@ -73,7 +80,25 @@ export async function reactionGuest(request: {
   const rawText = (m: any): string => String(m?.caption || m?.body || '');
   const remote = (m: any) =>
     idOf(m?.id?.remote) || /^(?:true|false)_([^_]+)_/.exec(idOf(m?.id))?.[1];
-  const eligible = (m: any) =>
+  const imageMode = request.rules.content === 'image';
+  const images = new Map<
+    string,
+    Awaited<ReturnType<typeof prepareReactionImage>>
+  >();
+  let imageError = '';
+  const imageHash = (m: any): string => {
+    const value = m.filehash || m.fileSha256 || m.mediaData?.filehash;
+    if (typeof value === 'string') return value.slice(0, 500);
+    if (ArrayBuffer.isView(value))
+      return [
+        ...new Uint8Array(value.buffer, value.byteOffset, value.byteLength),
+      ]
+        .map(v => v.toString(16).padStart(2, '0'))
+        .join('')
+        .slice(0, 500);
+    return '';
+  };
+  const eligibleBase = (m: any) =>
     m &&
     !m.isRevoked &&
     !m.isNotification &&
@@ -85,8 +110,30 @@ export async function reactionGuest(request: {
       'ciphertext',
       'reaction',
     ].includes(m.type) &&
-    remote(m) === request.groupId &&
-    matches(rawText(m));
+    remote(m) === request.groupId;
+  const eligible = async (m: any) => {
+    if (!eligibleBase(m)) return false;
+    if (!imageMode) return matches(rawText(m));
+    if (m.type !== 'image') return false;
+    if (request.expectedImageHash)
+      return imageHash(m) === request.expectedImageHash;
+    if (!imageReader || !request.rules.picture || !wpp.chat.downloadMedia) {
+      imageError = '图片读取接口未就绪或尚未上传参考图';
+      return false;
+    }
+    try {
+      const picture = await imageReader(
+        await wpp.chat.downloadMedia(idOf(m.id)),
+        request.rules.picture,
+      );
+      if (!own()) throw new Error('登录身份已变化');
+      if (picture.matches) images.set(idOf(m.id), picture);
+      return picture.matches;
+    } catch (error) {
+      imageError = String(error).slice(0, 500);
+      return false;
+    }
+  };
   const timeOf = (m: any) => {
     const n = Number(m.t || m.timestamp || 0);
     return n < 1e12 ? n * 1000 : n;
@@ -99,6 +146,7 @@ export async function reactionGuest(request: {
       const source = await wpp.chat.getMessages(request.groupId, {
         count: 200,
         direction: 'before',
+        ...(imageMode ? { media: 'image' } : {}),
         ...(before ? { id: before } : {}),
       });
       if (!Array.isArray(source)) throw new Error('消息读取结果异常');
@@ -107,15 +155,25 @@ export async function reactionGuest(request: {
         .sort((a, b) => timeOf(b) - timeOf(a));
       if (rows.length === 0)
         return {
-          error: `未找到匹配消息（已查找 ${seen.size} 条可用历史消息）`,
+          error: `未找到匹配${imageMode ? '图片' : '消息'}（已查找 ${seen.size} 条可用历史消息）${imageError ? `；图片读取信息：${imageError}` : ''}`,
         };
       for (const m of rows) {
         seen.add(idOf(m.id));
-        if (eligible(m))
+        if (await eligible(m))
           return {
             messageId: idOf(m.id),
             text: rawText(m).slice(0, 20_000),
             timestamp: timeOf(m),
+            ...(imageMode
+              ? {
+                  imageHash: imageHash(m),
+                  imagePreview: images.get(idOf(m.id))?.preview,
+                }
+              : {}),
+          };
+        if (imageMode && imageError)
+          return {
+            error: `较新的图片无法读取，无法确认最新匹配项，未选择更早图片；${imageError}`,
           };
       }
       before = idOf(rows.at(-1).id);
@@ -124,6 +182,54 @@ export async function reactionGuest(request: {
       error: `已查找 ${seen.size} 条消息，尚未找到匹配项；读取达到本次上限，可稍后重试`,
     };
   }
+  const verifyReaction = async (): Promise<ReactionResult | undefined> => {
+    if (!own()) throw new Error('登录身份已变化，无法核验');
+    if (
+      !request.messageId?.startsWith(`true_${request.groupId}_`) &&
+      !request.messageId?.startsWith(`false_${request.groupId}_`)
+    )
+      throw new Error('目标消息不属于指定群组');
+    const native = wpp.whatsapp?.functions?.getReactions;
+    const read = typeof native === 'function' ? native : wpp.chat.getReactions;
+    if (typeof read !== 'function') return undefined;
+    const result = await read(request.messageId);
+    if (!own()) throw new Error('登录身份已变化，无法核验');
+    const mine = result?.reactionByMe;
+    if (!mine || mine.reactionText !== request.emoji) return undefined;
+    const sender = idOf(mine.senderUserJid).replace(/:\d+@/, '@');
+    if (sender && !ownIds().includes(sender)) return undefined;
+    if (
+      mine.isSendFailure ||
+      mine.isFailed ||
+      (typeof mine.ack === 'number' && mine.ack < 0)
+    )
+      return { status: 'failed', message: '已核验：该表情发送失败' };
+    if (mine.ack === 0) return undefined;
+    return {
+      status: 'success',
+      message: `已核验当前账号的 ${request.emoji} 表情`,
+    };
+  };
+  const settleReaction = async () => {
+    let detail = '';
+    for (const delay of [0, 250, 750, 1500]) {
+      if (delay)
+        await new Promise<void>(resolve => {
+          setTimeout(resolve, delay);
+        });
+      try {
+        const result = await verifyReaction();
+        if (result) return result;
+      } catch (error) {
+        detail = String(error).slice(0, 500);
+      }
+    }
+    return {
+      status: 'uncertain',
+      message: `尚未读到当前账号的目标表情，未重发${detail ? `；核验信息：${detail}` : ''}`,
+    } as ReactionResult;
+  };
+  if (request.verifyOnly) return settleReaction();
   if (
     !request.token ||
     !request.emoji ||
@@ -170,10 +276,12 @@ export async function reactionGuest(request: {
   try {
     const message = await wpp.chat.getMessageById(request.messageId);
     if (
-      !eligible(message) ||
-      rawText(message).slice(0, 20_000) !== request.expectedText
+      !(await eligible(message)) ||
+      (!imageMode && rawText(message).slice(0, 20_000) !== request.expectedText)
     )
-      throw new Error('目标消息已删除、编辑或不再匹配，请重新查找');
+      throw new Error(
+        `目标消息已删除、编辑或不再匹配，请重新查找${imageError ? `；${imageError}` : ''}`,
+      );
     if (!own()) throw new Error('登录身份已变化，未发送表情');
     dispatched = true;
     const result = await wpp.chat.sendReactionToMessage(
@@ -183,10 +291,7 @@ export async function reactionGuest(request: {
     entry.result =
       result?.sendMsgResult === 'OK'
         ? { status: 'success', message: `已发送 ${request.emoji}` }
-        : {
-            status: 'uncertain',
-            message: `请求已提交，返回结果：${String(result?.sendMsgResult || '未确认')}；未自动重发`,
-          };
+        : await settleReaction();
   } catch (error) {
     const text = String(error).slice(0, 1000);
     const rejected =

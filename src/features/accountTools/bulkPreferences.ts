@@ -11,6 +11,10 @@ export interface BulkPreferences {
   failure: 'stop' | 'continue';
   kind: string;
 }
+export interface ReplyPreferences extends BulkPreferences {
+  replyText: string;
+  replyMatch: 'exact' | 'contains' | 'normalized';
+}
 export const defaultBulkPreferences = (): BulkPreferences => ({
   type: 'text',
   scheduled: false,
@@ -55,5 +59,17 @@ export function normalizeBulkPreferences(value: unknown): BulkPreferences {
     )
       ? v.kind!
       : 'all',
+  };
+}
+
+export function normalizeReplyPreferences(value: unknown): ReplyPreferences {
+  const p = (value || {}) as Partial<ReplyPreferences>;
+  return {
+    ...normalizeBulkPreferences(value),
+    replyText:
+      typeof p.replyText === 'string' ? p.replyText.slice(0, 20_000) : '',
+    replyMatch: ['exact', 'contains', 'normalized'].includes(p.replyMatch || '')
+      ? p.replyMatch!
+      : 'exact',
   };
 }

@@ -19,7 +19,16 @@ export const reactionEmojis = [
   '🎉',
   '✅',
 ];
+export interface ReactionPicture {
+  name: string;
+  width: number;
+  height: number;
+  pixels: number[];
+  preview: string;
+}
 export interface ReactionPreferences {
+  content?: 'text' | 'image';
+  picture?: ReactionPicture;
   text: string;
   match: 'exact' | 'contains' | 'normalized';
   emojis: string[];
@@ -30,6 +39,8 @@ export interface ReactionPreferences {
   end: number;
 }
 export interface ReactionMatch extends GroupTarget {
+  imageHash?: string;
+  imagePreview?: string;
   messageId?: string;
   text?: string;
   timestamp?: number;
@@ -86,6 +97,7 @@ export function validateReactionPreferences(
     !p ||
     typeof p.text !== 'string' ||
     p.text.length > 20_000 ||
+    (p.content !== undefined && !['text', 'image'].includes(p.content)) ||
     !['exact', 'contains', 'normalized'].includes(p.match) ||
     !Array.isArray(p.emojis) ||
     p.emojis.length === 0 ||
@@ -103,6 +115,24 @@ export function validateReactionPreferences(
     p.end <= p.start
   )
     throw new Error('点赞文字、表情或执行时间设置无效');
+  if (p.content === 'image' && !p.picture)
+    throw new Error('请先上传要匹配的图片');
+  if (
+    p.picture &&
+    (typeof p.picture.name !== 'string' ||
+      p.picture.name.length > 255 ||
+      !Number.isFinite(p.picture.width) ||
+      p.picture.width <= 0 ||
+      !Number.isFinite(p.picture.height) ||
+      p.picture.height <= 0 ||
+      !Array.isArray(p.picture.pixels) ||
+      p.picture.pixels.length !== 3072 ||
+      p.picture.pixels.some(v => !Number.isInteger(v) || v < 0 || v > 255) ||
+      typeof p.picture.preview !== 'string' ||
+      p.picture.preview.length > 150_000 ||
+      !/^data:image\/jpeg;base64,[\d+/=A-Za-z]+$/.test(p.picture.preview))
+  )
+    throw new Error('图片匹配数据无效，请重新上传图片');
   return structuredClone(p);
 }
 const text = (value: unknown, max: number) =>
@@ -141,6 +171,7 @@ export function validateReactionState(input: unknown): ReactionState {
         !text(t.result, 2000) ||
         (t.text !== undefined && !text(t.text, 20_000)) ||
         (t.error !== undefined && !text(t.error, 2000)) ||
+        (t.imageHash !== undefined && !text(t.imageHash, 500)) ||
         (t.messageId !== undefined &&
           (!text(t.messageId, 500) || !t.messageId)) ||
         !reactionEmojis.includes(t.emoji) ||

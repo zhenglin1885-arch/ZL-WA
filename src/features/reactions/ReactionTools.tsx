@@ -6,6 +6,7 @@ import type { RealStores } from '../../stores';
 import { normalizeAccountConfig } from '../accounts/state';
 import type { GroupChoice } from '../groups/types';
 import { getGroupRuntime, getReactionRuntime } from './runtime';
+import { prepareReactionImage } from './image';
 import {
   defaultReactionPreferences,
   reactionEmojis,
@@ -46,6 +47,8 @@ export default observer(function ReactionTools({
   const [rules, setRules] = useState(defaultReactionPreferences);
   const [preview, setPreview] = useState<ReactionMatch[]>([]);
   const [busy, setBusy] = useState(false);
+  const [pictureLoading, setPictureLoading] = useState(false);
+  const pictureInput = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState(false);
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -76,7 +79,11 @@ export default observer(function ReactionTools({
     }));
   const chosenKey = JSON.stringify(chosen);
   const active = Boolean(queue.active);
-  const locked = active || busy || !ready;
+  const locked = active || busy || pictureLoading || !ready;
+  const imageMode = rules.content === 'image';
+  const hasMatchInput = imageMode
+    ? Boolean(rules.picture)
+    : Boolean(rules.text.trim());
   useEffect(() => {
     mounted.current = true;
     const change = () => {
@@ -197,6 +204,30 @@ export default observer(function ReactionTools({
       if (mounted.current) setNotice(String(error));
     } finally {
       if (mounted.current) setBusy(false);
+    }
+  };
+  const choosePicture = async (file?: File) => {
+    if (!file) return;
+    setPictureLoading(true);
+    setNotice('');
+    try {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type))
+        throw new Error('请选择 JPG、PNG 或 WebP 图片');
+      const image = await prepareReactionImage(file);
+      if (!mounted.current) return;
+      changeRules({
+        picture: {
+          name: file.name.slice(0, 255),
+          width: image.width,
+          height: image.height,
+          pixels: image.pixels,
+          preview: image.preview,
+        },
+      });
+    } catch (error) {
+      if (mounted.current) setNotice(String(error));
+    } finally {
+      if (mounted.current) setPictureLoading(false);
     }
   };
   const batch =
@@ -406,33 +437,91 @@ export default observer(function ReactionTools({
           <div className="reaction-scroll">
             <h3>点赞规则</h3>
             <p>一次性执行，每个账号在每个选中群内只处理最新一条匹配消息。</p>
-            <label htmlFor={`${uid}-text`}>
-              匹配文字
-              <textarea
-                id={`${uid}-text`}
-                aria-label="点赞匹配文字"
-                rows={4}
-                maxLength={20_000}
-                disabled={locked}
-                placeholder="粘贴要匹配的消息文字"
-                value={rules.text}
-                onChange={e => changeRules({ text: e.target.value })}
-              />
-            </label>
-            <select
-              aria-label="点赞文字匹配方式"
-              disabled={locked}
-              value={rules.match}
-              onChange={e =>
-                changeRules({
-                  match: e.target.value as ReactionPreferences['match'],
-                })
-              }
+            <div
+              className="reaction-match-tabs"
+              role="group"
+              aria-label="点赞匹配内容"
             >
-              <option value="exact">完全相同</option>
-              <option value="contains">包含这段文字</option>
-              <option value="normalized">忽略空格和标点后完全相同</option>
-            </select>
+              <Button
+                aria-pressed={!imageMode}
+                disabled={locked}
+                onClick={() => changeRules({ content: 'text' })}
+              >
+                匹配文字
+              </Button>
+              <Button
+                aria-pressed={imageMode}
+                disabled={locked}
+                onClick={() => changeRules({ content: 'image' })}
+              >
+                匹配图片
+              </Button>
+            </div>
+            {imageMode ? (
+              <div className="reaction-reference-image">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  ref={pictureInput}
+                  aria-label="上传点赞匹配图片"
+                  style={{ display: 'none' }}
+                  disabled={locked}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    void choosePicture(file);
+                  }}
+                />
+                <Button
+                  disabled={locked}
+                  onClick={() => pictureInput.current?.click()}
+                >
+                  {pictureLoading ? '读取图片中…' : '选择匹配图片'}
+                </Button>
+                {rules.picture && (
+                  <>
+                    <img src={rules.picture.preview} alt="上传的匹配图片预览" />
+                    <small>{rules.picture.name}</small>
+                    <Button
+                      disabled={locked}
+                      onClick={() => changeRules({ picture: undefined })}
+                    >
+                      移除图片
+                    </Button>
+                  </>
+                )}
+                <p>
+                  按画面匹配，兼容常见压缩和缩放；先检查下方的匹配图片预览。
+                </p>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  id={`${uid}-text`}
+                  aria-label="点赞匹配文字"
+                  rows={4}
+                  maxLength={20_000}
+                  disabled={locked}
+                  placeholder="粘贴要匹配的消息文字"
+                  value={rules.text}
+                  onChange={e => changeRules({ text: e.target.value })}
+                />
+                <select
+                  aria-label="点赞文字匹配方式"
+                  disabled={locked}
+                  value={rules.match}
+                  onChange={e =>
+                    changeRules({
+                      match: e.target.value as ReactionPreferences['match'],
+                    })
+                  }
+                >
+                  <option value="exact">完全相同</option>
+                  <option value="contains">包含这段文字</option>
+                  <option value="normalized">忽略空格和标点后完全相同</option>
+                </select>
+              </>
+            )}
             <h3>点赞表情</h3>
             <p>可多选，每个账号群组任务随机分配一个表情。</p>
             <div className="reaction-emojis">
@@ -547,7 +636,7 @@ export default observer(function ReactionTools({
               disabled={
                 locked ||
                 reading ||
-                !rules.text.trim() ||
+                !hasMatchInput ||
                 targets.length === 0 ||
                 targets.length > 1000
               }
@@ -565,22 +654,30 @@ export default observer(function ReactionTools({
                     {m.timestamp ? new Date(m.timestamp).toLocaleString() : ''}
                   </small>
                   <p>{m.error || m.text}</p>
+                  {m.imagePreview && (
+                    <img src={m.imagePreview} alt="查找到的匹配图片预览" />
+                  )}
                 </article>
               ))}
             </div>
-            <Button
-              variant="contained"
-              disabled={
-                locked ||
-                reading ||
-                rules.emojis.length === 0 ||
-                !preview.some(m => m.messageId && !m.error) ||
-                preview.length !== targets.length
-              }
-              onClick={() => void start()}
-            >
-              开始点赞
-            </Button>
+            <div className="reaction-execution-actions">
+              <Button
+                variant="contained"
+                disabled={
+                  locked ||
+                  reading ||
+                  rules.emojis.length === 0 ||
+                  !preview.some(m => m.messageId && !m.error) ||
+                  preview.length !== targets.length
+                }
+                onClick={() => void start()}
+              >
+                开始点赞
+              </Button>
+              <Button disabled={!active} onClick={() => queue.stop()}>
+                终止执行
+              </Button>
+            </div>
             <h3>执行结果</h3>
             <select
               aria-label="点赞任务记录"
@@ -593,7 +690,14 @@ export default observer(function ReactionTools({
                 </option>
               ))}
             </select>
-            {active && <Button onClick={() => queue.stop()}>停止点赞</Button>}
+            {!active && batch?.tasks.some(t => t.status === 'uncertain') && (
+              <Button
+                disabled={locked}
+                onClick={() => void queue.reconcile(batch.id)}
+              >
+                核验未确认结果
+              </Button>
+            )}
             {!active && batch?.tasks.some(t => t.status === 'queued') && (
               <Button
                 disabled={locked}

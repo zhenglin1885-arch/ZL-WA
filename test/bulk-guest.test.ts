@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/consistent-function-scoping, no-await-in-loop -- Scoped mutable WhatsApp fixtures and sequential attachment reply coverage. */
 import {
   sendBulkMessage,
   revokeBulkMessage,
@@ -86,6 +87,137 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       else Reflect.deleteProperty(globalThis, key);
     }
     originals.clear();
+  });
+  const replySpec = (
+    match: 'exact' | 'contains' | 'normalized' = 'exact',
+  ): BulkSpec => ({
+    ...spec(),
+    targets: [
+      {
+        id: '10001@g.us',
+        accountId: 'account-a',
+        ownerId: '8613800000001@c.us',
+        name: 'G',
+        group: true,
+      },
+    ],
+    reply: { text: '目标内容', match },
+  });
+  const setupReplies = () => {
+    const rows = [
+      { id: 'false_10001@g.us_OLD', type: 'chat', body: '目标内容', t: 1 },
+      { id: 'false_10001@g.us_NEW', type: 'chat', body: '目标内容', t: 2 },
+      { id: 'false_10001@g.us_OTHER', type: 'chat', body: '其他消息', t: 3 },
+    ];
+    wpp.conn = { getMyUserWid: () => '8613800000001@c.us' };
+    wpp.chat.getMessages = jest.fn(async () => rows);
+    wpp.chat.getMessageById.mockImplementation(async id =>
+      rows.find(m => m.id === id),
+    );
+    return rows;
+  };
+  it('quotes the newest matching message without automatically mentioning its sender', async () => {
+    setupReplies();
+    const outcome = await sendBulkMessage('10001@g.us', replySpec());
+    expect(outcome).toMatchObject({
+      confirmed: true,
+      quotedMessageId: 'false_10001@g.us_NEW',
+    });
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledWith(
+      '10001@g.us',
+      'hello',
+      expect.objectContaining({
+        quotedMsg: 'false_10001@g.us_NEW',
+        detectMentioned: false,
+      }),
+    );
+    expect(
+      wpp.chat.sendTextMessage.mock.calls[0][2].mentionedList,
+    ).toBeUndefined();
+  });
+  it('supports contains and punctuation/space-insensitive exact quote matching', async () => {
+    const rows = setupReplies();
+    rows[1].body = '这里包含目标内容';
+    await sendBulkMessage('10001@g.us', replySpec('contains'));
+    rows[1].body = '目 标，内 容！';
+    await sendBulkMessage('10001@g.us', replySpec('normalized'));
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(2);
+    expect(
+      wpp.chat.sendTextMessage.mock.calls.every(
+        c => c[2].quotedMsg === 'false_10001@g.us_NEW',
+      ),
+    ).toBe(true);
+  });
+  it('never falls back to ordinary sending when no reference matches', async () => {
+    setupReplies();
+    wpp.chat.getMessages.mockResolvedValue([]);
+    await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
+      '未找到',
+    );
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+    expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
+  });
+  it('rejects changed identity, edited/deleted references and cross-chat candidates', async () => {
+    setupReplies();
+    wpp.conn.getMyUserWid = () => '8613900000000@c.us';
+    await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
+      '身份',
+    );
+    setupReplies();
+    wpp.chat.getMessageById.mockResolvedValue({
+      id: 'false_10001@g.us_NEW',
+      body: 'edited',
+      type: 'chat',
+    });
+    await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
+      '不再匹配',
+    );
+    setupReplies();
+    wpp.chat.getMessages.mockResolvedValue([
+      { id: 'false_99999@g.us_FOREIGN', body: '目标内容', type: 'chat', t: 4 },
+    ]);
+    await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
+      '未找到',
+    );
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
+  it('carries the quote into image, video, document, voice and contact sends', async () => {
+    setupReplies();
+    for (const type of [
+      'image',
+      'caption',
+      'video',
+      'document',
+      'audio',
+      'contact',
+    ] as const) {
+      await sendBulkMessage(
+        '10001@g.us',
+        { ...replySpec(), type },
+        'data:image/png;base64,YQ==',
+      );
+    }
+    expect(
+      wpp.chat.sendFileMessage.mock.calls.every(
+        c => c[2].quotedMsg === 'false_10001@g.us_NEW',
+      ),
+    ).toBe(true);
+    expect(wpp.chat.sendVCardContactMessage.mock.calls[0][2].quotedMsg).toBe(
+      'false_10001@g.us_NEW',
+    );
+  });
+  it('does not identify an ordinary message as a sent reply when its response ID is missing', async () => {
+    setupReplies();
+    await expect(
+      reconcileBulkMessage(
+        '10001@g.us',
+        undefined,
+        replySpec(),
+        new Date().toISOString(),
+        new Date().toISOString(),
+      ),
+    ).rejects.toThrow('无法安全核验');
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
   });
   it.each(['image', 'caption', 'video', 'audio', 'document'] as const)(
     'sends %s through the correct typed adapter with server acknowledgment',
@@ -279,7 +411,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       ownMessage({ type: 'ptt' }),
     ]) {
       wpp.chat.getMessageById.mockResolvedValue(message);
-      // eslint-disable-next-line no-await-in-loop
+
       await expect(
         editBulkMessage('chat@g.us', 'own-id', 'corrected'),
       ).rejects.toThrow();

@@ -105,6 +105,7 @@ export function parseProxy(text: string): Partial<ProxyConfig> {
   };
 }
 export interface Recipient {
+  ownerId?: string;
   id: string;
   name: string;
   group: boolean;
@@ -128,6 +129,7 @@ export interface BulkMedia {
   size: number;
 }
 export interface BulkSpec {
+  reply?: { text: string; match: 'exact' | 'contains' | 'normalized' };
   type: BulkMessageType;
   text: string;
   media?: BulkMedia;
@@ -142,6 +144,7 @@ export interface BulkSpec {
   failure: 'stop' | 'continue';
 }
 export interface BulkDelivery {
+  quotedMessageId?: string;
   target: Recipient;
   messageId?: string;
   status: 'sending' | 'sent' | 'failed' | 'uncertain';
@@ -159,6 +162,7 @@ export interface BulkDelivery {
   editRequestedAt?: string;
 }
 export interface BulkSendOutcome {
+  quotedMessageId?: string;
   messageId: string;
   confirmed: boolean;
   error?: string;

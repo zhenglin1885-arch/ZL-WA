@@ -118,6 +118,28 @@ describe('privileged account tools IPC', () => {
       leave: 5,
     });
   });
+  it('keeps reply composer preferences independent of ordinary bulk preferences', () => {
+    const bulk = invoke('bulk-preferences');
+    const reply = invoke('reply-preferences');
+    invoke('reply-preferences', {
+      ...reply,
+      replyText: '匹配内容',
+      replyMatch: 'contains',
+      intervalMin: 7,
+    });
+    expect(invoke('bulk-preferences')).toEqual(bulk);
+    expect(invoke('reply-preferences')).toMatchObject({
+      replyText: '匹配内容',
+      replyMatch: 'contains',
+      intervalMin: 7,
+    });
+    expect(() =>
+      handlers['account-tools-reply-preferences'](
+        { ...event, senderFrame: {} },
+        reply,
+      ),
+    ).toThrow('禁止访问');
+  });
 
   it('persists only the last confirmed identity per card and restores it after restart', async () => {
     const original = {

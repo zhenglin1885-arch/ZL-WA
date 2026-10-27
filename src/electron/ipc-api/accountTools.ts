@@ -29,6 +29,8 @@ import {
 } from '../AccountNetwork';
 import {
   normalizeBulkPreferences,
+  normalizeReplyPreferences,
+  type ReplyPreferences,
   type BulkPreferences,
 } from '../../features/accountTools/bulkPreferences';
 import {
@@ -73,6 +75,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     accounts: Record<string, StoredConfig>;
     history: SendRecord[];
     bulkPreferences?: BulkPreferences;
+    replyPreferences?: ReplyPreferences;
     accountProfiles?: Record<string, AccountIdentity>;
   } = { accounts: {}, history: [] };
   if (existsSync(path)) {
@@ -625,6 +628,23 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         }
       }
       return normalizeBulkPreferences(data.bulkPreferences);
+    },
+  );
+  ipcMain.handle(
+    'account-tools-reply-preferences',
+    (event, input?: ReplyPreferences) => {
+      check(event);
+      if (input !== undefined) {
+        const previous = data.replyPreferences;
+        data.replyPreferences = normalizeReplyPreferences(input);
+        try {
+          save();
+        } catch (error) {
+          data.replyPreferences = previous;
+          throw error;
+        }
+      }
+      return normalizeReplyPreferences(data.replyPreferences);
     },
   );
   ipcMain.handle('account-tools-history-delete', (event, ids: string[]) => {

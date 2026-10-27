@@ -4,6 +4,7 @@ import {
   mdiAccountMultiplePlusOutline,
   mdiAccountMultipleMinusOutline,
   mdiThumbUpOutline,
+  mdiReplyOutline,
 } from '@mdi/js';
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
@@ -636,6 +637,7 @@ const AccountTools = observer(({ stores }: StoresProps) => {
   const [bulk, setBulk] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>();
   const [reactions, setReactions] = useState(false);
+  const [replies, setReplies] = useState(false);
   useEffect(() => startTranslations(stores), [stores]);
   useEffect(() => startChatBackup(stores), [stores]);
   const customers = getCustomerRuntime(stores);
@@ -731,6 +733,17 @@ const AccountTools = observer(({ stores }: StoresProps) => {
           </svg>
           <span>点赞</span>
         </button>
+        <button
+          type="button"
+          aria-label="回复"
+          aria-pressed={replies}
+          onClick={() => setReplies(true)}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <path d={mdiReplyOutline} />
+          </svg>
+          <span>回复</span>
+        </button>
       </nav>
       {reactions && (
         <ReactionTools stores={stores} onClose={() => setReactions(false)} />
@@ -743,6 +756,9 @@ const AccountTools = observer(({ stores }: StoresProps) => {
         />
       )}
       {bulk && <BulkSend stores={stores} onClose={() => setBulk(false)} />}
+      {replies && (
+        <BulkSend stores={stores} replyMode onClose={() => setReplies(false)} />
+      )}
       <CustomerRemarkDialog runtime={customers} />
     </aside>
   );

@@ -17,6 +17,10 @@ interface Dependencies {
     task: ReactionTask,
     rules: ReactionPreferences,
   ) => Promise<ReactionResult>;
+  check?: (
+    task: ReactionTask,
+    rules: ReactionPreferences,
+  ) => Promise<ReactionResult>;
   now?: () => number;
   random?: () => number;
   wait?: (ms: number) => Promise<void>;
@@ -87,7 +91,11 @@ export default class ReactionQueue {
     try {
       await this.load();
       const rules = validateReactionPreferences(input);
-      if (!rules.text.trim() || matches.length === 0 || matches.length > 1000)
+      if (
+        (rules.content === 'image' ? !rules.picture : !rules.text.trim()) ||
+        matches.length === 0 ||
+        matches.length > 1000
+      )
         throw new Error('请先查找消息，最多执行1000个账号群组对象');
       if (
         new Set(matches.map(m => `${m.accountId}:${m.ownerId}:${m.target}`))
@@ -112,6 +120,8 @@ export default class ReactionQueue {
       let at = now;
       let slot = 0;
       const tasks: ReactionTask[] = shuffled.map((m, i) => {
+        const target = { ...m };
+        delete target.imagePreview;
         const usable = Boolean(m.messageId && !m.error);
         if (usable) {
           if (rules.timing === 'window') {
@@ -129,7 +139,7 @@ export default class ReactionQueue {
           slot += 1;
         }
         return {
-          ...m,
+          ...target,
           id: `${batchId}-${i}`,
           emoji: rules.emojis[Math.floor(this.random() * rules.emojis.length)],
           plannedAt: at,
@@ -159,6 +169,34 @@ export default class ReactionQueue {
     this.error = '';
     this.emit();
     void this.run(id);
+  }
+
+  async reconcile(id: string) {
+    if (this.active || this.starting) throw new Error('请等待当前点赞任务结束');
+    const batch = this.state.batches.find(b => b.id === id);
+    if (!batch || !this.deps.check) return;
+    this.active = id;
+    this.interrupted = false;
+    this.error = '';
+    this.emit();
+    try {
+      for (const task of batch.tasks.filter(t => t.status === 'uncertain')) {
+        if (this.interrupted) break;
+        try {
+          const result = await this.deps.check(task, batch.rules);
+          task.status = result.status;
+          task.result = result.message.slice(0, 2000);
+        } catch (error) {
+          task.result = `只读核验失败：${String(error).slice(0, 1000)}；未重发`;
+        }
+        await this.save();
+      }
+    } catch (error) {
+      this.error = `核验已暂停：${String(error).slice(0, 1000)}`;
+    } finally {
+      this.active = '';
+      this.emit();
+    }
   }
 
   stop() {

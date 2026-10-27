@@ -5,6 +5,7 @@ import { ensureBulkLibrary } from '../accountTools/bulkRuntime';
 import type { GroupTarget } from '../groups/types';
 import ReactionQueue from './ReactionQueue';
 import { reactionGuest } from './guest';
+import { prepareReactionImage } from './image';
 import type {
   ReactionMatch,
   ReactionPreferences,
@@ -22,6 +23,7 @@ export class ReactionRuntime {
       load: () => ipcRenderer.invoke('reaction-tools-load'),
       save: state => ipcRenderer.invoke('reaction-tools-save', state),
       execute: (task, rules) => this.execute(task, rules),
+      check: (task, rules) => this.check(task, rules),
     });
   }
 
@@ -49,12 +51,13 @@ export class ReactionRuntime {
     target: GroupTarget,
     rules: ReactionPreferences,
     task?: ReactionTask,
+    verifyOnly = false,
   ) {
     const view = this.viewFor(target);
     await ensureBulkLibrary(view);
     if (view !== this.viewFor(target)) throw new Error('账号窗口已变化');
     return view.executeJavaScript(
-      `(${reactionGuest.toString()})(${JSON.stringify({ ownerId: target.ownerId, groupId: target.target, rules, ...(task ? { messageId: task.messageId, expectedText: task.text, emoji: task.emoji, token: task.id } : {}) })})`,
+      `(${reactionGuest.toString()})(${JSON.stringify({ ownerId: target.ownerId, groupId: target.target, rules, verifyOnly, ...(task ? { messageId: task.messageId, expectedText: task.text, expectedImageHash: task.imageHash, emoji: task.emoji, token: task.id } : {}) })}, ${prepareReactionImage.toString()})`,
     );
   }
 
@@ -109,7 +112,7 @@ export class ReactionRuntime {
       // eslint-disable-next-line sonar/no-dead-store -- Catch must distinguish a dispatched request from a preflight failure.
       dispatched = true;
       const pending = view.executeJavaScript(
-        `(${reactionGuest.toString()})(${JSON.stringify({ ownerId: task.ownerId, groupId: task.target, rules, messageId: task.messageId, expectedText: task.text, emoji: task.emoji, token: task.id })})`,
+        `(${reactionGuest.toString()})(${JSON.stringify({ ownerId: task.ownerId, groupId: task.target, rules, messageId: task.messageId, expectedText: task.text, expectedImageHash: task.imageHash, emoji: task.emoji, token: task.id })}, ${prepareReactionImage.toString()})`,
       );
       this.pendingMutation = pending;
       const clear = () => {
@@ -125,6 +128,23 @@ export class ReactionRuntime {
       return {
         status: dispatched ? 'uncertain' : 'failed',
         message: String(error).slice(0, 1500),
+      };
+    }
+  }
+
+  private async check(
+    task: ReactionTask,
+    rules: ReactionPreferences,
+  ): Promise<ReactionResult> {
+    try {
+      return await this.bounded(this.request(task, rules, task, true), {
+        status: 'uncertain',
+        message: '只读核验超时，未重发任何表情',
+      });
+    } catch (error) {
+      return {
+        status: 'uncertain',
+        message: `只读核验失败：${String(error).slice(0, 1000)}；未重发`,
       };
     }
   }

@@ -58,6 +58,14 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         service.accountSnapshot.status !== 'online'
       )
         throw new Error('账号已离线或休眠');
+      if (
+        target.ownerId &&
+        ![
+          service.accountSnapshot.ownerId,
+          ...(service.accountSnapshot.ownerIds || []),
+        ].includes(target.ownerId)
+      )
+        throw new Error('账号登录身份已变化，请重新选择');
       return service.webview;
     };
     queues.set(
@@ -71,6 +79,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           // Retain the small, tested text adapter for ordinary text sends.
           if (
             spec.type === 'text' &&
+            !spec.reply &&
             !spec.mentionAll &&
             spec.typingSeconds === 0 &&
             !target.contactOnly

@@ -1,4 +1,4 @@
-/* eslint-disable unicorn/consistent-function-scoping -- Serialized guest functions keep their helpers local. */
+/* eslint-disable unicorn/consistent-function-scoping, no-await-in-loop -- Serialized guest helpers and sequential, newest-first quote lookup. */
 import type { BulkSpec, BulkSendOutcome } from './config';
 
 export async function listBulkContacts() {
@@ -42,6 +42,106 @@ export async function sendBulkMessage(
     delay: spec.typingSeconds * 1000,
   };
   const content = spec.text;
+  if (spec.reply) {
+    const idOf = (id: any): string =>
+      typeof id === 'string'
+        ? id
+        : id?._serialized ||
+          (id?.user && id?.server ? `${id.user}@${id.server}` : '');
+    const owner = spec.targets.find(r => r.id === chatId)?.ownerId;
+    const own = () => {
+      let prefs: any;
+      try {
+        prefs = (window as any).require?.('WAWebUserPrefsMeUser');
+      } catch {
+        /* WPP fallback. */
+      }
+      return [
+        () => prefs?.getMaybeMePnUser?.(),
+        () => prefs?.getMaybeMeLidUser?.(),
+        () => wpp.conn?.getMyUserWid?.(),
+        () => wpp.conn?.getMyUserLid?.(),
+      ].some(read => {
+        try {
+          return idOf(read()).replace(/:\d+@/, '@') === owner;
+        } catch {
+          return false;
+        }
+      });
+    };
+    if (!owner || !own())
+      throw new Error('账号登录身份已变化，请重新选择回复账号');
+    if (!wpp.chat.getMessages || !wpp.chat.getMessageById)
+      throw new Error('引用消息读取接口未就绪，未发送');
+    const wanted = spec.reply.text.trim();
+    if (
+      !wanted ||
+      !['exact', 'contains', 'normalized'].includes(spec.reply.match)
+    )
+      throw new Error('匹配内容或规则无效，未发送');
+    const normalize = (value: string) =>
+      value.normalize('NFKC').replaceAll(/[\p{P}\p{Z}\s]/gu, '');
+    const matches = (m: any) => {
+      if (
+        !m ||
+        m.isRevoked ||
+        m.isNotification ||
+        [
+          'revoked',
+          'protocol',
+          'notification',
+          'gp2',
+          'ciphertext',
+          'reaction',
+        ].includes(m.type)
+      )
+        return false;
+      const remote =
+        idOf(m.id?.remote) || /^(?:true|false)_([^_]+)_/.exec(idOf(m.id))?.[1];
+      if (remote !== chatId) return false;
+      const text = String(m.caption || m.body || '');
+      if (spec.reply!.match === 'contains') return text.includes(wanted);
+      if (spec.reply!.match === 'normalized')
+        return (
+          Boolean(normalize(wanted)) && normalize(text) === normalize(wanted)
+        );
+      return (
+        text.trim().replaceAll('\r\n', '\n') === wanted.replaceAll('\r\n', '\n')
+      );
+    };
+    const seen = new Set<string>();
+    let before: string | undefined;
+    let found: any;
+    const deadline = Date.now() + 20_000;
+    for (let round = 0; round < 50 && Date.now() < deadline; round += 1) {
+      if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
+      const source = await wpp.chat.getMessages(chatId, {
+        count: 200,
+        direction: 'before',
+        ...(before ? { id: before } : {}),
+      });
+      if (!Array.isArray(source))
+        throw new Error('目标消息读取结果异常，未发送');
+      const rows = source
+        .filter(m => idOf(m.id) && !seen.has(idOf(m.id)))
+        .sort(
+          (a, b) =>
+            Number(b.t || b.timestamp || 0) - Number(a.t || a.timestamp || 0),
+        );
+      if (rows.length === 0) break;
+      found = rows.find(m => matches(m));
+      if (found) break;
+      for (const m of rows) seen.add(idOf(m.id));
+      before = idOf(rows.at(-1).id);
+    }
+    if (!found) throw new Error('可用历史消息中未找到匹配内容，未发送引用回复');
+    const quoteId = idOf(found.id);
+    const latest = await wpp.chat.getMessageById(quoteId);
+    if (idOf(latest?.id) !== quoteId || !matches(latest))
+      throw new Error('目标消息已删除、编辑或不再匹配，未发送');
+    if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
+    options.quotedMsg = quoteId;
+  }
   if (spec.mentionAll && chatId.endsWith('@g.us')) {
     const participants = await wpp.group.getParticipants(chatId);
     options.mentionedList = participants
@@ -86,6 +186,7 @@ export async function sendBulkMessage(
     };
   return {
     messageId,
+    ...(options.quotedMsg ? { quotedMessageId: options.quotedMsg } : {}),
     confirmed:
       result.ack >= 1 ||
       ['OK', 'success'].includes(result.sendMsgResult) ||
@@ -144,6 +245,10 @@ export async function reconcileBulkMessage(
     message = await wpp.chat.getMessageById(messageId);
     if (!owns(message)) throw new Error('消息不属于当前账号或聊天，未修改记录');
   } else {
+    if (spec?.reply)
+      throw new Error(
+        '引用回复缺少发送消息编号，无法安全核验；未重发，请在 WhatsApp 核查',
+      );
     const from = Date.parse(started) / 1000;
     const to = Date.parse(ended) / 1000;
     if (!spec || !Number.isFinite(from) || !Number.isFinite(to) || to < from)

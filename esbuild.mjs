@@ -102,6 +102,7 @@ const runEsbuild = async () => {
     'src/features/customers/guest.ts',
     'src/features/groups/guest.ts',
     'src/features/reactions/guest.ts',
+    'src/features/reactions/image.ts',
     'src/features/chatBackup/guest.ts',
   ];
   const sourceEntries = await glob('./src/**/*.{ts,tsx,js,jsx}');

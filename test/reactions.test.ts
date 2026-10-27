@@ -240,6 +240,31 @@ describe('one-shot reaction scheduling', () => {
     );
     expect(h.execute).not.toHaveBeenCalled();
   });
+  it('supports image-only tasks and keeps result thumbnails out of stored task records', async () => {
+    const h = harness();
+    const picture = {
+      name: 'reference.png',
+      width: 100,
+      height: 100,
+      pixels: Array.from({ length: 3072 }, () => 128),
+      preview: 'data:image/jpeg;base64,YQ==',
+    };
+    await h.queue.start(
+      [
+        {
+          ...match(),
+          imageHash: 'sha256',
+          imagePreview: 'ephemeral-thumbnail',
+        },
+      ],
+      { ...rules(), text: '', content: 'image', picture },
+    );
+    await finish(h.queue);
+    expect(h.execute).toHaveBeenCalledTimes(1);
+    expect(h.saved.batches[0].tasks[0].imageHash).toBe('sha256');
+    expect(h.saved.batches[0].tasks[0].imagePreview).toBeUndefined();
+    expect(h.saved.preferences.picture).toEqual(picture);
+  });
   it('pauses the batch if a timed-out mutation may still be running', async () => {
     const h = harness({
       execute: async () => ({
@@ -415,5 +440,181 @@ describe('reaction guest matching and dispatch', () => {
       sendMsgResult: 'ERROR',
     });
     expect(await send()).toMatchObject({ status: 'uncertain' });
+  });
+  it('confirms an empty native return using this account reaction without resending', async () => {
+    wpp.chat.sendReactionToMessage.mockResolvedValue({
+      sendMsgResult: undefined,
+    });
+    wpp.chat.getReactions = jest.fn(async () => ({
+      reactionByMe: { reactionText: '👍', senderUserJid: ownerId },
+    }));
+    expect(await send()).toMatchObject({
+      status: 'success',
+      message: expect.stringContaining('已核验'),
+    });
+    expect(wpp.chat.sendReactionToMessage).toHaveBeenCalledTimes(1);
+  });
+  it('checks old uncertain results without requiring or invoking any send API', async () => {
+    delete wpp.chat.sendReactionToMessage;
+    wpp.chat.getReactions = jest.fn(async () => ({
+      reactionByMe: { reactionText: '👍', senderUserJid: ownerId },
+    }));
+    expect(await send({ verifyOnly: true })).toMatchObject({
+      status: 'success',
+    });
+    expect(wpp.chat.getReactions).toHaveBeenCalledWith(`false_${groupId}_A`);
+  });
+  it('does not confirm another sender, a different emoji or a pending optimistic reaction', async () => {
+    jest.useFakeTimers();
+    try {
+      for (const mine of [
+        { reactionText: '👍', senderUserJid: '8613900000000@c.us' },
+        { reactionText: '❤️', senderUserJid: ownerId },
+        { reactionText: '👍', senderUserJid: ownerId, ack: 0 },
+      ]) {
+        wpp.chat.getReactions = async () => ({ reactionByMe: mine });
+        const pending = send({ verifyOnly: true });
+        await jest.advanceTimersByTimeAsync(3000);
+        expect(await pending).toMatchObject({ status: 'uncertain' });
+      }
+      expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('waits for reaction acknowledgement and respects explicit failure flags', async () => {
+    jest.useFakeTimers();
+    try {
+      wpp.whatsapp = {
+        functions: {
+          getReactions: jest
+            .fn()
+            .mockResolvedValueOnce({
+              reactionByMe: { reactionText: '👍', ack: 0 },
+            })
+            .mockResolvedValue({
+              reactionByMe: { reactionText: '👍', ack: 1 },
+            }),
+        },
+      };
+      wpp.chat.sendReactionToMessage.mockResolvedValue();
+      const pending = send();
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(await pending).toMatchObject({ status: 'success' });
+      wpp.whatsapp.functions.getReactions.mockResolvedValue({
+        reactionByMe: { reactionText: '👍', isSendFailure: true },
+      });
+      expect(await send({ verifyOnly: true })).toMatchObject({
+        status: 'failed',
+      });
+      expect(wpp.chat.sendReactionToMessage).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('finds the newest visually matched image without relying on captions', async () => {
+    const picture = {
+      name: 'reference.png',
+      width: 100,
+      height: 100,
+      pixels: Array.from({ length: 3072 }, () => 128),
+      preview: 'data:image/jpeg;base64,YQ==',
+    };
+    const imageRules = {
+      ...rules(),
+      text: '',
+      content: 'image' as const,
+      picture,
+    };
+    const old = {
+      ...message('old', '', 1),
+      type: 'image',
+      filehash: 'old-hash',
+    };
+    const latest = {
+      ...message('latest', 'caption is different', 2),
+      type: 'image',
+      filehash: 'new-hash',
+    };
+    const other = {
+      ...message('other', '', 3),
+      type: 'image',
+      filehash: 'different',
+    };
+    wpp.chat.getMessages.mockResolvedValue([
+      old,
+      latest,
+      other,
+      message('text', 'reference.png', 4),
+    ]);
+    wpp.chat.downloadMedia = jest.fn(async id => ({ id }));
+    const reader = jest.fn(async blob => ({
+      ...picture,
+      matches: !blob.id.endsWith('_other'),
+    }));
+    expect(
+      await reactionGuest(
+        { ownerId, groupId, rules: imageRules },
+        reader as any,
+      ),
+    ).toMatchObject({
+      messageId: latest.id,
+      imageHash: 'new-hash',
+      imagePreview: picture.preview,
+    });
+    expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+  });
+  it('rechecks the exact matched image before sending and rejects a changed picture', async () => {
+    const picture = {
+      name: 'reference.png',
+      width: 100,
+      height: 100,
+      pixels: Array.from({ length: 3072 }, () => 128),
+      preview: 'data:image/jpeg;base64,YQ==',
+    };
+    wpp.chat.getMessageById.mockResolvedValue({
+      ...message('A', 'new caption'),
+      type: 'image',
+      filehash: 'same',
+    });
+    expect(
+      await send({
+        rules: { ...rules(), content: 'image', picture },
+        expectedImageHash: 'same',
+      }),
+    ).toMatchObject({ status: 'success' });
+    expect(
+      await send({
+        rules: { ...rules(), content: 'image', picture },
+        expectedImageHash: 'changed',
+        token: 'changed',
+      }),
+    ).toMatchObject({ status: 'failed' });
+    expect(wpp.chat.sendReactionToMessage).toHaveBeenCalledTimes(1);
+  });
+  it('does not choose an older image if a newer image cannot be decoded', async () => {
+    const picture = {
+      name: 'reference.png',
+      width: 100,
+      height: 100,
+      pixels: Array.from({ length: 3072 }, () => 128),
+      preview: 'data:image/jpeg;base64,YQ==',
+    };
+    wpp.chat.getMessages.mockResolvedValue([
+      { ...message('old', '', 1), type: 'image' },
+      { ...message('new', '', 2), type: 'image' },
+    ]);
+    wpp.chat.downloadMedia = jest.fn(async () => {
+      throw new Error('media unavailable');
+    });
+    const reader = jest.fn();
+    expect(
+      await reactionGuest(
+        { ownerId, groupId, rules: { ...rules(), content: 'image', picture } },
+        reader as any,
+      ),
+    ).toMatchObject({ error: expect.stringContaining('未选择更早图片') });
+    expect(wpp.chat.downloadMedia).toHaveBeenCalledTimes(1);
+    expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
   });
 });

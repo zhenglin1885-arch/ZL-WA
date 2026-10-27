@@ -27,6 +27,15 @@ export interface BulkAdapter {
   edit?: (target: Recipient, messageId: string, text: string) => Promise<void>;
 }
 export function validateBulkSpec(spec: BulkSpec) {
+  if (
+    spec.reply &&
+    (typeof spec.reply.text !== 'string' ||
+      !spec.reply.text.trim() ||
+      spec.reply.text.length > 20_000 ||
+      !['exact', 'contains', 'normalized'].includes(spec.reply.match) ||
+      spec.targets.some(r => !/^\d{5,30}@(c\.us|lid)$/.test(r.ownerId || '')))
+  )
+    throw new Error('请填写有效的匹配内容和规则，并重新读取账号会话');
   if (spec.targets.length === 0 || spec.targets.length > 10_000)
     throw new Error('请选择 1–10000 个发送对象');
   if (
@@ -286,6 +295,9 @@ export default class BulkQueue {
             ...delivery,
             status: confirmed ? 'sent' : 'uncertain',
             messageId: typeof result === 'string' ? result : result.messageId,
+            ...(typeof result !== 'string' && result.quotedMessageId
+              ? { quotedMessageId: result.quotedMessageId }
+              : {}),
             error: confirmed
               ? undefined
               : (typeof result !== 'string' && result.error) ||

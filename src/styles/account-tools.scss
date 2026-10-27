@@ -1,5 +1,30 @@
 // ZL-WA right-hand account tools, scoped against upstream div { height:100% }.
 .reaction-tools-dialog {
+  .reaction-execution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .reaction-match-tabs {
+    display: flex;
+    gap: 8px;
+  }
+  .reaction-match-tabs button[aria-pressed='true'] {
+    background: #173a78;
+    border-color: #528bff;
+  }
+  .reaction-reference-image img,
+  .reaction-preview img {
+    display: block;
+    width: auto;
+    max-width: 190px;
+    height: auto;
+    max-height: 190px;
+    object-fit: contain;
+    border-radius: 6px;
+    margin: 8px 0;
+  }
   .reaction-scroll {
     overflow-y: auto;
     min-height: 0;

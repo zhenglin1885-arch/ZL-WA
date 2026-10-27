@@ -19,7 +19,10 @@ import { validateBulkSpec } from './BulkQueue';
 import BulkHistory from './BulkHistory';
 import BulkMediaPreview from './BulkMediaPreview';
 import { normalizeAccountConfig } from '../accounts/state';
-import { normalizeBulkPreferences } from './bulkPreferences';
+import {
+  normalizeBulkPreferences,
+  normalizeReplyPreferences,
+} from './bulkPreferences';
 
 const messageTypes: [BulkMessageType, string][] = [
   ['text', '文本'],
@@ -31,10 +34,25 @@ const messageTypes: [BulkMessageType, string][] = [
   ['document', '文件'],
 ];
 const BulkSend = observer(
-  ({ stores, onClose }: { stores: RealStores; onClose: () => void }) => {
+  ({
+    stores,
+    onClose,
+    replyMode = false,
+  }: {
+    stores: RealStores;
+    onClose: () => void;
+    replyMode?: boolean;
+  }) => {
+    const preferencesChannel = replyMode
+      ? 'account-tools-reply-preferences'
+      : 'account-tools-bulk-preferences';
+    const [replyText, setReplyText] = useState('');
+    const [replyMatch, setReplyMatch] = useState<
+      'exact' | 'contains' | 'normalized'
+    >('exact');
     const queue = getBulkQueue(stores);
     const [, render] = useState(0);
-    const [creating, setCreating] = useState(false);
+    const [creating, setCreating] = useState(replyMode);
     const [accounts, setAccounts] = useState<string[]>([]);
     const [recipients, setRecipients] = useState<Recipient[]>([]);
     const [selected, setSelected] = useState<string[]>([]);
@@ -66,7 +84,7 @@ const BulkSend = observer(
     useEffect(() => {
       let mounted = true;
       void ipcRenderer
-        .invoke('account-tools-bulk-preferences')
+        .invoke(preferencesChannel)
         .then(value => {
           if (!mounted) return;
           const prefs = normalizeBulkPreferences(value);
@@ -79,6 +97,11 @@ const BulkSend = observer(
           setMentionAll(prefs.mentionAll);
           setFailure(prefs.failure);
           setKind(prefs.kind);
+          if (replyMode) {
+            const reply = normalizeReplyPreferences(value);
+            setReplyText(reply.replyText);
+            setReplyMatch(reply.replyMatch);
+          }
           setPreferencesReady(true);
         })
         .catch(() => {
@@ -91,16 +114,17 @@ const BulkSend = observer(
         mounted = false;
         if (pendingPreferences.current)
           void ipcRenderer
-            .invoke(
-              'account-tools-bulk-preferences',
-              pendingPreferences.current,
-            )
+            .invoke(preferencesChannel, pendingPreferences.current)
             .catch(() => {});
       };
-    }, []);
+    }, [preferencesChannel, replyMode]);
     useEffect(() => {
       if (!preferencesReady) return () => {};
-      const prefs = normalizeBulkPreferences({
+      const prefs = (
+        replyMode ? normalizeReplyPreferences : normalizeBulkPreferences
+      )({
+        replyText,
+        replyMatch,
         type,
         scheduled,
         randomInterval,
@@ -114,7 +138,7 @@ const BulkSend = observer(
       pendingPreferences.current = prefs;
       const timer = setTimeout(() => {
         void ipcRenderer
-          .invoke('account-tools-bulk-preferences', prefs)
+          .invoke(preferencesChannel, prefs)
           .then(() => {
             if (pendingPreferences.current === prefs)
               pendingPreferences.current = undefined;
@@ -133,11 +157,22 @@ const BulkSend = observer(
       mentionAll,
       failure,
       kind,
+      replyText,
+      replyMatch,
+      replyMode,
+      preferencesChannel,
     ]);
     const profiles = normalizeAccountConfig(
       stores.settings.app.accountSidebar,
     ).accounts;
-    const { activeIds } = queue;
+    const records = queue.records.filter(
+      record => Boolean(record.spec?.reply) === replyMode,
+    );
+    const activeIds = new Set(
+      [...queue.activeIds].filter(id =>
+        records.some(record => record.id === id),
+      ),
+    );
     const running = activeIds.size > 0;
     const disabled = loading || submitting || !preferencesReady;
     const online = stores.services.all.filter(
@@ -202,7 +237,13 @@ const BulkSend = observer(
             const items = await service.webview.executeJavaScript(
               `(${fn.toString()})()`,
             );
-            return items.map(r => ({ ...r, accountId: id }));
+            return items.map(r => ({
+              ...r,
+              accountId: id,
+              ...(replyMode
+                ? { ownerId: service.accountSnapshot.ownerId }
+                : {}),
+            }));
           }),
         );
         if (generation.current === current) setRecipients(results.flat());
@@ -237,6 +278,9 @@ const BulkSend = observer(
       try {
         const spec: BulkSpec = {
           type,
+          ...(replyMode
+            ? { reply: { text: replyText, match: replyMatch } }
+            : {}),
           text: ['image', 'audio', 'contact'].includes(type) ? '' : text,
           media,
           contactName,
@@ -297,7 +341,13 @@ const BulkSend = observer(
       >
         <DialogTitle id="bulk-dialog-title" className="bulk-dialog__header">
           <span className="bulk-dialog__heading">
-            {creating ? '创建群发' : '批量发送'}
+            {replyMode
+              ? creating
+                ? '创建引用回复'
+                : '批量回复'
+              : creating
+                ? '创建群发'
+                : '批量发送'}
             <span className="tools-muted">
               {creating ? '选择账号、对象并配置消息' : '发送记录'}
             </span>
@@ -312,12 +362,12 @@ const BulkSend = observer(
                   setNotice('');
                 }}
               >
-                新建转发
+                {replyMode ? '新建回复' : '新建转发'}
               </Button>
             )}
             <IconButton
               className="bulk-dialog__close-icon"
-              aria-label="关闭转发窗口"
+              aria-label={replyMode ? '关闭回复窗口' : '关闭转发窗口'}
               title="关闭转发窗口（任务继续后台执行）"
               onPointerDown={closeFromPointer}
               onClick={onClose}
@@ -513,6 +563,38 @@ const BulkSend = observer(
               </fieldset>
               <fieldset disabled={disabled}>
                 <h3>群发设置</h3>
+                {replyMode && (
+                  <>
+                    <label htmlFor="bulk-reply-match">
+                      匹配内容
+                      <textarea
+                        id="bulk-reply-match"
+                        aria-label="回复匹配内容"
+                        rows={4}
+                        maxLength={20_000}
+                        value={replyText}
+                        onChange={e => setReplyText(e.target.value)}
+                        placeholder="输入要引用的目标消息内容"
+                      />
+                    </label>
+                    <select
+                      aria-label="回复匹配规则"
+                      value={replyMatch}
+                      onChange={e =>
+                        setReplyMatch(e.target.value as typeof replyMatch)
+                      }
+                    >
+                      <option value="exact">完全相同</option>
+                      <option value="contains">包含文字</option>
+                      <option value="normalized">
+                        忽略标点和空格后完全相同
+                      </option>
+                    </select>
+                    <p className="tools-muted">
+                      执行时查找每个会话最新一条匹配消息，带原消息引用框回复。未找到时记录失败原因，不发送普通消息。
+                    </p>
+                  </>
+                )}
                 <p>消息类型</p>
                 <div className="bulk-type-tabs bulk-message-types">
                   {messageTypes.map(([value, label]) => (
@@ -707,7 +789,7 @@ const BulkSend = observer(
             </div>
           ) : (
             <BulkHistory
-              records={queue.records}
+              records={records}
               activeIds={activeIds}
               onCompose={record => {
                 const previous = record.spec;
@@ -719,6 +801,10 @@ const BulkSend = observer(
                 setScheduled(false);
                 setScheduledAt('');
                 if (previous) {
+                  if (replyMode) {
+                    setReplyText(previous.reply?.text || '');
+                    setReplyMatch(previous.reply?.match || 'exact');
+                  }
                   setAccounts([
                     ...new Set(previous.targets.map(r => r.accountId)),
                   ]);
@@ -803,6 +889,19 @@ const BulkSend = observer(
             {messageTypes.find(([value]) => value === confirm?.type)?.[1]}消息：
             <p className="bulk-record-text">{confirm?.text}</p>
             {confirm?.media && <p>附件：{confirm.media.name}</p>}
+            {confirm?.reply && (
+              <p>
+                引用匹配内容：{confirm.reply.text}（
+                {
+                  {
+                    exact: '完全相同',
+                    contains: '包含文字',
+                    normalized: '忽略标点和空格后完全相同',
+                  }[confirm.reply.match]
+                }
+                ）
+              </p>
+            )}
             {confirm?.type === 'contact' && (
               <p>
                 名片：{confirm.contactName} · {confirm.contactPhone}
