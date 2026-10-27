@@ -176,18 +176,49 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.revoke).not.toHaveBeenCalled();
     expect(adapter.send).not.toHaveBeenCalled();
   });
-  it('keeps an unconfirmed message ID for manual revoke and stops further sends', async () => {
+  it('keeps an unconfirmed message ID and stops when the stop policy is selected', async () => {
     (adapter.send as jest.Mock).mockResolvedValue({
       messageId: 'known-but-unconfirmed',
       confirmed: false,
     });
-    await finish(queue.submit(spec({ failure: 'continue' })));
+    await finish(queue.submit(spec()));
     expect(adapter.send).toHaveBeenCalledTimes(1);
     expect(queue.records[0]).toMatchObject({
       status: '待确认',
       failed: 1,
       deliveries: [{ messageId: 'known-but-unconfirmed', status: 'uncertain' }],
     });
+  });
+  it('continues to distinct targets after a settled unconfirmed send when requested, without resending it', async () => {
+    (adapter.send as jest.Mock).mockResolvedValueOnce({
+      messageId: 'known-pending',
+      confirmed: false,
+    });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+    expect(
+      (adapter.send as jest.Mock).mock.calls.map(([target]) => target.id),
+    ).toEqual(['one@g.us', 'two@c.us']);
+    expect(queue.records[0]).toMatchObject({
+      status: '待确认',
+      success: 1,
+      failed: 1,
+      deliveries: [
+        { messageId: 'known-pending', status: 'uncertain' },
+        { status: 'sent' },
+      ],
+    });
+    await queue.tick();
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+  });
+  it('stops on a settled unknown send without an ID even when continue is selected', async () => {
+    (adapter.send as jest.Mock).mockResolvedValue({
+      messageId: '',
+      confirmed: false,
+    });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(queue.records[0].status).toBe('待确认');
   });
   it('lets the user revoke a selected target without touching other recipients', async () => {
     await finish(queue.submit(spec()));

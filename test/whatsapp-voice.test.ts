@@ -273,7 +273,7 @@ describe('final native WhatsApp voice preparation and dispatch', () => {
     await new NativePrep(model('audio', blob)).sendToChat({ chat: 'chat' });
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(prepare).toHaveBeenCalledTimes(1);
-    expect(page.__zlVoiceMessages.revision).toBe(2);
+    expect(page.__zlVoiceMessages.revision).toBe(3);
   });
   it('retries installation when the native modules become available', () => {
     const { require } = page;
@@ -289,5 +289,80 @@ describe('final native WhatsApp voice preparation and dispatch', () => {
     page.require.mockClear();
     expect(configureWhatsAppVoice()).toBe(false);
     expect(page.require).not.toHaveBeenCalled();
+  });
+  it('uses waitForPrep results when native instances expose no internal media fields', async () => {
+    const source = model('audio', blob);
+    class PublicPrep {
+      constructor(private readonly value: any) {}
+
+      async waitForPrep() {
+        return this.value;
+      }
+
+      async sendToChat(params: any) {
+        return dispatch(this.value, params);
+      }
+    }
+    prepare.mockImplementation(
+      (data, options) =>
+        new PublicPrep({
+          ...model(options.isPtt ? 'ptt' : 'audio', data),
+          ...options.precomputedFields,
+        }),
+    );
+    page.require.mockImplementation((name: string) =>
+      name === 'WAWebMediaPrep'
+        ? { default: PublicPrep }
+        : name === 'WAWebPrepRawMedia'
+          ? { prepRawMedia: prepare }
+          : undefined,
+    );
+    expect(configureWhatsAppVoice()).toBe(true);
+    const result = await new PublicPrep(source).sendToChat({
+      chat: {},
+      options: { type: 'audio' },
+    });
+    expect(result.type).toBe('ptt');
+    expect(result.media.waveform).toHaveLength(64);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+  it('resolves default MediaPrep exports and preparation through the supported helper export', async () => {
+    page.require.mockImplementation((name: string) =>
+      name === 'WAWebMediaPrep' ? { default: NativePrep } : undefined,
+    );
+    page.WPP = { whatsapp: { functions: { prepRawMedia: prepare } } };
+    expect(configureWhatsAppVoice()).toBe(true);
+    expect(page.__zlVoiceMessages.unavailable).toBeNull();
+    const result = await new NativePrep(model('audio', blob)).sendToChat({
+      chat: {},
+      options: {},
+    });
+    expect(result.type).toBe('ptt');
+  });
+  it('keeps normal public-only image sends and the last voice diagnostic unchanged', async () => {
+    class PublicImage {
+      async waitForPrep() {
+        return model('image', blob);
+      }
+
+      async sendToChat(params: any) {
+        return dispatch(await this.waitForPrep(), params);
+      }
+    }
+    page.require.mockImplementation((name: string) =>
+      name === 'WAWebMediaPrep'
+        ? { default: PublicImage, prepRawMedia: prepare }
+        : undefined,
+    );
+    configureWhatsAppVoice();
+    const last = { stage: 'submitted', sourceType: 'audio' };
+    page.__zlVoiceMessages.last = last;
+    const result = await new PublicImage().sendToChat({
+      chat: {},
+      options: {},
+    });
+    expect(result.type).toBe('image');
+    expect(page.__zlVoiceMessages.last).toBe(last);
+    expect(decode).not.toHaveBeenCalled();
   });
 });

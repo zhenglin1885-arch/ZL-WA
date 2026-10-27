@@ -23,12 +23,19 @@ export function configureWhatsAppDownloads(): boolean {
   )
     return false;
   try {
-    Object.defineProperty(window, 'showSaveFilePicker', {
-      configurable: true,
-      writable: true,
-      value: undefined,
-    });
-    return true;
+    // Setting undefined still satisfies `"showSaveFilePicker" in window`.
+    // Remove the property so both presence and callable feature checks select
+    // the standard download path. The native API may live on a prototype.
+    let owner: object | null = window;
+    while (owner) {
+      if (
+        Object.hasOwn(owner, 'showSaveFilePicker') &&
+        !Reflect.deleteProperty(owner, 'showSaveFilePicker')
+      )
+        return false;
+      owner = Object.getPrototypeOf(owner);
+    }
+    return !('showSaveFilePicker' in window);
   } catch {
     return false;
   }

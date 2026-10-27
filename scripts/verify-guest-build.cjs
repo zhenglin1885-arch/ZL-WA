@@ -74,6 +74,18 @@ const {
       canInitialize: true,
     },
   );
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        await call(advanced.waitForBulkReceipt, ['chat@g.us', 'missing-id']),
+      ),
+    ),
+    {
+      messageId: 'missing-id',
+      confirmed: false,
+      error: '已记录消息编号，服务器回执仍待确认；未重发原消息',
+    },
+  );
   context.window.__zlCustomers = { queue: [], data: undefined };
   assert.equal(call(customers.customerTick).length, 0);
   assert.equal(call(applyWhatsAppTheme, [true]), false);

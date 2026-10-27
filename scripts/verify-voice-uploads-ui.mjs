@@ -35,17 +35,18 @@ try {
           return await win.webContents.executeJavaScript(`(async()=>{
           const configure=${adapter.toString()},diagnostics=${diagnostics.toString()};
           const calls=[];
+          const prepared=new WeakMap();
           class NativePrep {
-            constructor(media){this._mediaData=media}
-            async waitForPrep(){return this._mediaData}
+            constructor(media){prepared.set(this,media)}
+            async waitForPrep(){return prepared.get(this)}
             async sendToChat(params){
-              const m=this._mediaData,o=params.options||{};
+              const m=await this.waitForPrep(),o=params.options||{};
               const message={type:o.productMsgOptions?.type||o.type||m.type,seconds:m.duration,waveform:m.waveform?[...m.waveform]:[],quote:o.quotedMsg,id:o.productMsgOptions?.id};
               calls.push(message);return message;
             }
           }
           const native=Object.freeze({prepRawMedia(data,options){return new NativePrep({type:options.isAudio?'audio':options.isPtt?'ptt':'audio',mediaBlob:data,...options.precomputedFields,set(fields){Object.assign(this,fields)}})}});
-          let loaded=false;window.require=name=>!loaded?undefined:name==='WAWebPrepRawMedia'?native:name==='WAWebMediaPrep'?Object.freeze({MediaPrep:NativePrep}):undefined;
+          let loaded=false;window.require=name=>!loaded?undefined:name==='WAWebPrepRawMedia'?native:name==='WAWebMediaPrep'?Object.freeze({default:NativePrep}):undefined;
           if(configure())throw Error('Unavailable native modules must not report ready');
           loaded=true;
           const samples=8000,bytes=new ArrayBuffer(44+samples*2),v=new DataView(bytes);

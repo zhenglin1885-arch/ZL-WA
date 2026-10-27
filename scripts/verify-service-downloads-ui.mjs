@@ -47,6 +47,11 @@ export async function verifyServiceDownloads({
         'unsupported save picker must be disabled before page feature detection',
       );
       assert.equal(
+        await guest(account, "'showSaveFilePicker' in window"),
+        false,
+        'presence-based native download checks must also use the fallback',
+      );
+      assert.equal(
         await guest(account, 'typeof window.showOpenFilePicker'),
         'function',
         'upload picker remains available',

@@ -1440,9 +1440,15 @@ export function translationSurfaceDiagnostics() {
     target: state?.config?.sendTarget ?? null,
     composer: state?.inspectComposer?.() ?? null,
     adapterReady: Boolean(state?.ready),
+    downloads: {
+      bridge: typeof (window as any).ferdium?.downloadMedia === 'function',
+      savePickerType: typeof (window as any).showSaveFilePicker,
+      savePickerPresent: 'showSaveFilePicker' in window,
+    },
     voice: {
       revision: (window as any).__zlVoiceMessages?.revision ?? null,
       ready: Boolean((window as any).__zlVoiceMessages?.ready),
+      unavailable: (window as any).__zlVoiceMessages?.unavailable ?? null,
       last: (window as any).__zlVoiceMessages?.last
         ? {
             stage: (window as any).__zlVoiceMessages.last.stage,
@@ -1487,9 +1493,15 @@ export function translationDiagnostics() {
   ];
   return {
     version: 9,
+    downloads: {
+      bridge: typeof (window as any).ferdium?.downloadMedia === 'function',
+      savePickerType: typeof (window as any).showSaveFilePicker,
+      savePickerPresent: 'showSaveFilePicker' in window,
+    },
     voice: {
       revision: (window as any).__zlVoiceMessages?.revision ?? null,
       ready: Boolean((window as any).__zlVoiceMessages?.ready),
+      unavailable: (window as any).__zlVoiceMessages?.unavailable ?? null,
       last: (window as any).__zlVoiceMessages?.last
         ? {
             stage: (window as any).__zlVoiceMessages.last.stage,

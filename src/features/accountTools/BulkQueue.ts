@@ -308,7 +308,14 @@ export default class BulkQueue {
             success: record.success + (confirmed ? 1 : 0),
             failed: record.failed + (confirmed ? 0 : 1),
           };
-          if (!confirmed) this.stopped.add(record.id);
+          // A settled request with a known ID can be checked later without
+          // resending it. Continue to distinct targets only when requested.
+          // Unidentified submissions and still-running timeouts remain stops.
+          if (
+            !confirmed &&
+            (spec.failure !== 'continue' || !delivery.messageId)
+          )
+            this.stopped.add(record.id);
         } catch (error) {
           delivery = {
             ...delivery,

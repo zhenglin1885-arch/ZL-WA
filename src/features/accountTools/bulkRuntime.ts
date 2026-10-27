@@ -8,6 +8,7 @@ import {
   revokeBulkMessage,
   reconcileBulkMessage,
   editBulkMessage,
+  waitForBulkReceipt,
 } from './bulkGuest';
 
 let library: Promise<string> | undefined;
@@ -76,6 +77,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         remove: ids => ipcRenderer.invoke('account-tools-history-delete', ids),
         send: async (target, spec) => {
           const view = viewFor(target);
+          let outcome;
           // Retain the small, tested text adapter for ordinary text sends.
           if (
             spec.type === 'text' &&
@@ -83,22 +85,38 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
             !spec.mentionAll &&
             spec.typingSeconds === 0 &&
             !target.contactOnly
-          )
-            return view.executeJavaScript(
+          ) {
+            outcome = await view.executeJavaScript(
               `(${sendTextToChat.toString()})(${JSON.stringify(target.id)},${JSON.stringify(spec.text)})`,
             );
-          await ensureBulkLibrary(view);
-          const dataUrl = spec.media
-            ? await ipcRenderer.invoke(
-                'account-tools-media-read',
-                spec.media.id,
-              )
-            : undefined;
-          if (viewFor(target) !== view)
-            throw new Error('账号窗口已变化，请重新检查');
-          return view.executeJavaScript(
-            `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)})`,
-          );
+          } else {
+            await ensureBulkLibrary(view);
+            const dataUrl = spec.media
+              ? await ipcRenderer.invoke(
+                  'account-tools-media-read',
+                  spec.media.id,
+                )
+              : undefined;
+            if (viewFor(target) !== view)
+              throw new Error('账号窗口已变化，请重新检查');
+            outcome = await view.executeJavaScript(
+              `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)})`,
+            );
+          }
+          if (!outcome.confirmed && outcome.messageId) {
+            try {
+              if (viewFor(target) !== view) return outcome;
+              const receipt = await view.executeJavaScript(
+                `(${waitForBulkReceipt.toString()})(${JSON.stringify(target.id)},${JSON.stringify(outcome.messageId)})`,
+              );
+              if (viewFor(target) === view && receipt.confirmed)
+                return { ...outcome, confirmed: true, error: undefined };
+            } catch {
+              // The original message ID survives failed read-only checks.
+              // Never submit the message again to obtain a cleaner result.
+            }
+          }
+          return outcome;
         },
         reconcile: async (target, messageId, spec, started, ended) => {
           const view = viewFor(target);

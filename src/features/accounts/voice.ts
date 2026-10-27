@@ -5,12 +5,12 @@ export function configureWhatsAppVoice(): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
   const page = window as any;
   const previous = page.__zlVoiceMessages;
-  if (previous?.revision !== 2) {
+  if (previous?.revision !== 3) {
     if (previous?.capture && typeof document !== 'undefined')
       for (const event of ['pointerdown', 'click', 'keydown'])
         document.removeEventListener(event, previous.capture, true);
     page.__zlVoiceMessages = {
-      revision: 2,
+      revision: 3,
       wrappers: new WeakSet(),
       ready: false,
     };
@@ -31,17 +31,37 @@ export function configureWhatsAppVoice(): boolean {
     }
   };
   const native = module('WAWebMediaPrep');
+  const optional = (read: () => any) => {
+    try {
+      return read();
+    } catch {
+      // Optional lazy WA-JS exports can throw before their modules are ready.
+      return null;
+    }
+  };
   const prepare =
-    module('WAWebPrepRawMedia')?.prepRawMedia || native?.prepRawMedia;
-  const prototype = (native?.MediaPrep || page.WPP?.whatsapp?.MediaPrep)
-    ?.prototype;
+    module('WAWebPrepRawMedia')?.prepRawMedia ||
+    native?.prepRawMedia ||
+    optional(() => page.WPP?.whatsapp?.functions?.prepRawMedia);
+  const prototype = [
+    native?.MediaPrep,
+    native?.default,
+    optional(() => page.WPP?.whatsapp?.MediaPrep),
+  ]
+    .map(value => value?.prototype)
+    .find(value => typeof value?.sendToChat === 'function');
   const original = prototype?.sendToChat;
   if (typeof prepare !== 'function' || typeof original !== 'function') {
     state.ready = false;
+    state.unavailable =
+      typeof prepare === 'function'
+        ? 'send-interface'
+        : 'preparation-interface';
     return false;
   }
   if (state.wrappers.has(original)) {
     state.ready = true;
+    state.unavailable = null;
     return true;
   }
   state.ready = false;
@@ -83,24 +103,45 @@ export function configureWhatsAppVoice(): boolean {
     const initial = mediaOf(this);
     if (
       options.type === 'document' ||
-      !['audio', 'ptt'].includes(initial?.type) ||
-      (initial.type === 'ptt' &&
+      (initial?.type && !['audio', 'ptt'].includes(initial.type)) ||
+      (initial?.type === 'ptt' &&
         options.type !== 'audio' &&
         options.productMsgOptions?.type !== 'audio')
     )
       return Reflect.apply(original, this, args);
-    state.last = { stage: 'preparing', sourceType: initial.type };
-    const opaque = initial.mediaBlob;
-    const retained =
-      typeof opaque?.retain === 'function' &&
-      typeof opaque?.autoreleaseWhenPromiseCompletes === 'function';
-    if (retained) opaque.retain();
+    let voiceTask = ['audio', 'ptt'].includes(initial?.type);
+    if (voiceTask)
+      state.last = { stage: 'preparing', sourceType: initial.type };
+    let retained: any;
+    const retain = (data: any) => {
+      if (
+        !retained &&
+        typeof data?.retain === 'function' &&
+        typeof data?.autoreleaseWhenPromiseCompletes === 'function'
+      ) {
+        data.retain();
+        retained = data;
+      }
+    };
+    retain(initial?.mediaBlob);
     const sending = (async () => {
-      await this.waitForPrep();
-      const source = mediaOf(this);
-      if (!['audio', 'ptt'].includes(source?.type))
+      // waitForPrep() is the public native contract. Internal fields are
+      // optional and may not exist at all on a real Audio upload instance.
+      const source = (await this.waitForPrep()) || mediaOf(this);
+      if (voiceTask && !['audio', 'ptt'].includes(source?.type))
         throw new Error('音频准备状态已变化，未发送');
-      const fields = await waveformOf({ mediaBlob: opaque });
+      if (
+        !['audio', 'ptt'].includes(source?.type) ||
+        (source.type === 'ptt' &&
+          options.type !== 'audio' &&
+          options.productMsgOptions?.type !== 'audio')
+      )
+        return Reflect.apply(original, this, args);
+      voiceTask = true;
+      state.last = { stage: 'preparing', sourceType: source.type };
+      const opaque = source.mediaBlob;
+      retain(opaque);
+      const fields = await waveformOf(source);
       // isAudio belongs to ordinary audio uploads. Do not propagate it into
       // the native voice-note encoder, or the result can remain type=audio.
       const voice =
@@ -110,8 +151,7 @@ export function configureWhatsAppVoice(): boolean {
               precomputedFields: fields,
             })
           : this;
-      if (voice !== this) await voice.waitForPrep();
-      const prepared = mediaOf(voice);
+      const prepared = (await voice.waitForPrep()) || mediaOf(voice);
       if (prepared?.type !== 'ptt')
         throw new Error('未能生成 PTT 语音消息，已停止发送');
       if (typeof prepared.set === 'function') prepared.set(fields);
@@ -150,26 +190,34 @@ export function configureWhatsAppVoice(): boolean {
       state.last = { ...state.last, stage: 'submitted' };
       return result;
     })().catch(error => {
-      state.last = {
-        ...state.last,
-        stage: 'failed',
-        error: String(error?.message || error).slice(0, 240),
-      };
+      if (voiceTask)
+        state.last = {
+          ...state.last,
+          stage: 'failed',
+          error: String(error?.message || error).slice(0, 240),
+        };
       throw error;
     });
     // The upload preview can close while decoding. Keep its native data alive
     // until preparation and the one original dispatch have settled.
-    if (retained) opaque.autoreleaseWhenPromiseCompletes(sending);
-    return sending;
+    // The data may become available only after waitForPrep resolves.
+    return sending.finally(() => {
+      retained?.autoreleaseWhenPromiseCompletes(Promise.resolve());
+    });
   };
   // WA-JS chooses its modern/legacy call signature using this arity.
   Object.defineProperty(wrapped, 'length', { value: original.length });
   try {
-    if (!Reflect.set(prototype, 'sendToChat', wrapped)) return false;
+    if (!Reflect.set(prototype, 'sendToChat', wrapped)) {
+      state.unavailable = 'locked-send-interface';
+      return false;
+    }
     state.wrappers.add(wrapped);
     state.ready = prototype.sendToChat === wrapped;
+    state.unavailable = state.ready ? null : 'locked-send-interface';
   } catch {
     state.ready = false;
+    state.unavailable = 'locked-send-interface';
   }
   return state.ready;
 }

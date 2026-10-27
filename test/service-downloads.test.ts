@@ -66,8 +66,17 @@ describe('WhatsApp download compatibility', () => {
       const open = page.showOpenFilePicker;
       expect(configureWhatsAppDownloads()).toBe(true);
       expect(typeof page.showSaveFilePicker).toBe('undefined');
+      expect('showSaveFilePicker' in page).toBe(false);
       expect(page.showOpenFilePicker).toBe(open);
       expect(configureWhatsAppDownloads()).toBe(true);
+    });
+    it('removes inherited picker APIs so presence checks also choose the fallback', () => {
+      const inherited = { showSaveFilePicker: page.showSaveFilePicker };
+      delete page.showSaveFilePicker;
+      Object.setPrototypeOf(page, inherited);
+      expect(configureWhatsAppDownloads()).toBe(true);
+      expect('showSaveFilePicker' in page).toBe(false);
+      expect(typeof page.showOpenFilePicker).toBe('function');
     });
     it('leaves other services untouched', () => {
       (globalThis.location as any).hostname = 'example.com';

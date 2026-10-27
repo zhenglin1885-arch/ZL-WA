@@ -783,7 +783,7 @@ const BulkSend = observer(
                   </select>
                 </label>
                 <p className="tools-muted">
-                  发送结果超时未确认时停止任务。群发正文按原样发送，不使用聊天输入框翻译。
+                  选择继续时，有消息编号的待确认项保留记录、不重发，继续后续对象；发送超时或缺少编号时停止。群发正文按原样发送，不使用聊天输入框翻译。
                 </p>
               </fieldset>
             </div>

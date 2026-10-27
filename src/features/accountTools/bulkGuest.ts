@@ -1,6 +1,75 @@
 /* eslint-disable unicorn/consistent-function-scoping, no-await-in-loop -- Serialized guest helpers and sequential, newest-first quote lookup. */
 import type { BulkSpec, BulkSendOutcome } from './config';
 
+// A native send may resolve before its message model receives ACK=1. Wait
+// briefly for this exact outgoing message; never send, search by body or guess.
+export async function waitForBulkReceipt(
+  chatId: string,
+  messageId: string,
+): Promise<BulkSendOutcome> {
+  if (globalThis.location.hostname !== 'web.whatsapp.com')
+    throw new Error('当前会话不是 WhatsApp');
+  if (!messageId || !chatId) throw new Error('缺少原消息编号或聊天');
+  const page = window as any;
+  const idOf = (value: any): string =>
+    typeof value === 'string' ? value : value?._serialized || '';
+  const pending = {
+    messageId,
+    confirmed: false,
+    error: '已记录消息编号，服务器回执仍待确认；未重发原消息',
+  };
+  const until = Date.now() + 6000;
+  for (const delay of [0, 200, 400, 800, 1200, 2000]) {
+    if (delay)
+      await new Promise(resolve => {
+        setTimeout(resolve, Math.min(delay, Math.max(0, until - Date.now())));
+      });
+    if (Date.now() >= until) break;
+    let store: any;
+    try {
+      store = page.require?.('WAWebCollections')?.Msg;
+    } catch {
+      /* The ready helper can expose the same live message model. */
+    }
+    const read = async () => {
+      const native = store?.get?.(messageId);
+      if (native) return native;
+      if (page.WPP?.isReady && page.WPP.chat?.getMessageById)
+        return page.WPP.chat.getMessageById(messageId);
+      return null;
+    };
+    if (!store?.get && !page.WPP?.chat?.getMessageById) return pending;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const message: any = await Promise.race([
+        read(),
+        new Promise<void>(resolve => {
+          timer = setTimeout(
+            () => resolve(),
+            Math.min(1000, until - Date.now()),
+          );
+        }),
+      ]);
+      // An unresolved read is not a reason to accumulate more pending reads.
+      if (message === undefined) return pending;
+      if (message) {
+        if (
+          idOf(message.id) !== messageId ||
+          !(message.id?.fromMe || message.isSentByMe) ||
+          idOf(message.id?.remote || message.to) !== chatId
+        )
+          return pending;
+        if (Number(message.ack) >= 1) return { messageId, confirmed: true };
+      }
+    } catch {
+      // Missing or temporarily unavailable models remain unconfirmed.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return pending;
+}
+
 export async function listBulkContacts() {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     throw new Error('当前会话不是 WhatsApp');

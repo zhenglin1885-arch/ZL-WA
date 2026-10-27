@@ -12,6 +12,7 @@ import { verifyReactions } from './verify-reactions-ui.mjs';
 import { verifyBulkReplies } from './verify-bulk-replies-ui.mjs';
 import { verifyServiceDownloads } from './verify-service-downloads-ui.mjs';
 import { verifyCustomerCompatibility } from './verify-customer-compatibility-ui.mjs';
+import { verifyBulkReceipts } from './verify-bulk-receipts-ui.mjs';
 import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
 import {
   evaluate,
@@ -1008,7 +1009,7 @@ try {
     await clickText('复制页面诊断');
     const report = await evaluate(`require('electron').clipboard.readText()`);
     assert.equal(JSON.parse(report).version, 9);
-    assert.equal(JSON.parse(report).voice.revision, 2);
+    assert.equal(JSON.parse(report).voice.revision, 3);
     assert.equal(JSON.parse(report).counts['[data-zl-translate]'], 3);
     assert(
       !report.includes('8613800000001') &&
@@ -1838,6 +1839,7 @@ try {
       shot,
       queueExpression,
     });
+    await verifyBulkReceipts({ first, guest, evaluate, queueExpression });
   }
   // Customer integration uses local identities and never sends a WhatsApp message.
   await click(`[data-service-id="${first}"] .account-card__select`);
