@@ -98,6 +98,7 @@ const runEsbuild = async () => {
     'src/features/accounts/unread.ts',
     'src/features/accounts/layout.ts',
     'src/features/accounts/voice.ts',
+    'src/features/accounts/audioUpload.ts',
     'src/webview/downloads.ts',
     'src/features/accountTools/guest.ts',
     'src/features/accountTools/bulkGuest.ts',

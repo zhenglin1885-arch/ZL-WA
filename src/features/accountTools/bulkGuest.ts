@@ -92,6 +92,7 @@ export async function sendBulkMessage(
   chatId: string,
   spec: BulkSpec,
   dataUrl?: string,
+  compose?: { ownerId: string; quotedMessageId?: string },
 ): Promise<BulkSendOutcome> {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     throw new Error('当前会话不是 WhatsApp');
@@ -111,6 +112,35 @@ export async function sendBulkMessage(
     delay: spec.typingSeconds * 1000,
   };
   const content = spec.text;
+  // Audio selected in the chat UI must still belong to the same account,
+  // conversation and composer reply when asynchronous decoding completes.
+  const assertCompose = () => {
+    if (!compose) return;
+    const idOf = (value: any): string =>
+      typeof value === 'string' ? value : value?._serialized || '';
+    const active = wpp.chat.getActiveChat?.();
+    if (
+      spec.type !== 'audio' ||
+      !compose.ownerId ||
+      idOf(wpp.conn?.getMyUserWid?.()) !== compose.ownerId ||
+      idOf(active?.id) !== chatId ||
+      idOf(active?.composeQuotedMsg?.id) !== (compose.quotedMessageId || '')
+    )
+      throw new Error('账号、聊天或引用消息已变化，未发送语音');
+  };
+  assertCompose();
+  if (compose?.quotedMessageId) {
+    const quote = await wpp.chat.getMessageById(compose.quotedMessageId);
+    const remote = quote?.id?.remote;
+    const quoteId =
+      typeof quote?.id === 'string' ? quote.id : quote?.id?._serialized;
+    if (
+      quoteId !== compose.quotedMessageId ||
+      (remote?._serialized || remote) !== chatId
+    )
+      throw new Error('引用消息不属于当前聊天，未发送语音');
+    options.quotedMsg = compose.quotedMessageId;
+  }
   if (spec.reply) {
     const idOf = (id: any): string =>
       typeof id === 'string'
@@ -329,6 +359,7 @@ export async function sendBulkMessage(
         productMsgOptions: raw,
         addEvenWhilePreparing: false,
       };
+      assertCompose();
       const sent = await (prep.sendToChat.length === 1
         ? prep.sendToChat({ chat, options: sendOptions })
         : prep.sendToChat(chat, sendOptions));

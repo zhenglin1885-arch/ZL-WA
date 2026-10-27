@@ -23,6 +23,9 @@ import {
 import { configureWhatsAppLayout } from '../../../features/accounts/layout';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
 import { configureWhatsAppVoice } from '../../../features/accounts/voice';
+import { configureWhatsAppAudioUpload } from '../../../features/accounts/audioUpload';
+import { sendBulkMessage } from '../../../features/accountTools/bulkGuest';
+import { ensureBulkLibrary } from '../../../features/accountTools/bulkRuntime';
 import { configureTranslation } from '../../../features/accountTools/runtime';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
@@ -131,7 +134,9 @@ class ServiceWebview extends Component<IProps> {
         .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
         .catch(error => debug('Could not mount WhatsApp split handle', error));
       await view
-        .executeJavaScript(`(${configureWhatsAppVoice.toString()})()`)
+        .executeJavaScript(
+          `(${configureWhatsAppVoice.toString()})();(${configureWhatsAppAudioUpload.toString()})(${sendBulkMessage.toString()})`,
+        )
         .catch(error =>
           debug('Could not configure WhatsApp voice uploads', error),
         );
@@ -146,6 +151,10 @@ class ServiceWebview extends Component<IProps> {
       const snapshot = await view.executeJavaScript(
         `(${readWhatsAppSnapshot.toString()})()`,
       );
+      if (snapshot.status === 'online')
+        ensureBulkLibrary(view).catch(error =>
+          debug('Could not prepare WhatsApp Audio upload interface', error),
+        );
       if (snapshot.status !== 'loading' && !service.isLoading)
         this.finishStartup();
       if (this.webview?.view !== view || this.disposed) return;

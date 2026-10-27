@@ -1440,6 +1440,10 @@ export function translationSurfaceDiagnostics() {
     target: state?.config?.sendTarget ?? null,
     composer: state?.inspectComposer?.() ?? null,
     adapterReady: Boolean(state?.ready),
+    audioUpload: {
+      revision: (window as any).__zlAudioUpload?.revision ?? null,
+      last: (window as any).__zlAudioUpload?.last ?? null,
+    },
     bulkVoice: (window as any).__zlBulkVoice
       ? {
           phase: (window as any).__zlBulkVoice.phase,
@@ -1505,6 +1509,10 @@ export function translationDiagnostics() {
   ];
   return {
     version: 9,
+    audioUpload: {
+      revision: (window as any).__zlAudioUpload?.revision ?? null,
+      last: (window as any).__zlAudioUpload?.last ?? null,
+    },
     bulkVoice: (window as any).__zlBulkVoice
       ? {
           phase: (window as any).__zlBulkVoice.phase,

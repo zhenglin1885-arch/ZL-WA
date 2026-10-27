@@ -552,6 +552,77 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(voiceSend).not.toHaveBeenCalled();
     expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
   });
+  it('preserves the current Audio composer quote through the shared voice route', async () => {
+    const active = { id: 'chat@g.us', composeQuotedMsg: { id: 'quoted-id' } };
+    wpp.chat.getActiveChat = () => active;
+    wpp.conn = { getMyUserWid: () => 'owner@c.us' };
+    wpp.chat.getMessageById.mockResolvedValue(
+      ownMessage({ id: { _serialized: 'quoted-id', remote: 'chat@g.us' } }),
+    );
+    await sendBulkMessage(
+      'chat@g.us',
+      spec('audio'),
+      'data:audio/ogg;base64,YQ==',
+      {
+        ownerId: 'owner@c.us',
+        quotedMessageId: 'quoted-id',
+      },
+    );
+    expect(wpp.chat.prepareRawMessage.mock.calls[0][2].quotedMsg).toBe(
+      'quoted-id',
+    );
+    expect(voiceSend).toHaveBeenCalledTimes(1);
+  });
+  it('refuses a composer quote from another conversation', async () => {
+    wpp.chat.getActiveChat = () => ({
+      id: 'chat@g.us',
+      composeQuotedMsg: { id: 'quoted-id' },
+    });
+    wpp.conn = { getMyUserWid: () => 'owner@c.us' };
+    wpp.chat.getMessageById.mockResolvedValue(
+      ownMessage({ id: { remote: 'other@g.us' } }),
+    );
+    await expect(
+      sendBulkMessage(
+        'chat@g.us',
+        spec('audio'),
+        'data:audio/ogg;base64,YQ==',
+        {
+          ownerId: 'owner@c.us',
+          quotedMessageId: 'quoted-id',
+        },
+      ),
+    ).rejects.toThrow('不属于当前聊天');
+    expect(voiceSend).not.toHaveBeenCalled();
+  });
+  it.each(['account', 'chat', 'quote'])(
+    'does not dispatch if the Audio %s changes while decoding',
+    async change => {
+      let owner = 'owner@c.us';
+      const active: any = { id: 'chat@g.us' };
+      wpp.chat.getActiveChat = () => active;
+      wpp.conn = { getMyUserWid: () => owner };
+      const decoded = await decode();
+      decode.mockImplementation(async () => {
+        if (change === 'account') owner = 'other@c.us';
+        if (change === 'chat') active.id = 'other@g.us';
+        if (change === 'quote') active.composeQuotedMsg = { id: 'new-quote' };
+        return decoded;
+      });
+      await expect(
+        sendBulkMessage(
+          'chat@g.us',
+          spec('audio'),
+          'data:audio/ogg;base64,YQ==',
+          {
+            ownerId: 'owner@c.us',
+          },
+        ),
+      ).rejects.toThrow('已变化');
+      expect(voiceSend).not.toHaveBeenCalled();
+      expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
+    },
+  );
   it('preserves genuine silence as 64 zero samples', async () => {
     decode.mockResolvedValue({
       duration: 1,
