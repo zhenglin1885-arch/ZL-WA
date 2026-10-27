@@ -8,6 +8,7 @@ import { verifyWhatsAppLayout } from './verify-whatsapp-layout-ui.mjs';
 import { verifyTranslationRedraft } from './verify-translation-redraft-ui.mjs';
 import { verifyTranslationContexts } from './verify-translation-contexts-ui.mjs';
 import { verifyGroups } from './verify-groups-ui.mjs';
+import { verifyReactions } from './verify-reactions-ui.mjs';
 import { verifyCustomerCompatibility } from './verify-customer-compatibility-ui.mjs';
 import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
 import {
@@ -2416,6 +2417,17 @@ try {
     'second account identity ready for group tools',
   );
   await verifyGroups({
+    first,
+    second,
+    guest,
+    evaluate,
+    wait,
+    click,
+    clickText,
+    call,
+    shot,
+  });
+  await verifyReactions({
     first,
     second,
     guest,

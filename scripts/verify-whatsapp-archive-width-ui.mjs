@@ -16,6 +16,9 @@ try {
         const released = req(
           '/tmp/zl-test6-inspect/app.asar/features/accounts/layout.js',
         ).configureWhatsAppLayout;
+        const released733 = req(
+          '/tmp/zl733-inspect/app.asar/features/accounts/layout.js',
+        ).configureWhatsAppLayout;
         const isolated = session.fromPartition(
           `zl-archive-width-${Date.now()}`,
         );
@@ -60,15 +63,20 @@ try {
         const reports = [];
         try {
           for (const mode of ['light', 'dark']) {
-            for (const version of ['released', 'fixed', 'upgraded']) {
+            for (const version of [
+              'released',
+              'fixed',
+              'upgraded',
+              'upgraded-733',
+            ]) {
               await win.setSize(1280, 900);
               const background = mode === 'light' ? '#fff' : '#151515';
               html = `<!doctype html><style>*{box-sizing:border-box}body{margin:0}#app{position:relative;display:flex;height:100vh;width:100vw}nav{flex:0 0 64px}#list{flex:0 0 40vw;width:40vw}#side{height:100%}header{height:64px}#pane{flex:1;min-width:0;background:${background}}#overlay{position:absolute;left:64px;right:0;top:0;bottom:0;display:flex;pointer-events:none;z-index:2}#overlay.open>[data-testid="drawer-left"]{pointer-events:auto;background:${background}}[data-testid="drawer-left"]{flex:0 0 40vw;width:40vw;overflow:hidden}[data-testid="drawer-middle"]{flex:1;min-width:0;border-left:1px solid gray}#archive-content{visibility:hidden}#overlay.open #archive-content{visibility:visible}#archive-scroll{height:calc(100vh - 64px);overflow:auto}.row{display:block;width:100%;height:80px;white-space:nowrap;overflow:hidden}button{padding:15px}#archive-tail{height:1400px}</style><div id="app"><nav></nav><div id="overlay"><div data-testid="drawer-left"><div id="archive-content"><header><button id="back">Back</button>Archived</header><div id="archive-scroll"><button class="row" data-chat="archived-A">Archived conversation A — preserve preview and unread count 2</button><button class="row" data-chat="archived-B">Archived conversation B</button><div id="archive-tail"></div></div></div></div><div data-testid="drawer-middle"></div></div><div id="list"><div id="side"><header><button aria-label="New chat">+</button></header><button id="open-archive" data-testid="chatlist-panel-archived-button">Archived</button><div id="pane-side"></div></div></div><div id="pane"><div id="main">Chat content remains visible</div><div id="draft" contenteditable="true">Preserve draft</div></div></div><script>window.selected='';document.querySelector('#open-archive').onclick=()=>document.querySelector('#overlay').classList.add('open');document.querySelector('#overlay').onclick=e=>{if(e.target.closest('#back'))document.querySelector('#overlay').classList.remove('open');const row=e.target.closest('[data-chat]');if(row)window.selected=row.dataset.chat}</script>`;
               await win.loadURL('https://web.whatsapp.com/');
               await execute(
-                `localStorage.setItem('zl-chat-list-width','342');localStorage.setItem('qa-cache','Keep cached translation');window.layout=${(version === 'fixed' ? fixed : released).toString()};layout();true`,
+                `localStorage.setItem('zl-chat-list-width','342');localStorage.setItem('qa-cache','Keep cached translation');window.layout=${(version === 'fixed' ? fixed : version === 'upgraded-733' ? released733 : released).toString()};layout();true`,
               );
-              if (version === 'upgraded') {
+              if (version.startsWith('upgraded')) {
                 // Upgrade an already rendered old page, matching a running
                 // account rather than racing its first layout frame.
                 await frame();
@@ -133,10 +141,65 @@ try {
                 result: await execute(snapshot),
               });
               if (version !== 'released') {
+                // The entire invisible seam used to resize. Only the top handle
+                // may start a drag, including when upgrading retained listeners.
+                const unchanged = await execute(snapshot);
+                for (const y of [200, 450, 800]) {
+                  const start = { x: Math.round(unchanged.list.right), y };
+                  win.webContents.focus();
+                  for (const event of [
+                    { type: 'mouseMove', ...start },
+                    {
+                      type: 'mouseDown',
+                      ...start,
+                      button: 'left',
+                      clickCount: 1,
+                    },
+                    {
+                      type: 'mouseMove',
+                      x: start.x + 70,
+                      y,
+                      button: 'left',
+                      modifiers: ['leftButtonDown'],
+                    },
+                    {
+                      type: 'mouseUp',
+                      x: start.x + 70,
+                      y,
+                      button: 'left',
+                      clickCount: 1,
+                    },
+                  ]) {
+                    win.webContents.sendInputEvent(event);
+                    await frame();
+                  }
+                  const after = await execute(snapshot);
+                  if (
+                    after.list.width !== unchanged.list.width ||
+                    after.stored !== unchanged.stored
+                  )
+                    throw new Error(
+                      `${mode}/${version}: seam outside handle changed width at y=${y}`,
+                    );
+                }
+                if (
+                  (await execute(
+                    `getComputedStyle(document.querySelector('[data-zl-chat-divider]')).pointerEvents`,
+                  )) !== 'none'
+                )
+                  throw new Error('Invisible seam still intercepts input');
+                reports.push({
+                  mode,
+                  version,
+                  action: 'non-handle-drags-ignored',
+                  result: await execute(snapshot),
+                });
                 // Resize while the archive drawer is open using trusted events.
                 const start = await execute(
-                  `(()=>{const r=document.querySelector('[data-zl-chat-divider]').getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:200}})()`,
+                  `(()=>{const r=document.querySelector('[data-zl-chat-resize]').getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
                 );
+                win.webContents.sendInputEvent({ type: 'mouseMove', ...start });
+                await frame();
                 for (const event of [
                   {
                     type: 'mouseDown',
@@ -262,7 +325,7 @@ try {
     }
   }
   console.log(
-    'PASS archive width sync: published test-6 mismatch reproduced; fixed cached width, open/back/reopen, trusted drag, chat selection, window resize, remount, scrolling, reversible styling and cache/draft preservation',
+    'PASS archive width sync: published test-6 mismatch reproduced; fixed cached width, open/back/reopen, handle-only trusted drag, inert seam drags, chat selection, window resize, remount, scrolling, reversible styling and cache/draft preservation',
   );
 } finally {
   socket.close();

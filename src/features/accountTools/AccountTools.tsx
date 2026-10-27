@@ -3,6 +3,7 @@ import {
   mdiAccountGroupOutline,
   mdiAccountMultiplePlusOutline,
   mdiAccountMultipleMinusOutline,
+  mdiThumbUpOutline,
 } from '@mdi/js';
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
@@ -10,6 +11,7 @@ import { useEffect, useState, useId } from 'react';
 import { startChatBackup } from '../chatBackup/runtime';
 import type { GroupMode } from '../groups/types';
 import GroupTools from '../groups/GroupTools';
+import ReactionTools from '../reactions/ReactionTools';
 import CustomerPanel, {
   CustomerRemarkDialog,
 } from '../customers/CustomerPanel';
@@ -633,6 +635,7 @@ const AccountTools = observer(({ stores }: StoresProps) => {
   const [panel, setPanel] = useState('');
   const [bulk, setBulk] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>();
+  const [reactions, setReactions] = useState(false);
   useEffect(() => startTranslations(stores), [stores]);
   useEffect(() => startChatBackup(stores), [stores]);
   const customers = getCustomerRuntime(stores);
@@ -717,7 +720,21 @@ const AccountTools = observer(({ stores }: StoresProps) => {
             <span>{label}</span>
           </button>
         ))}
+        <button
+          type="button"
+          aria-label="点赞"
+          aria-pressed={reactions}
+          onClick={() => setReactions(true)}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <path d={mdiThumbUpOutline} />
+          </svg>
+          <span>点赞</span>
+        </button>
       </nav>
+      {reactions && (
+        <ReactionTools stores={stores} onClose={() => setReactions(false)} />
+      )}
       {groupMode && (
         <GroupTools
           stores={stores}

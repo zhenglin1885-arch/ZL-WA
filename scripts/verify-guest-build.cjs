@@ -20,6 +20,7 @@ const { captureChat } = require('../build/features/chatBackup/guest');
 const advanced = require('../build/features/accountTools/bulkGuest');
 const customers = require('../build/features/customers/guest');
 const { groupGuest } = require('../build/features/groups/guest');
+const { reactionGuest } = require('../build/features/reactions/guest');
 const { watchWhatsAppUnread } = require('../build/features/accounts/unread');
 const {
   configureWhatsAppLayout,
@@ -79,6 +80,37 @@ const {
     call(groupGuest, [{ ownerId: '8613800000001@c.us' }]),
     /群组接口尚未就绪/,
   );
+  context.window.WPP = {
+    isReady: true,
+    conn: { getMyUserWid: () => '8613800000001@c.us' },
+    group: { iAmMember: async () => true },
+    chat: {
+      getMessages: async () => [
+        { id: 'false_10001@g.us_OLD', body: '你好', t: 1 },
+        { id: 'false_10001@g.us_NEW', body: '你好', t: 2 },
+      ],
+      getMessageById: async id => ({ id, body: '你好', t: 2 }),
+      sendReactionToMessage: async () => ({ sendMsgResult: 'OK' }),
+    },
+  };
+  const reactionRequest = {
+    ownerId: '8613800000001@c.us',
+    groupId: '10001@g.us',
+    rules: { text: '你好', match: 'exact' },
+  };
+  const foundReaction = await call(reactionGuest, [reactionRequest]);
+  assert.equal(foundReaction.messageId, 'false_10001@g.us_NEW');
+  const sentReaction = await call(reactionGuest, [
+    {
+      ...reactionRequest,
+      messageId: foundReaction.messageId,
+      expectedText: '你好',
+      emoji: '👍',
+      token: 'compiled-reaction',
+    },
+  ]);
+  assert.equal(sentReaction.status, 'success');
+  delete context.window.WPP;
   assert.equal(
     await call(captureChat, [
       { ownerId: '8613800000001@c.us', accountName: 'Fixture', mode: 'opened' },
@@ -220,6 +252,17 @@ const {
   };
   handlers.click(gesture);
   assert.equal(styles['--zl-chat-list-width'], undefined);
+  assert.equal(stored['zl-chat-list-width'], undefined);
+  const seamGesture = {
+    ...gesture,
+    target: {
+      closest: selector =>
+        selector === '[data-zl-chat-divider]' ? element : null,
+    },
+  };
+  handlers.pointerdown(seamGesture);
+  handlers.pointermove({ ...seamGesture, clientX: 390 });
+  handlers.pointerup(seamGesture);
   assert.equal(stored['zl-chat-list-width'], undefined);
   handlers.pointerdown(gesture);
   handlers.pointermove({ ...gesture, clientX: 390 });

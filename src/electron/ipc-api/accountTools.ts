@@ -39,6 +39,7 @@ import {
 } from '../../features/accounts/whatsapp';
 
 import initGroupTools from './groupTools';
+import initReactions from './reactions';
 
 type StoredConfig = ToolsConfig & {
   encryptedPassword?: string;
@@ -95,6 +96,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       throw new Error('无效账号');
   };
   initGroupTools(check);
+  initReactions(check);
   const get = (id: string): StoredConfig => {
     const saved = data.accounts[id];
     const defaults = defaultTools();

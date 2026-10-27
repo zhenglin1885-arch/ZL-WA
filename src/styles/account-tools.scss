@@ -1,4 +1,83 @@
 // ZL-WA right-hand account tools, scoped against upstream div { height:100% }.
+.reaction-tools-dialog {
+  .reaction-scroll {
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+    padding-right: 8px;
+  }
+  .reaction-rules {
+    overflow: hidden;
+  }
+  .reaction-emojis {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  &.account-tools-dialog .reaction-emojis button {
+    width: 42px;
+    padding: 6px;
+    font-size: 22px;
+    border: 1px solid #48515f;
+    border-radius: 6px;
+    background: #101319;
+    color: #fff;
+  }
+  &.account-tools-dialog .reaction-emojis button[aria-pressed='true'] {
+    border-color: #528bff;
+    background: #173a78;
+  }
+  .reaction-interval {
+    display: flex;
+    gap: 12px;
+  }
+  .reaction-preview article {
+    margin: 8px 0;
+    padding: 10px;
+    border: 1px solid #343b47;
+    border-radius: 6px;
+  }
+  .reaction-preview p {
+    max-height: 120px;
+    overflow: auto;
+    overflow-wrap: anywhere;
+  }
+  .reaction-scroll > h3 {
+    margin-top: 18px;
+  }
+  .reaction-scroll > h3:first-child {
+    margin-top: 0;
+  }
+  .reaction-scroll textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+  .reaction-scroll label {
+    display: block;
+    margin-top: 8px;
+  }
+  .MuiButton-root:not(.group-tools-close) {
+    font-size: 14px;
+    line-height: 1.4;
+    min-height: 36px;
+    color: #eaf1fb;
+    background: #262c36;
+    border: 1px solid #414650;
+    margin: 6px 0;
+  }
+  .MuiButton-contained:not(.group-tools-close) {
+    background: #0654df;
+  }
+  .MuiButton-root.Mui-disabled {
+    opacity: 0.5;
+  }
+  .group-tools-notice {
+    max-height: 100px;
+    overflow: auto;
+  }
+}
 .account-tools {
   display: flex;
   flex: 0 0 auto;

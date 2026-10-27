@@ -95,6 +95,30 @@ describe('privileged account tools IPC', () => {
     expect(handlers['group-tools-load'](event).intervals.speech).toBe(4);
   });
 
+  it('stores reaction tasks separately and rejects untrusted frames or invalid settings without changing existing tools', () => {
+    const state = handlers['reaction-tools-load'](event);
+    expect(state.preferences.emojis).toEqual(['👍']);
+    expect(() =>
+      handlers['reaction-tools-save']({ ...event, senderFrame: {} }, state),
+    ).toThrow('禁止访问');
+    state.preferences.text = '你好吗';
+    handlers['reaction-tools-save'](event, state);
+    expect(
+      JSON.parse(readFileSync(join(root, 'reaction-tools.json'), 'utf8'))
+        .preferences.text,
+    ).toBe('你好吗');
+    state.preferences.emojis = ['invalid'];
+    expect(() => handlers['reaction-tools-save'](event, state)).toThrow();
+    expect(handlers['reaction-tools-load'](event).preferences.emojis).toEqual([
+      '👍',
+    ]);
+    expect(handlers['group-tools-load'](event).intervals).toEqual({
+      speech: 3,
+      join: 5,
+      leave: 5,
+    });
+  });
+
   it('persists only the last confirmed identity per card and restores it after restart', async () => {
     const original = {
       status: 'online',
