@@ -42,11 +42,43 @@ const ownMessage = (extra: any = {}) => ({
 describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () => {
   const originals = new Map<string, PropertyDescriptor | undefined>();
   let wpp: any;
+  let decode: jest.Mock;
+  let voiceSend: jest.Mock;
   beforeEach(() => {
     const accepted = { id: 'own-message', ack: 1 };
+    decode = jest.fn(async () => ({
+      duration: 32,
+      length: 128,
+      numberOfChannels: 2,
+      getChannelData: (channel: number) =>
+        Float32Array.from({ length: 128 }, (_v, i) => (channel ? i / 128 : 0)),
+    }));
+    voiceSend = jest.fn(async (params: any) => {
+      wpp.whatsapp.MsgStore.get.mockReturnValue({
+        ...params.options.productMsgOptions,
+      });
+      return { messageSendResult: 'OK' };
+    });
     wpp = {
       isReady: true,
+      whatsapp: {
+        MsgStore: { get: jest.fn() },
+        OpaqueData: {
+          createFromData: jest.fn(async blob => ({ forceToBlob: () => blob })),
+        },
+        functions: {
+          prepRawMedia: jest.fn(() => ({
+            waitForPrep: async () => ({ type: 'ptt' }),
+            sendToChat: async (params: any) => voiceSend(params),
+          })),
+        },
+      },
       chat: {
+        prepareRawMessage: jest.fn(async (_chat, props, options) => ({
+          ...props,
+          id: 'own-message',
+          quotedMsg: options.quotedMsg,
+        })),
         get: jest.fn().mockReturnValue({}),
         sendTextMessage: jest.fn().mockResolvedValue(accepted),
         sendFileMessage: jest.fn().mockResolvedValue(accepted),
@@ -76,6 +108,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     for (const [key, value] of Object.entries({
       window: { WPP: wpp },
       location: { hostname: 'web.whatsapp.com' },
+      OfflineAudioContext: jest.fn(() => ({ decodeAudioData: decode })),
     })) {
       originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
       Object.defineProperty(globalThis, key, { configurable: true, value });
@@ -194,7 +227,9 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       await sendBulkMessage(
         '10001@g.us',
         { ...replySpec(), type },
-        'data:image/png;base64,YQ==',
+        type === 'audio'
+          ? 'data:audio/wav;base64,YQ=='
+          : 'data:image/png;base64,YQ==',
       );
     }
     expect(
@@ -205,15 +240,17 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(wpp.chat.sendVCardContactMessage.mock.calls[0][2].quotedMsg).toBe(
       'false_10001@g.us_NEW',
     );
-    expect(
-      wpp.chat.sendFileMessage.mock.calls.find(c => c[2].type === 'audio')[2],
-    ).toEqual(
+    expect(wpp.chat.prepareRawMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'ptt' }),
       expect.objectContaining({
         quotedMsg: 'false_10001@g.us_NEW',
         isPtt: true,
-        waveform: true,
       }),
     );
+    expect(
+      voiceSend.mock.calls[0][0].options.productMsgOptions.waveform,
+    ).toHaveLength(64);
   });
   it('does not identify an ordinary message as a sent reply when its response ID is missing', async () => {
     setupReplies();
@@ -228,7 +265,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     ).rejects.toThrow('无法安全核验');
     expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
   });
-  it.each(['image', 'caption', 'video', 'audio', 'document'] as const)(
+  it.each(['image', 'caption', 'video', 'document'] as const)(
     'sends %s through the correct typed adapter with server acknowledgment',
     async type => {
       expect(
@@ -241,9 +278,8 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
           type: type === 'caption' ? 'image' : type,
           waitForAck: true,
           delay: 2000,
-          isPtt: type === 'audio',
-          ...(type === 'audio' ? { waveform: true } : {}),
-          caption: type === 'image' || type === 'audio' ? undefined : 'hello',
+          isPtt: false,
+          caption: type === 'image' ? undefined : 'hello',
         }),
       );
     },
@@ -482,5 +518,102 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       },
     ]);
     expect(wpp.contact.list).toHaveBeenCalledWith({ onlyMyContacts: true });
+  });
+  it('puts a real multi-channel waveform on the final outgoing PTT message, with only one native dispatch', async () => {
+    const result = await sendBulkMessage(
+      'chat@g.us',
+      spec('audio'),
+      'data:audio/wav;base64,YQ==',
+    );
+    expect(result).toEqual({ messageId: 'own-message', confirmed: true });
+    const raw = voiceSend.mock.calls[0][0].options.productMsgOptions;
+    expect(raw.type).toBe('ptt');
+    expect(raw.duration).toBe(32);
+    expect(raw.waveform).toBeInstanceOf(Uint8Array);
+    expect(raw.waveform).toHaveLength(64);
+    expect(Math.max(...raw.waveform)).toBe(100);
+    expect(new Set(raw.waveform).size).toBeGreaterThan(4);
+    expect(voiceSend).toHaveBeenCalledTimes(1);
+    expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
+    expect((window as any).__zlBulkVoice).toMatchObject({
+      phase: 'submitted',
+      channels: 2,
+      waveformSamples: 64,
+      storedWaveformSamples: 64,
+      storedWaveformMatches: true,
+    });
+  });
+  it('does not send if waveform decoding fails', async () => {
+    decode.mockRejectedValue(new Error('Unsupported codec'));
+    await expect(
+      sendBulkMessage('chat@g.us', spec('audio'), 'data:audio/wav;base64,YQ=='),
+    ).rejects.toThrow('无法解码');
+    expect(wpp.whatsapp.OpaqueData.createFromData).not.toHaveBeenCalled();
+    expect(voiceSend).not.toHaveBeenCalled();
+    expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
+  });
+  it('preserves genuine silence as 64 zero samples', async () => {
+    decode.mockResolvedValue({
+      duration: 1,
+      length: 128,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(128),
+    });
+    await sendBulkMessage(
+      'chat@g.us',
+      spec('audio'),
+      'data:audio/wav;base64,YQ==',
+    );
+    expect([
+      ...voiceSend.mock.calls[0][0].options.productMsgOptions.waveform,
+    ]).toEqual(Array.from({ length: 64 }).fill(0));
+  });
+  it('rejects a native preparation that remains ordinary audio', async () => {
+    wpp.whatsapp.functions.prepRawMedia.mockReturnValue({
+      waitForPrep: async () => ({ type: 'audio' }),
+    });
+    await expect(
+      sendBulkMessage('chat@g.us', spec('audio'), 'data:audio/wav;base64,YQ=='),
+    ).rejects.toThrow('原生语音');
+    expect(voiceSend).not.toHaveBeenCalled();
+  });
+  it('keeps the legacy native call signature and final waveform fields', async () => {
+    wpp.whatsapp.functions.prepRawMedia.mockReturnValue({
+      waitForPrep: async () => ({ type: 'ptt' }),
+      sendToChat: async (chat: any, options: any) =>
+        voiceSend({ chat, options }),
+    });
+    await sendBulkMessage(
+      'chat@g.us',
+      spec('audio'),
+      'data:audio/wav;base64,YQ==',
+    );
+    expect(
+      voiceSend.mock.calls[0][0].options.productMsgOptions.waveform,
+    ).toHaveLength(64);
+    expect(voiceSend).toHaveBeenCalledTimes(1);
+  });
+  it('does not claim waveform confirmation when the outgoing model cannot be read', async () => {
+    wpp.whatsapp.MsgStore = null;
+    voiceSend.mockResolvedValue({ messageSendResult: 'OK' });
+    await expect(
+      sendBulkMessage('chat@g.us', spec('audio'), 'data:audio/wav;base64,YQ=='),
+    ).resolves.toMatchObject({ confirmed: true });
+    expect((window as any).__zlBulkVoice.storedWaveformMatches).toBeNull();
+    expect(voiceSend).toHaveBeenCalledTimes(1);
+  });
+  it('reports missing waveform metadata on the actual outgoing model without repeating the send', async () => {
+    voiceSend.mockResolvedValue({ messageSendResult: 'OK' });
+    wpp.whatsapp.MsgStore.get.mockReturnValue({ type: 'ptt' });
+    await sendBulkMessage(
+      'chat@g.us',
+      spec('audio'),
+      'data:audio/wav;base64,YQ==',
+    );
+    expect((window as any).__zlBulkVoice).toMatchObject({
+      storedWaveformSamples: 0,
+      storedWaveformMatches: false,
+    });
+    expect(voiceSend).toHaveBeenCalledTimes(1);
   });
 });

@@ -1440,6 +1440,18 @@ export function translationSurfaceDiagnostics() {
     target: state?.config?.sendTarget ?? null,
     composer: state?.inspectComposer?.() ?? null,
     adapterReady: Boolean(state?.ready),
+    bulkVoice: (window as any).__zlBulkVoice
+      ? {
+          phase: (window as any).__zlBulkVoice.phase,
+          channels: (window as any).__zlBulkVoice.channels,
+          waveformSamples: (window as any).__zlBulkVoice.waveformSamples,
+          messageType: (window as any).__zlBulkVoice.messageType,
+          storedWaveformSamples: (window as any).__zlBulkVoice
+            .storedWaveformSamples,
+          storedWaveformMatches: (window as any).__zlBulkVoice
+            .storedWaveformMatches,
+        }
+      : null,
     downloads: {
       bridge: typeof (window as any).ferdium?.downloadMedia === 'function',
       savePickerType: typeof (window as any).showSaveFilePicker,
@@ -1493,6 +1505,18 @@ export function translationDiagnostics() {
   ];
   return {
     version: 9,
+    bulkVoice: (window as any).__zlBulkVoice
+      ? {
+          phase: (window as any).__zlBulkVoice.phase,
+          channels: (window as any).__zlBulkVoice.channels,
+          waveformSamples: (window as any).__zlBulkVoice.waveformSamples,
+          messageType: (window as any).__zlBulkVoice.messageType,
+          storedWaveformSamples: (window as any).__zlBulkVoice
+            .storedWaveformSamples,
+          storedWaveformMatches: (window as any).__zlBulkVoice
+            .storedWaveformMatches,
+        }
+      : null,
     downloads: {
       bridge: typeof (window as any).ferdium?.downloadMedia === 'function',
       savePickerType: typeof (window as any).showSaveFilePicker,

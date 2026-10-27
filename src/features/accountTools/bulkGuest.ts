@@ -230,16 +230,139 @@ export async function sendBulkMessage(
     );
   else {
     if (!dataUrl?.startsWith('data:')) throw new Error('附件不可用');
-    result = await wpp.chat.sendFileMessage(chatId, dataUrl, {
-      ...options,
-      type: spec.type === 'caption' ? 'image' : spec.type,
-      filename: spec.media?.name,
-      mimetype: spec.media?.mime,
-      caption:
-        spec.type === 'image' || spec.type === 'audio' ? undefined : content,
-      isPtt: spec.type === 'audio',
-      ...(spec.type === 'audio' ? { waveform: true } : {}),
-    });
+    if (spec.type === 'audio') {
+      // The helper silently drops waveform failures, and its precomputed
+      // MediaData fields are not the final outgoing MsgModel attributes.
+      // Prepare explicitly, then put validated bytes on productMsgOptions.
+      const native = wpp.whatsapp;
+      const prepare = native?.functions?.prepRawMedia;
+      if (
+        typeof prepare !== 'function' ||
+        !native?.OpaqueData?.createFromData ||
+        typeof wpp.chat.prepareRawMessage !== 'function'
+      )
+        throw new Error('原生语音准备接口未就绪，未发送');
+      const voiceState = {
+        phase: 'decoding',
+        channels: 0,
+        waveformSamples: 0,
+        messageType: null as string | null,
+        storedWaveformSamples: null as number | null,
+        storedWaveformMatches: null as boolean | null,
+      };
+      (window as any).__zlBulkVoice = voiceState;
+      const comma = dataUrl.indexOf(',');
+      if (comma < 0 || !dataUrl.slice(0, comma).endsWith(';base64'))
+        throw new Error('语音文件格式无效，未发送');
+      const bytes = Uint8Array.from(
+        atob(dataUrl.slice(comma + 1)),
+        c => c.codePointAt(0)!,
+      );
+      const blob = new Blob([bytes], {
+        type: dataUrl.slice(5, comma).split(';')[0] || spec.media?.mime,
+      });
+      const decoder = new OfflineAudioContext(1, 1, 48_000);
+      let decoded: AudioBuffer;
+      try {
+        decoded = await decoder.decodeAudioData(await blob.arrayBuffer());
+      } catch {
+        voiceState.phase = 'failed';
+        throw new Error(
+          '无法解码所选音频，未发送；请使用 MP3、M4A、WAV 或 OGG 文件',
+        );
+      }
+      if (
+        !Number.isFinite(decoded.duration) ||
+        decoded.duration <= 0 ||
+        decoded.numberOfChannels < 1 ||
+        decoded.length === 0
+      )
+        throw new Error('语音时长或声道无效，未发送');
+      const channels = Array.from(
+        { length: decoded.numberOfChannels },
+        (_value, channel) => decoded.getChannelData(channel),
+      );
+      voiceState.channels = channels.length;
+      const amplitudes = Array.from({ length: 64 }, (_value, i) => {
+        const start = Math.floor((i * decoded.length) / 64);
+        const end = Math.floor(((i + 1) * decoded.length) / 64);
+        let total = 0;
+        for (const samples of channels)
+          for (let sample = start; sample < end; sample += 1)
+            total += Math.abs(samples[sample]);
+        return total / Math.max(1, (end - start) * channels.length);
+      });
+      const peak = Math.max(...amplitudes);
+      if (!Number.isFinite(peak)) throw new Error('语音波形无效，未发送');
+      const fields = {
+        duration: Math.floor(decoded.duration),
+        waveform: Uint8Array.from(amplitudes, amplitude =>
+          peak ? Math.round((100 * amplitude) / peak) : 0,
+        ),
+      };
+      voiceState.waveformSamples = fields.waveform.length;
+      const opaque = await native.OpaqueData.createFromData(blob, blob.type);
+      const prep = prepare(opaque, { isPtt: true, precomputedFields: fields });
+      const media = await prep.waitForPrep();
+      if (media?.type !== 'ptt') {
+        voiceState.phase = 'failed';
+        throw new Error('未能准备原生语音消息，未发送');
+      }
+      const raw = await wpp.chat.prepareRawMessage(
+        chat,
+        { type: 'ptt' },
+        {
+          ...options,
+          isPtt: true,
+        },
+      );
+      const key = raw?.id;
+      const id =
+        typeof key === 'string' ? key : key?._serialized || key?.toString?.();
+      if (typeof id !== 'string' || !id.trim() || id === '[object Object]')
+        throw new Error('未能创建语音消息编号，未发送');
+      Object.assign(raw, { type: 'ptt', ...fields });
+      voiceState.phase = 'prepared';
+      voiceState.messageType = 'ptt';
+      const sendOptions = {
+        type: 'ptt',
+        productMsgOptions: raw,
+        addEvenWhilePreparing: false,
+      };
+      const sent = await (prep.sendToChat.length === 1
+        ? prep.sendToChat({ chat, options: sendOptions })
+        : prep.sendToChat(chat, sendOptions));
+      voiceState.phase = 'submitted';
+      // Read the actual outgoing model when available. Keep server acceptance
+      // separate from waveform diagnostics; this check never edits or resends.
+      try {
+        const store = native.MsgStore;
+        const stored = store?.get?.(raw.id) || store?.get?.(id);
+        if (stored) {
+          const value = stored.waveform ?? stored.attributes?.waveform;
+          const waveform =
+            typeof value === 'string'
+              ? Uint8Array.from(atob(value), c => c.codePointAt(0)!)
+              : [...(value || [])];
+          voiceState.messageType = stored.type || 'ptt';
+          voiceState.storedWaveformSamples = waveform.length;
+          voiceState.storedWaveformMatches =
+            waveform.length === 64 &&
+            [...waveform].every((sample, i) => sample === fields.waveform[i]);
+        }
+      } catch {
+        // Unknown readback stays null rather than claiming waveform success.
+      }
+      result = { id, sendMsgResult: sent };
+    } else
+      result = await wpp.chat.sendFileMessage(chatId, dataUrl, {
+        ...options,
+        type: spec.type === 'caption' ? 'image' : spec.type,
+        filename: spec.media?.name,
+        mimetype: spec.media?.mime,
+        caption: spec.type === 'image' ? undefined : content,
+        isPtt: false,
+      });
   }
   const key = result?.id;
   const messageId =
