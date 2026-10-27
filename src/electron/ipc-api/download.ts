@@ -3,6 +3,7 @@ import type { OpenDialogOptions } from 'electron';
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { download } from 'electron-dl';
 import { writeFileSync } from 'fs-extra';
+import { isWhatsAppMediaUrl } from '../../webview/downloads';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ipcApi:download');
 
@@ -26,6 +27,15 @@ export default (params: {
   mainWindow: BrowserWindow;
   settings?: DownloadSettings;
 }) => {
+  ipcMain.on('download-service-media', (event, url: unknown) => {
+    if (
+      typeof url === 'string' &&
+      event.senderFrame === event.sender.mainFrame &&
+      event.sender.getType() === 'webview' &&
+      isWhatsAppMediaUrl(url, event.sender.getURL())
+    )
+      event.sender.downloadURL(url);
+  });
   ipcMain.on(
     'download-file',
     async (_event, { url, content, fileOptions = {} }) => {

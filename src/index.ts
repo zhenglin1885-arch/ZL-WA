@@ -52,6 +52,7 @@ import './electron/exception';
 import ipcApi from './electron/ipc-api';
 import CacheLocation from './electron/CacheLocation';
 import { recoverCacheLocation } from './electron/cacheStartup';
+import { downloadWhatsAppPopup } from './electron/serviceDownloads';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -397,6 +398,7 @@ const createWindow = () => {
       }
 
       contents.setWindowOpenHandler(({ url, disposition, features }) => {
+        if (downloadWhatsAppPopup(contents, url)) return { action: 'deny' };
         // OAuth popups (Google, Microsoft, etc.) are opened via window.open()
         // and need window.opener preserved so the parent can receive the
         // postMessage callback that completes the flow. Allow them as a child

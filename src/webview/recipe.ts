@@ -22,6 +22,11 @@ import Userscript from './lib/Userscript';
 import BadgeHandler from './badge';
 import contextMenu from './contextMenu';
 import {
+  configureWhatsAppDownloads,
+  configureWhatsAppDownloadWindows,
+  isWhatsAppMediaUrl,
+} from './downloads';
+import {
   darkModeStyleExists,
   injectDarkModeStyle,
   isDarkModeStyleInjected,
@@ -63,10 +68,15 @@ const sessionHandler = new SessionHandler();
 const notificationsHandler = new NotificationsHandler();
 
 // Patching window.open
+contextBridge.executeInMainWorld({ func: configureWhatsAppDownloads });
 const originalWindowOpen = window.open;
 
 window.open = (url, frameName, features): WindowProxy | null => {
   debug('window.open', url, frameName, features);
+  if (url && isWhatsAppMediaUrl(String(url), globalThis.location.href)) {
+    ipcRenderer.send('download-service-media', String(url));
+    return null;
+  }
   if (!url) {
     // The service hasn't yet supplied a URL (as used in Skype).
     // Return a new dummy window object and wait for the service to change the properties
@@ -79,7 +89,11 @@ window.open = (url, frameName, features): WindowProxy | null => {
     const checkInterval = setInterval(() => {
       // Has the service changed the URL yet?
       if (newWindow.location.href !== '') {
-        if (features) {
+        if (
+          isWhatsAppMediaUrl(newWindow.location.href, globalThis.location.href)
+        ) {
+          ipcRenderer.send('download-service-media', newWindow.location.href);
+        } else if (features) {
           originalWindowOpen(newWindow.location.href, frameName, features);
         } else {
           // Open the new URL
@@ -113,6 +127,13 @@ window.open = (url, frameName, features): WindowProxy | null => {
 // then overwrite the corresponding field of the window object by injected JS.
 contextBridge.exposeInMainWorld('ferdium', {
   open: window.open,
+  downloadMedia: (url: string) => {
+    if (
+      typeof url === 'string' &&
+      isWhatsAppMediaUrl(url, globalThis.location.href)
+    )
+      ipcRenderer.send('download-service-media', url);
+  },
   pushWhatsAppUnread: (value: { ownerId: string; count: number }) => {
     if (
       process.isMainFrame &&
@@ -169,6 +190,7 @@ if (process.platform === 'linux') {
 ipcRenderer.sendToHost(
   'inject-js-unsafe',
   'window.open = window.ferdium.open;',
+  `(${configureWhatsAppDownloadWindows.toString()})()`,
   notificationsClassDefinition,
   screenShareJs,
 );

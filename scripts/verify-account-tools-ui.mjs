@@ -10,6 +10,7 @@ import { verifyTranslationContexts } from './verify-translation-contexts-ui.mjs'
 import { verifyGroups } from './verify-groups-ui.mjs';
 import { verifyReactions } from './verify-reactions-ui.mjs';
 import { verifyBulkReplies } from './verify-bulk-replies-ui.mjs';
+import { verifyServiceDownloads } from './verify-service-downloads-ui.mjs';
 import { verifyCustomerCompatibility } from './verify-customer-compatibility-ui.mjs';
 import { verifyBulkMultitask } from './verify-bulk-multitask-ui.mjs';
 import {
@@ -2449,6 +2450,7 @@ try {
     clickText,
     shot,
   });
+  await verifyServiceDownloads({ first, second, guest, evaluate, wait });
   // Delete only fixtures created by this run, using the existing real delete action.
   for (const id of ids) {
     await evaluate(
