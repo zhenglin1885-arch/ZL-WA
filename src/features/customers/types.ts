@@ -49,6 +49,8 @@ export interface CustomerContext {
   needsLibrary?: boolean;
   token: string;
   owners: string[];
+  canInitialize?: boolean;
+  installed?: { owner: string; revision: number };
   chat?: {
     id: string;
     aliases: string[];

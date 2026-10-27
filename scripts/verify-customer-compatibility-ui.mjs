@@ -6,7 +6,27 @@ export async function verifyCustomerCompatibility({
   service,
   guest,
   wait,
+  evaluate,
 }) {
+  await evaluate(
+    `(()=>{const s=${service(first)};s.isLoading=true;return true})()`,
+  );
+  try {
+    await guest(first, `window.__zlCustomers.data=undefined;true`);
+    await wait(
+      `${service(first)}.webview.executeJavaScript('Boolean(window.__zlCustomers?.data?.owner)')`,
+      'notes and pins recover while outer service loading is stale',
+    );
+    await wait(
+      'Boolean(document.querySelector("#customer-remark-name"))',
+      'client panel remains available during live recovery',
+    );
+    console.log(
+      'PASS lost customer guest state recovers with a stale service loading flag and keeps the client panel available',
+    );
+  } finally {
+    await evaluate(`(()=>{${service(first)}.isLoading=false;return true})()`);
+  }
   await guest(
     first,
     `(()=>{

@@ -149,4 +149,20 @@ describe('customer conversation identity fallback', () => {
     chats[0].active = true;
     expect(readCustomerContext().chat?.group).toBe(true);
   });
+  it('reports live initialization readiness and detects lost note/pin state', () => {
+    modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
+    expect(readCustomerContext().canInitialize).toBe(true);
+    expect(readCustomerContext().installed).toBeUndefined();
+    (window as any).__zlCustomers = {
+      data: { owner: '8613800000001@c.us', revision: 7 },
+    };
+    expect(readCustomerContext().installed).toEqual({
+      owner: '8613800000001@c.us',
+      revision: 7,
+    });
+    delete (window as any).__zlCustomers;
+    expect(readCustomerContext().installed).toBeUndefined();
+    modules.WAWebSocketModel = { Socket: { state: 'UNPAIRED' } };
+    expect(readCustomerContext().canInitialize).toBe(false);
+  });
 });

@@ -1007,7 +1007,8 @@ try {
     );
     await clickText('复制页面诊断');
     const report = await evaluate(`require('electron').clipboard.readText()`);
-    assert.equal(JSON.parse(report).version, 8);
+    assert.equal(JSON.parse(report).version, 9);
+    assert.equal(JSON.parse(report).voice.revision, 2);
     assert.equal(JSON.parse(report).counts['[data-zl-translate]'], 3);
     assert(
       !report.includes('8613800000001') &&
@@ -2400,7 +2401,7 @@ try {
     'remarks hydrated after native row remount',
   );
   await shot('/workspace/ZL-WA-customers.png');
-  await verifyCustomerCompatibility({ first, service, guest, wait });
+  await verifyCustomerCompatibility({ first, service, guest, wait, evaluate });
   await click(`[data-service-id="${second}"] .account-card__select`);
   await guest(
     second,

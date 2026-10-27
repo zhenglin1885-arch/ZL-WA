@@ -119,7 +119,26 @@ export function readCustomerContext(): CustomerContext {
           '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
         ),
       ));
-  const base = { token: page.__zlCustomerToken, owners, needsLibrary };
+  const socketState = module('WAWebSocketModel')?.Socket?.state;
+  const canInitialize =
+    !['UNPAIRED', 'UNPAIRED_IDLE'].includes(socketState) &&
+    !document.querySelector(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    ) &&
+    Boolean(
+      socketState === 'CONNECTED' ||
+        document.querySelector('#pane-side, #side, #main header'),
+    );
+  const data = page.__zlCustomers?.data;
+  const base = {
+    token: page.__zlCustomerToken,
+    owners,
+    needsLibrary,
+    canInitialize,
+    installed: data
+      ? { owner: data.owner, revision: data.revision }
+      : undefined,
+  };
   const header = document.querySelector('#main header');
   if (!header) return base;
   let chat: any;

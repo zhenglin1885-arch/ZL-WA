@@ -1440,6 +1440,22 @@ export function translationSurfaceDiagnostics() {
     target: state?.config?.sendTarget ?? null,
     composer: state?.inspectComposer?.() ?? null,
     adapterReady: Boolean(state?.ready),
+    voice: {
+      revision: (window as any).__zlVoiceMessages?.revision ?? null,
+      ready: Boolean((window as any).__zlVoiceMessages?.ready),
+      last: (window as any).__zlVoiceMessages?.last
+        ? {
+            stage: (window as any).__zlVoiceMessages.last.stage,
+            sourceType: (window as any).__zlVoiceMessages.last.sourceType,
+            preparedType: (window as any).__zlVoiceMessages.last.preparedType,
+            finalType: (window as any).__zlVoiceMessages.last.finalType,
+            waveformSamples: (window as any).__zlVoiceMessages.last
+              .waveformSamples,
+            duration: (window as any).__zlVoiceMessages.last.duration,
+            failed: Boolean((window as any).__zlVoiceMessages.last.error),
+          }
+        : null,
+    },
     listenerCount: state?.listeners?.length ?? null,
     editorCount: editors.length,
     editors,
@@ -1470,7 +1486,23 @@ export function translationDiagnostics() {
     '[data-zl-translation-text]',
   ];
   return {
-    version: 8,
+    version: 9,
+    voice: {
+      revision: (window as any).__zlVoiceMessages?.revision ?? null,
+      ready: Boolean((window as any).__zlVoiceMessages?.ready),
+      last: (window as any).__zlVoiceMessages?.last
+        ? {
+            stage: (window as any).__zlVoiceMessages.last.stage,
+            sourceType: (window as any).__zlVoiceMessages.last.sourceType,
+            preparedType: (window as any).__zlVoiceMessages.last.preparedType,
+            finalType: (window as any).__zlVoiceMessages.last.finalType,
+            waveformSamples: (window as any).__zlVoiceMessages.last
+              .waveformSamples,
+            duration: (window as any).__zlVoiceMessages.last.duration,
+            failed: Boolean((window as any).__zlVoiceMessages.last.error),
+          }
+        : null,
+    },
     cachedEntries: state?.memo?.size ?? 0,
     deferredPreview: Boolean(
       state?.config?.preview &&

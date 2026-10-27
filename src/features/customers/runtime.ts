@@ -243,7 +243,6 @@ export class CustomerRuntime {
       service.recipe.id !== 'whatsapp' ||
       !view ||
       service.isHibernating ||
-      service.isLoading ||
       this.busy
     )
       return;
@@ -261,7 +260,7 @@ export class CustomerRuntime {
       const attempt = this.libraryAttempts.get(view);
       if (
         context.needsLibrary &&
-        service.accountSnapshot.status === 'online' &&
+        context.canInitialize &&
         (!attempt ||
           attempt.token !== context.token ||
           Date.now() - attempt.at > 30_000)
@@ -323,6 +322,12 @@ export class CustomerRuntime {
             bundle!.owner,
             context.chat.aliases,
           );
+        if (
+          this.stopped ||
+          this.stores.services.active !== service ||
+          service.webview !== view
+        )
+          return;
         this.context = context;
         this.bundle = bundle;
         this.contextKey = key;
@@ -333,10 +338,19 @@ export class CustomerRuntime {
       }
       const bundle = this.bundle!;
       const version = `${context.token}:${bundle.owner}:${bundle.revision}`;
+      const { installed } = context;
+      const synchronized =
+        this.injected.get(view) === version &&
+        installed?.owner === bundle.owner &&
+        installed?.revision === bundle.revision;
       const actions: CustomerAction[] = await view.executeJavaScript(
-        `(${customerTick.toString()})(${this.injected.get(view) === version ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)})`,
+        `(${customerTick.toString()})(${synchronized ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)})`,
       );
       this.injected.set(view, version);
+      if (this.error) {
+        this.error = '';
+        this.notify();
+      }
       for (const action of actions) {
         if (
           this.stopped ||

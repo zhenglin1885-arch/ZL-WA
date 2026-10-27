@@ -357,6 +357,7 @@ export default function CustomerPanel({
   useEffect(() => {
     const listener = () => render(n => n + 1);
     runtime.listeners.add(listener);
+    listener();
     return () => {
       runtime.listeners.delete(listener);
     };
@@ -400,7 +401,12 @@ export default function CustomerPanel({
           <p>请先打开一个私聊联系人，再查看客户资料。</p>
         )
       ) : (
-        <p>{runtime.error || '请先选择已登录的 WhatsApp 账号。'}</p>
+        <p>
+          {runtime.error ||
+            (context?.canInitialize
+              ? '客户功能正在初始化，请稍候…'
+              : '请先选择已登录的 WhatsApp 账号。')}
+        </p>
       )}
     </section>
   );
@@ -425,6 +431,7 @@ export function CustomerRemarkDialog({
       render(n => n + 1);
     };
     runtime.listeners.add(listener);
+    listener();
     return () => {
       runtime.listeners.delete(listener);
     };
