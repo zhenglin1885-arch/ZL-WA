@@ -1,6 +1,9 @@
 name: ZL-WA Windows
 
 on:
+  # Isolated fallback for this test build while the local GitHub API is unavailable.
+  push:
+    branches: ['test/7.3.5-20261027-3']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -39,10 +42,10 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag must match package.json version.' }
       - name: Validate standalone download
-        if: inputs.download_tag != ''
+        if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-3' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
@@ -114,14 +117,14 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
       - name: Publish standalone test download
-        if: inputs.download_tag != ''
+        if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-3' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version standalone test package" --notes 'Standalone test download only. The stable release and automatic update feed remain unchanged.'
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-3 客户功能与语音修复测试包" --notes '独立测试包：修复启动后备注、置顶和客户资料栏初始化与恢复；修复聊天窗口 Audio 上传的原生语音类型及真实波形。保留此前下载和图文重复翻译修复。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
           if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }
