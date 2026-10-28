@@ -165,15 +165,18 @@ export async function verifyBulkReplies({
         });
       await guest(
         id,
-        `(()=>{
+        String.raw`(()=>{
         const text=${JSON.stringify(original)},read=WPP.chat.getMessageById;
-        const indexed=chat=>({id:'false_'+chat+'_PORTUGUESE',body:text.normalize('NFD').replaceAll(' ','\u00A0')+'\u200B',type:'chat',t:4});
+        const indexed=chat=>{
+          const variant=fixture.replyVariant==='contains'?'Olá!\n'+text+'\nFim.':fixture.replyVariant==='normalized'?text.replaceAll(/\p{P}/gu,'').replaceAll(' ','\n '):text;
+          return {id:'false_'+chat+'_PORTUGUESE',body:variant.normalize('NFD').replaceAll(' ','\u00A0')+'\u200B',type:'chat',t:4};
+        };
         fixture.replyIndexCalls=[];
         WPP.chat.get=async chat=>({id:{_serialized:chat}});
         WPP.chat.getMessages=async()=>[];
         WPP.chat.getMessageById=async id=>id.endsWith('_PORTUGUESE')?indexed(id.split('_')[1]):read(id);
         WPP.whatsapp={functions:{msgFindSearch:async query=>{
-          if(query.searchTerm!==text||!query.remote?._serialized)throw Error('Unexpected native scoped search query');
+          if((query.searchTerm!==text&&!(query.searchTerm.length>=4&&text.includes(query.searchTerm)))||!query.remote?._serialized)throw Error('Unexpected native scoped search query');
           fixture.replyIndexCalls.push(query.remote._serialized);
           return {messages:[indexed(query.remote._serialized),indexed('99999@g.us')],eof:true};
         }}};return true;
@@ -211,7 +214,47 @@ export async function verifyBulkReplies({
           `fixture.replyCalls.slice(-2).every(c=>c.options.quotedMsg==='false_'+c.chat+'_PORTUGUESE')`,
         ),
       );
-      assert.equal(await guest(id, 'fixture.replyIndexCalls.length'), 2);
+      assert((await guest(id, 'fixture.replyIndexCalls.length')) >= 2);
+    }
+    await clickText('新建回复');
+    await wait(
+      `!!document.querySelector('[aria-label="回复匹配规则"]')`,
+      'reply matching selector shown',
+    );
+    for (const [index, mode] of ['contains', 'normalized'].entries()) {
+      await fill('回复匹配规则', mode);
+      assert.equal(
+        await evaluate(
+          `document.querySelector('[aria-label="回复匹配规则"]').value`,
+        ),
+        mode,
+      );
+      for (const id of [first, second])
+        await guest(id, `fixture.replyVariant=${JSON.stringify(mode)};true`);
+      const variantInput = { ...input, reply: { text: original, match: mode } };
+      const record = await evaluate(
+        `(async()=>{const q=${expression};const id=await q.submit(${JSON.stringify(variantInput)});return q.records.find(r=>r.id===id)})()`,
+      );
+      assert.equal(
+        record.success,
+        4,
+        `${
+          mode
+        } supports the reported text across both accounts and group/private chats`,
+      );
+      for (const id of [first, second]) {
+        assert.equal(
+          await guest(id, 'fixture.replyCalls.length'),
+          6 + index * 2,
+          'no duplicate sends',
+        );
+        assert(
+          await guest(
+            id,
+            `fixture.replyCalls.slice(-2).every(c=>c.options.quotedMsg==='false_'+c.chat+'_PORTUGUESE')`,
+          ),
+        );
+      }
     }
     console.log(
       'PASS reported Portuguese text: native scoped search outside loaded history, Unicode/emoji preservation, exact quote IDs and one dispatch per account/chat',

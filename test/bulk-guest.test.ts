@@ -187,7 +187,13 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       const original =
         'Mas e pra quem tá começando do zero, igual eu, que nem sabe mexer no aplicativo ainda? 😅 Como faço pra abrir uma conta numa corretora e começar a acompanhar as operações aqui do grupo? 🙏';
       const rows = setupReplies();
-      rows[1].body = `${original.normalize('NFD').replaceAll(' ', '\u00A0')}\u200B`;
+      const variant =
+        mode === 'contains'
+          ? `Olá!\n${original}\nFim.`
+          : mode === 'normalized'
+            ? original.replaceAll(/\p{P}/gu, '').replaceAll(' ', '\n ')
+            : original;
+      rows[1].body = `${variant.normalize('NFD').replaceAll(' ', '\u00A0')}\u200B`;
       const input = replySpec(mode);
       input.reply!.text = original;
       await sendBulkMessage('10001@g.us', input);
@@ -195,6 +201,65 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
         '10001@g.us',
         'hello',
         expect.objectContaining({ quotedMsg: rows[1].id }),
+      );
+      expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('does not treat additional words or different emoji as a normalized exact match', async () => {
+    const rows = setupReplies();
+    rows[0].body = '目标内容，附加句子';
+    rows[1].body = '目标内容 🙏';
+    wpp.chat.get.mockReturnValue({ id: { _serialized: '10001@g.us' } });
+    wpp.chat.getMessages.mockResolvedValue([]);
+    wpp.whatsapp.functions.msgFindSearch = jest.fn(async () => ({
+      messages: rows,
+      eof: true,
+    }));
+    await expect(
+      sendBulkMessage('10001@g.us', replySpec('normalized')),
+    ).rejects.toThrow('未发送');
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
+  it.each(['contains', 'normalized'] as const)(
+    'retrieves %s candidates by a keyword when whole-paragraph search misses formatting variants',
+    async mode => {
+      const original = 'Como faço pra abrir uma conta numa corretora? 🙏';
+      setupReplies();
+      const older = {
+        id: 'false_10001@g.us_OLDER',
+        body: original,
+        type: 'chat',
+        t: 1,
+      };
+      const variant =
+        mode === 'contains'
+          ? `Olá! ${original}`
+          : original.replaceAll(/\p{P}/gu, '').replaceAll(' ', '\n ');
+      const newer = {
+        id: 'false_10001@g.us_VARIANT',
+        body: variant.replaceAll(' ', '\u00A0'),
+        type: 'chat',
+        t: 2,
+      };
+      wpp.chat.get.mockReturnValue({ id: { _serialized: '10001@g.us' } });
+      wpp.chat.getMessages.mockResolvedValue([]);
+      wpp.whatsapp.functions.msgFindSearch = jest.fn(async query => ({
+        messages: query.searchTerm === original ? [older] : [newer],
+        eof: true,
+      }));
+      wpp.chat.getMessageById.mockImplementation(async id =>
+        id === newer.id ? newer : older,
+      );
+      const input = replySpec(mode);
+      input.reply!.text = original;
+      await sendBulkMessage('10001@g.us', input);
+      expect(
+        wpp.whatsapp.functions.msgFindSearch.mock.calls.some(
+          ([query]) => query.searchTerm !== original,
+        ),
+      ).toBe(true);
+      expect(wpp.chat.sendTextMessage.mock.calls[0][2].quotedMsg).toBe(
+        newer.id,
       );
       expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
     },

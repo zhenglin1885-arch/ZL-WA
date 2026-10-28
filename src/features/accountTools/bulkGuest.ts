@@ -344,28 +344,54 @@ export async function sendBulkMessage(
       if (typeof search === 'function' && chat?.id) {
         diagnostic.indexAvailable = true;
         const indexed = new Set<string>();
-        for (
-          let page = 0;
-          page < 10 && Date.now() < deadline - 8000;
-          page += 1
-        ) {
-          if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
-          const result: any = await bounded(
-            Promise.resolve(
-              search({ searchTerm: wanted, remote: chat.id, count: 200, page }),
-            ),
-          );
-          if (result?.canceled || !Array.isArray(result?.messages)) break;
-          const rows = result.messages.filter(
-            message => idOf(message?.id) && !indexed.has(idOf(message.id)),
-          );
-          for (const message of rows) indexed.add(idOf(message.id));
-          diagnostic.indexScanned = indexed.size;
-          if (rows.some(message => matches(message))) indexedMatch = true;
-          consider(rows);
-          if (result.eof) indexComplete = true;
-          if (result.eof || rows.length === 0) break;
+        // Full-text lookup is only candidate retrieval. A literal whole-message
+        // query can miss normalized punctuation/spacing variants. Search two
+        // long words too, then apply the selected full rule to every result.
+        const words = [...new Set(wanted.match(/[\p{L}\p{N}]{4,}/gu) || [])]
+          .sort((a, b) => b.length - a.length)
+          .slice(0, 2);
+        const terms = [...new Set([wanted, ...words])];
+        let complete = true;
+        for (const term of terms) {
+          const termSeen = new Set<string>();
+          let exhausted = false;
+          try {
+            for (
+              let page = 0;
+              page < 10 && Date.now() < deadline - 8000;
+              page += 1
+            ) {
+              if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
+              const result: any = await bounded(
+                Promise.resolve(
+                  search({
+                    searchTerm: term,
+                    remote: chat.id,
+                    count: 200,
+                    page,
+                  }),
+                ),
+              );
+              if (result?.canceled || !Array.isArray(result?.messages)) break;
+              const rows = result.messages.filter(
+                message => idOf(message?.id) && !termSeen.has(idOf(message.id)),
+              );
+              for (const message of rows) {
+                termSeen.add(idOf(message.id));
+                indexed.add(idOf(message.id));
+              }
+              diagnostic.indexScanned = indexed.size;
+              if (rows.some(message => matches(message))) indexedMatch = true;
+              consider(rows);
+              if (result.eof) exhausted = true;
+              if (result.eof || rows.length === 0) break;
+            }
+          } catch {
+            /* Try the other scoped term; no send occurs during lookup. */
+          }
+          complete = complete && exhausted;
         }
+        indexComplete = complete;
       }
     } catch {
       /* An unavailable index is not evidence that the message is absent. */
