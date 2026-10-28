@@ -3,7 +3,7 @@ name: ZL-WA Windows
 on:
   # Isolated fallback for this test build while the local GitHub API is unavailable.
   push:
-    branches: ['test/7.3.5-20261027-8']
+    branches: ['test/7.3.5-20261028-9']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -45,7 +45,7 @@ jobs:
         if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-8' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-9' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
@@ -121,10 +121,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-8' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-9' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-8 回复群发与点赞查找修复测试包" --notes '独立测试包：回复群发和批量点赞增加按当前账号、当前群的搜索索引查找，补充关键词候选检索，再按完全相同、包含、忽略空格标点规则核对完整正文；兼容重音字符、隐藏空格、表情显示符及消息编号格式，发送前重新核对消息编号和内容。群发补充服务器回执读取及批次结束后的原编号只读核验；未获得可靠回执的继续待确认，不自动重发。保留此前Audio原生语音及波形、点赞折叠与累计计数、记录压缩、下载、客户资料及图文翻译修复。自动化和离线桌面回归通过，真实群组效果仍需本包实测。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-9 代理白屏与认证恢复测试包" --notes '独立测试包：修复代理或网络加载失败后白屏且不显示错误的问题，显示具体错误、代理检查提示与重载按钮；修改代理密码后刷新账号页面，切换代理配置时清理该账号旧认证缓存并重新建立连接，保留登录Cookie及其他账号数据。保留test-8的回复群发、回执核验、点赞查找修复，以及此前Audio语音波形等功能。自动化及本地Chromium代理认证和界面测试通过，实际代理供应商线路仍需实测。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
           if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }
