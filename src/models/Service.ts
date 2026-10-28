@@ -316,7 +316,7 @@ export default class Service {
   }
 
   @action _didFailLoad(event: { errorDescription: string }): void {
-    this.isError = false;
+    this.isError = true;
     this.errorMessage = event.errorDescription;
     this.isLoading = false;
     this.isLoadingPage = false;

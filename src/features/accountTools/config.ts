@@ -61,6 +61,18 @@ export const defaultTools = (): ToolsConfig => ({
     receiveTarget: 'zh-CN',
   },
 });
+export function proxyNeedsReload(
+  previous: ProxyConfig,
+  saved: ProxyConfig,
+  input: ProxyConfig,
+): boolean {
+  // Public configs redact passwords, so a password-only edit cannot be detected
+  // by comparing the before/after public values.
+  return (
+    JSON.stringify(previous) !== JSON.stringify(saved) ||
+    input.password !== undefined
+  );
+}
 export function proxyRules(proxy: ProxyConfig): Electron.ProxyConfig {
   if (!proxy.enabled || proxy.mode === 'system') return { mode: 'system' };
   if (proxy.mode !== 'manual') throw new Error('无效的代理配置方式');

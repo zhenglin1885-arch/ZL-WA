@@ -22,6 +22,7 @@ import type Service from '../../models/Service';
 import {
   defaultTools,
   parseProxy,
+  proxyNeedsReload,
   translationEngines,
   type ToolsConfig,
 } from './config';
@@ -194,7 +195,7 @@ const SettingsPanel = observer(
         setConfig(saved);
         if (panel === 'translation')
           await configureTranslation(service, textColor);
-        if (JSON.stringify(old.proxy) !== JSON.stringify(saved.proxy))
+        if (proxyNeedsReload(old.proxy, saved.proxy, input.proxy))
           service.webview?.reload();
         if (typeof test === 'string') {
           const result = await ipcRenderer.invoke(

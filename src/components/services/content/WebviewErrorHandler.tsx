@@ -37,8 +37,9 @@ const styles = theme => ({
     left: 0,
     position: 'absolute',
     top: 0,
+    bottom: 0,
     width: '100%',
-    zIndex: 0,
+    zIndex: 6,
     alignItems: 'center',
     background: theme.colorWebviewErrorHandlerBackground,
     display: 'flex',
@@ -78,6 +79,13 @@ class WebviewErrorHandler extends Component<IProps> {
           <strong>{intl.formatMessage(messages.errorMessage)}:</strong>{' '}
           {errorMessage}
         </p>
+        {/ERR_(?:PROXY|TUNNEL|SOCKS|CONNECTION|NAME_NOT_RESOLVED|TIMED_OUT|NETWORK_CHANGED|NO_SUPPORTED_PROXIES)/.test(
+          errorMessage,
+        ) && (
+          <p>
+            网络连接失败。请在右侧“代理”检查协议、主机、端口和认证信息，点击“应用并测试连接”后重新加载会话。
+          </p>
+        )}
         <div className={classes.buttonContainer}>
           <Button
             label={intl.formatMessage(messages.editAction, { name })}

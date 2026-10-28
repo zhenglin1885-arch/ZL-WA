@@ -184,6 +184,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         }
         try {
           await s.setProxy(rules);
+          // Chromium caches proxy credentials separately from connections. A
+          // password/provider change must not keep authenticating with the old
+          // credentials. This leaves cookies and WhatsApp login data intact.
+          await s.clearAuthCache();
           await s.closeAllConnections();
         } catch (error) {
           bridge?.close();

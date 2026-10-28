@@ -2,6 +2,7 @@ import {
   defaultTools,
   parseProxy,
   proxyRules,
+  proxyNeedsReload,
 } from '../src/features/accountTools/config';
 import {
   listRecipients,
@@ -9,6 +10,23 @@ import {
 } from '../src/features/accountTools/guest';
 
 describe('per-account proxy configuration', () => {
+  it('reloads after password-only edits, including clearing a saved password, but not translation-only changes', () => {
+    const proxy = { ...defaultTools().proxy, hasPassword: true };
+    expect(
+      proxyNeedsReload(
+        proxy,
+        { ...proxy },
+        { ...proxy, password: 'new-secret' },
+      ),
+    ).toBe(true);
+    expect(
+      proxyNeedsReload(proxy, { ...proxy }, { ...proxy, password: '' }),
+    ).toBe(true);
+    expect(proxyNeedsReload(proxy, { ...proxy }, { ...proxy })).toBe(false);
+    expect(proxyNeedsReload(proxy, { ...proxy, host: 'new.test' }, proxy)).toBe(
+      true,
+    );
+  });
   it('disabling a proxy follows the system network without validating unused manual fields', () => {
     expect(proxyRules(defaultTools().proxy)).toEqual({ mode: 'system' });
     expect(

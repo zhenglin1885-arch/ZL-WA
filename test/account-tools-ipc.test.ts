@@ -13,6 +13,7 @@ describe('privileged account tools IPC', () => {
   let safeStorage: any;
   let event: any;
   let login: any;
+  let loginHandlers: any[];
   let beforeQuit: () => void;
   const invoke = (name: string, ...args: any[]) =>
     handlers[`account-tools-${name}`](event, ...args);
@@ -21,6 +22,10 @@ describe('privileged account tools IPC', () => {
     root = mkdtempSync(join(tmpdir(), 'zl-tools-'));
     handlers = {};
     sessions = new Map();
+    loginHandlers = [];
+    login = (...args: any[]) => {
+      for (const handler of loginHandlers) handler(...args);
+    };
     mainWindow = { webContents: { mainFrame: {} } };
     event = {
       sender: mainWindow.webContents,
@@ -37,7 +42,7 @@ describe('privileged account tools IPC', () => {
       app: {
         getPath: () => root,
         on: (name: string, fn: any) => {
-          if (name === 'login') login = fn;
+          if (name === 'login') loginHandlers.push(fn);
           if (name === 'before-quit') beforeQuit = fn;
         },
       },
@@ -53,6 +58,7 @@ describe('privileged account tools IPC', () => {
             sessions.set(name, {
               setProxy: jest.fn().mockImplementation(async () => {}),
               closeAllConnections: jest.fn().mockImplementation(async () => {}),
+              clearAuthCache: jest.fn().mockImplementation(async () => {}),
               resolveProxy: jest.fn().mockResolvedValue('DIRECT'),
               fetch: jest.fn().mockResolvedValue({ ok: true }),
             });
@@ -786,6 +792,47 @@ describe('privileged account tools IPC', () => {
     expect(second.setProxy).toHaveBeenCalledTimes(1);
     const saved = await invoke('get', 'account-2');
     expect(saved.proxy.password).toBeUndefined();
+  });
+  it('clears only the changed account authentication cache before reconnecting with a replacement password', async () => {
+    await invoke('prepare', 'account-1');
+    await invoke('prepare', 'account-2');
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'localhost',
+      port: '8888',
+      username: 'tester',
+      password: 'old-secret',
+    };
+    await invoke('save', 'account-1', config);
+    const first = sessions.get('persist:service-account-1');
+    const second = sessions.get('persist:service-account-2');
+    first.clearAuthCache.mockClear();
+    first.closeAllConnections.mockClear();
+    second.clearAuthCache.mockClear();
+    config.proxy.password = 'replacement-secret';
+    await invoke('save', 'account-1', config);
+    expect(first.clearAuthCache).toHaveBeenCalledTimes(1);
+    expect(first.clearAuthCache.mock.invocationCallOrder[0]).toBeLessThan(
+      first.closeAllConnections.mock.invocationCallOrder[0],
+    );
+    expect(second.clearAuthCache).not.toHaveBeenCalled();
+    const callback = jest.fn();
+    login(
+      { preventDefault: jest.fn() },
+      { session: first },
+      {},
+      { isProxy: true, host: 'localhost', port: 8888 },
+      callback,
+    );
+    expect(callback).toHaveBeenCalledWith('tester', 'replacement-secret');
+    expect(await invoke('get', 'account-1')).toMatchObject({
+      proxy: { hasPassword: true, password: undefined },
+    });
+    expect(
+      readFileSync(join(root, 'account-tools.json'), 'utf8'),
+    ).not.toContain('replacement-secret');
   });
   it('stores only encrypted passwords, redacts read results and matches proxy authentication to the account Session', async () => {
     const config = defaultTools();
