@@ -84,4 +84,81 @@ describe('read-only settling of a newly sent message receipt', () => {
     await expect(check).resolves.toMatchObject({ confirmed: false });
     expect(page.WPP.chat.getMessageById).toHaveBeenCalledTimes(1);
   });
+  it('accepts a serialized outgoing key without object fromMe/remote fields', async () => {
+    message = { id: 'true_chat@g.us_SENT', ack: 1 };
+    await expect(
+      waitForBulkReceipt('chat@g.us', message.id),
+    ).resolves.toMatchObject({ confirmed: true });
+  });
+  it('retains a live native ACK even when a supplemental helper read hangs', async () => {
+    page.WPP = {
+      isReady: true,
+      chat: { getMessageById: jest.fn(() => new Promise(() => {})) },
+    };
+    setTimeout(() => {
+      message.ack = 1;
+    }, 700);
+    const check = waitForBulkReceipt('chat@g.us', 'outgoing-id');
+    await jest.runAllTimersAsync();
+    await expect(check).resolves.toMatchObject({ confirmed: true });
+    expect(page.WPP.chat.getMessageById).toHaveBeenCalledTimes(1);
+  });
+  it('accepts opaque native IDs and Wids that expose only toString', async () => {
+    message = {
+      id: {
+        toString: () => 'outgoing-id',
+        fromMe: true,
+        remote: { toString: () => 'chat@g.us' },
+      },
+      attributes: { ack: 2 },
+    };
+    await expect(
+      waitForBulkReceipt('chat@g.us', 'outgoing-id'),
+    ).resolves.toMatchObject({ confirmed: true });
+  });
+  it('reads the fresh helper model when the native cache still has ACK=0', async () => {
+    page.WPP = {
+      isReady: true,
+      chat: { getMessageById: jest.fn(async () => ({ ...message, ack: 1 })) },
+    };
+    await expect(
+      waitForBulkReceipt('chat@g.us', 'outgoing-id'),
+    ).resolves.toMatchObject({ confirmed: true });
+    expect(page.WPP.chat.getMessageById).toHaveBeenCalledWith('outgoing-id');
+  });
+  it('uses an exact-ID read receipt without resending when the cached message ACK is stale', async () => {
+    page.WPP = {
+      isReady: true,
+      chat: {
+        getMessageById: jest.fn(async () => message),
+        getMessageACK: jest.fn(async () => ({
+          ack: 0,
+          fromMe: true,
+          participants: [{ readAt: 1234 }],
+        })),
+      },
+    };
+    await expect(
+      waitForBulkReceipt('chat@g.us', 'outgoing-id'),
+    ).resolves.toMatchObject({ confirmed: true });
+    expect(page.WPP.chat.getMessageACK).toHaveBeenCalledWith('outgoing-id');
+  });
+  it.each([false, undefined])(
+    'never treats another sender or missing sender proof as an accepted ACK: %s',
+    async fromMe => {
+      page.WPP = {
+        isReady: true,
+        chat: {
+          getMessageACK: jest.fn(async () => ({
+            ack: 2,
+            fromMe,
+            participants: [{ deliveredAt: 1234 }],
+          })),
+        },
+      };
+      const pending = waitForBulkReceipt('chat@g.us', 'outgoing-id');
+      await jest.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ confirmed: false });
+    },
+  );
 });

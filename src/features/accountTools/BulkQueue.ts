@@ -356,6 +356,68 @@ export default class BulkQueue {
           });
         }
       }
+      // Earlier recipients may acquire their ACK while later recipients are
+      // processed. Perform one bounded read-only sweep by original ID; never
+      // retry a send or revive a stopped/timed-out operation.
+      if (this.adapter.reconcile && !this.stopped.has(record.id)) {
+        const deadline = Date.now() + 5000;
+        for (
+          let index = 0;
+          index < (record.deliveries?.length || 0);
+          index += 1
+        ) {
+          if (this.stopped.has(record.id) || Date.now() >= deadline) break;
+          const delivery = record.deliveries![index];
+          if (delivery.status !== 'uncertain' || !delivery.messageId) continue;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const result = await Promise.race([
+              this.adapter.reconcile(
+                delivery.target,
+                delivery.messageId,
+                spec,
+                delivery.startedAt || record.started,
+                new Date().toISOString(),
+              ),
+              new Promise<void>(resolve => {
+                timer = setTimeout(
+                  () => resolve(),
+                  Math.max(1, deadline - Date.now()),
+                );
+              }),
+            ]);
+            if (
+              result &&
+              result.confirmed &&
+              result.messageId === delivery.messageId
+            ) {
+              const deliveries = [...record.deliveries!];
+              deliveries[index] = {
+                ...delivery,
+                status: 'sent',
+                error: undefined,
+                checkedAt: new Date().toISOString(),
+                checkError: undefined,
+              };
+              record = {
+                ...record,
+                deliveries,
+                success: record.success + 1,
+                failed: record.failed - 1,
+                details: deliveries.map(
+                  item =>
+                    `${item.target.name}：${item.status === 'sent' ? '服务器已接受' : item.error}`,
+                ),
+              };
+            }
+          } catch {
+            /* Keep the original uncertain result and message ID. */
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+      }
       await this.persist({
         ...record,
         status: record.deliveries?.some(d => d.status === 'uncertain')

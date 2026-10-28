@@ -181,6 +181,117 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       ),
     ).toBe(true);
   });
+  it.each(['exact', 'contains', 'normalized'] as const)(
+    'finds the reported Portuguese message with accents and emoji using %s',
+    async mode => {
+      const original =
+        'Mas e pra quem tá começando do zero, igual eu, que nem sabe mexer no aplicativo ainda? 😅 Como faço pra abrir uma conta numa corretora e começar a acompanhar as operações aqui do grupo? 🙏';
+      const rows = setupReplies();
+      rows[1].body = `${original.normalize('NFD').replaceAll(' ', '\u00A0')}\u200B`;
+      const input = replySpec(mode);
+      input.reply!.text = original;
+      await sendBulkMessage('10001@g.us', input);
+      expect(wpp.chat.sendTextMessage).toHaveBeenCalledWith(
+        '10001@g.us',
+        'hello',
+        expect.objectContaining({ quotedMsg: rows[1].id }),
+      );
+      expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('uses scoped indexed search for a reference outside the loaded scrollback', async () => {
+    const rows = setupReplies();
+    const remote = { _serialized: '10001@g.us' };
+    wpp.chat.get.mockReturnValue({ id: remote });
+    wpp.chat.getMessages.mockResolvedValue([]);
+    wpp.whatsapp.functions.msgFindSearch = jest.fn(async () => ({
+      messages: [
+        ...rows,
+        { id: 'false_99999@g.us_FOREIGN', body: '目标内容', t: 9 },
+      ],
+      eof: true,
+    }));
+    await sendBulkMessage('10001@g.us', replySpec());
+    expect(wpp.whatsapp.functions.msgFindSearch).toHaveBeenCalledWith({
+      searchTerm: '目标内容',
+      remote,
+      count: 200,
+      page: 0,
+    });
+    expect(wpp.chat.sendTextMessage.mock.calls[0][2].quotedMsg).toBe(
+      rows[1].id,
+    );
+    expect(wpp.chat.getMessages).not.toHaveBeenCalled();
+  });
+  it('starts before the newest cached outgoing message instead of the older lastReceivedKey', async () => {
+    const rows = setupReplies();
+    const outgoing = {
+      id: 'true_10001@g.us_OWN_NEW',
+      body: '目标内容',
+      type: 'chat',
+      t: 10,
+    };
+    wpp.chat.get.mockReturnValue({
+      lastReceivedKey: rows[0].id,
+      msgs: { getModelsArray: () => [outgoing] },
+    });
+    wpp.chat.getMessageById.mockImplementation(async id =>
+      id === outgoing.id ? outgoing : rows.find(m => m.id === id),
+    );
+    wpp.chat.getMessages.mockResolvedValue([rows[0]]);
+    await sendBulkMessage('10001@g.us', replySpec());
+    expect(wpp.chat.getMessages.mock.calls[0][1].id).toBe(outgoing.id);
+    expect(wpp.chat.sendTextMessage.mock.calls[0][2].quotedMsg).toBe(
+      outgoing.id,
+    );
+  });
+  it('compares indexed pages with mixed seconds/milliseconds and supports opaque native keys', async () => {
+    const rows: any[] = setupReplies();
+    const key = {
+      toString: () => 'false_10001@g.us_OPAQUE',
+      remote: { toString: () => '10001@g.us' },
+    };
+    const newest = {
+      id: key,
+      body: '目标内容',
+      type: 'chat',
+      timestamp: 1_700_000_002_000,
+    };
+    rows[0].t = 1_700_000_001;
+    wpp.chat.get.mockReturnValue({ id: { _serialized: '10001@g.us' } });
+    wpp.chat.getMessages.mockResolvedValue([]);
+    wpp.whatsapp.functions.msgFindSearch = jest.fn(async ({ page }) => ({
+      messages: page ? [newest] : [rows[0]],
+      eof: page === 1,
+    }));
+    wpp.chat.getMessageById.mockImplementation(async id =>
+      id === key.toString() ? newest : rows.find(m => m.id === id),
+    );
+    await sendBulkMessage('10001@g.us', replySpec());
+    expect(wpp.whatsapp.functions.msgFindSearch).toHaveBeenCalledTimes(2);
+    expect(wpp.chat.sendTextMessage.mock.calls[0][2].quotedMsg).toBe(
+      key.toString(),
+    );
+  });
+  it('falls back to chronological history when indexed search is unavailable', async () => {
+    setupReplies();
+    wpp.chat.get.mockReturnValue({ id: '10001@g.us' });
+    wpp.whatsapp.functions.msgFindSearch = jest
+      .fn()
+      .mockRejectedValue(new Error('index not ready'));
+    await sendBulkMessage('10001@g.us', replySpec());
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
+  it('reports a stalled history read distinctly and does not send ordinary text', async () => {
+    setupReplies();
+    wpp.chat.getMessages.mockResolvedValue([
+      { id: 'false_10001@g.us_OTHER', body: '不匹配', t: 5 },
+    ]);
+    await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
+      '历史读取未完成',
+    );
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
   it('never falls back to ordinary sending when no reference matches', async () => {
     setupReplies();
     wpp.chat.getMessages.mockResolvedValue([]);
@@ -210,7 +321,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
       { id: 'false_99999@g.us_FOREIGN', body: '目标内容', type: 'chat', t: 4 },
     ]);
     await expect(sendBulkMessage('10001@g.us', replySpec())).rejects.toThrow(
-      '未找到',
+      '未发送',
     );
     expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
   });
@@ -263,6 +374,17 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
         new Date().toISOString(),
       ),
     ).rejects.toThrow('无法安全核验');
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
+  it('never reconciles a different own message in the same chat as the recorded message', async () => {
+    wpp.chat.getMessageById.mockResolvedValue(
+      ownMessage({
+        id: { _serialized: 'other-id', fromMe: true, remote: 'chat@g.us' },
+      }),
+    );
+    await expect(
+      reconcileBulkMessage('chat@g.us', 'expected-id', undefined, '', ''),
+    ).rejects.toThrow('编号不符');
     expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
   });
   it.each(['image', 'caption', 'video', 'document'] as const)(

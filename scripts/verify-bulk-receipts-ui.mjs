@@ -12,14 +12,16 @@ export async function verifyBulkReceipts({
     first,
     `(()=>{
     const collections=window.require('WAWebCollections'),sender=window.require('WAWebSendMsgChatAction');
-    fixture.receiptProof={collections,sender,oldStore:collections.Msg,oldSend:sender.addAndSendMsgToChat,count:0,messages:new Map(),mode:'delayed'};
+    fixture.receiptProof={collections,sender,oldStore:collections.Msg,oldSend:sender.addAndSendMsgToChat,oldChat:WPP.chat,count:0,messages:new Map(),mode:'delayed'};
     const p=fixture.receiptProof;
+    WPP.chat={...(WPP.chat||{}),getMessageById:async id=>p.messages.get(id)};
     collections.Msg={get:id=>p.messages.get(id)};
     sender.addAndSendMsgToChat=(chat,message)=>{
       p.count++;message.id.fromMe=true;message.id.remote=chat.id;
       p.messages.set(message.id._serialized,message);
       if(p.mode==='delayed')setTimeout(()=>message.ack=1,400);
       else if(p.count>1)message.ack=1;
+      if(p.mode==='late-first'&&p.count>1)for(const m of p.messages.values())m.ack=1;
       return [Promise.resolve(message),Promise.resolve({})];
     };
     return true;
@@ -63,13 +65,27 @@ export async function verifyBulkReceipts({
       2,
       'the uncertain message is not sent again',
     );
+    await guest(
+      first,
+      `fixture.receiptProof.mode='late-first';fixture.receiptProof.count=0;fixture.receiptProof.messages.clear();true`,
+    );
+    const refreshed = await evaluate(
+      `(async()=>{const q=${queueExpression};const id=await q.submit(${JSON.stringify(spec)});return q.records.find(r=>r.id===id)})()`,
+    );
+    assert.equal(refreshed.status, '已完成');
+    assert.equal(refreshed.success, 2);
+    assert.equal(
+      await guest(first, 'fixture.receiptProof.count'),
+      2,
+      'late receipt sweep never resends',
+    );
     console.log(
       'PASS actual bulk runtime: delayed native ACK resolves to success; settled pending IDs honor continue policy with no resend and retain history',
     );
   } finally {
     await guest(
       first,
-      `(()=>{const p=fixture.receiptProof;p.sender.addAndSendMsgToChat=p.oldSend;if(p.oldStore===undefined)delete p.collections.Msg;else p.collections.Msg=p.oldStore;delete fixture.receiptProof;return true})()`,
+      `(()=>{const p=fixture.receiptProof;p.sender.addAndSendMsgToChat=p.oldSend;if(p.oldStore===undefined)delete p.collections.Msg;else p.collections.Msg=p.oldStore;WPP.chat=p.oldChat;delete fixture.receiptProof;return true})()`,
     );
     await evaluate(
       `${queueExpression}.remove(${queueExpression}.records.filter(r=>!${JSON.stringify(before)}.includes(r.id)).map(r=>r.id))`,

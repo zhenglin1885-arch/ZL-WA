@@ -123,9 +123,20 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           await ensureBulkLibrary(view);
           if (viewFor(target) !== view)
             throw new Error('账号窗口已变化，请重新核对');
-          return view.executeJavaScript(
+          const outcome = await view.executeJavaScript(
             `(${reconcileBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify(messageId)},${JSON.stringify(spec)},${JSON.stringify(started)},${JSON.stringify(ended)})`,
           );
+          if (outcome.confirmed || !outcome.messageId) return outcome;
+          if (viewFor(target) !== view)
+            throw new Error('账号窗口已变化，请重新核对');
+          const receipt = await view.executeJavaScript(
+            `(${waitForBulkReceipt.toString()})(${JSON.stringify(target.id)},${JSON.stringify(outcome.messageId)})`,
+          );
+          if (viewFor(target) !== view)
+            throw new Error('账号窗口已变化，请重新核对');
+          return receipt.confirmed
+            ? { ...outcome, confirmed: true, error: undefined }
+            : outcome;
         },
         edit: async (target, messageId, text) => {
           const view = viewFor(target);

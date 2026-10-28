@@ -1,6 +1,6 @@
 /* eslint-disable no-await-in-loop -- Isolated native desktop fixture setup, verification and cleanup. */
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import {
   evaluate,
   wait,
@@ -10,6 +10,8 @@ import {
   socket,
 } from './account-tools-cdp.mjs';
 import { verifyReactions } from './verify-reactions-ui.mjs';
+import { verifyBulkReplies } from './verify-bulk-replies-ui.mjs';
+import { verifyBulkReceipts } from './verify-bulk-receipts-ui.mjs';
 
 const fixture = readFileSync(
   new URL('fixtures/whatsapp-tools.html', import.meta.url),
@@ -25,6 +27,8 @@ const vm = code =>
     `require('@electron/remote').require('node:vm').runInThisContext(${JSON.stringify(code)})`,
   );
 let sidebar;
+let historyBefore;
+let historyBackup;
 try {
   await wait(
     `!!window.ferdium?.stores?.settings.loaded && !!document.querySelector('.account-tools')`,
@@ -70,7 +74,7 @@ try {
       'fixture online',
     );
   }
-  await verifyReactions({
+  const context = {
     first: ids[0],
     second: ids[1],
     guest,
@@ -83,10 +87,41 @@ try {
       const result = await call('Page.captureScreenshot', { format: 'png' });
       writeFileSync(path, Buffer.from(result.data, 'base64'));
     },
-  });
+  };
+  if (process.argv.includes('--bulk-replies')) {
+    const queueExpression = `require('./features/accountTools/bulkRuntime').getBulkQueue(window.ferdium.stores)`;
+    await evaluate(
+      `(async()=>{const q=${queueExpression};await q.load();if(q.activeIds.size||q.records.some(r=>r.status==='待发送'))throw Error('Use a QA profile without active or scheduled bulk tasks')})()`,
+    );
+    historyBefore = await evaluate(
+      `require('electron').ipcRenderer.invoke('account-tools-history')`,
+    );
+    historyBackup = `/tmp/zl-reply-fixture-history-${Date.now()}.json`;
+    writeFileSync(historyBackup, JSON.stringify(historyBefore));
+    await evaluate(
+      `${queueExpression}.remove(${queueExpression}.records.map(r=>r.id))`,
+    );
+    await verifyBulkReplies(context);
+    await verifyBulkReceipts({ ...context, queueExpression });
+  } else await verifyReactions(context);
 } finally {
-  if (await evaluate(`!!document.querySelector('[aria-label="关闭批量点赞"]')`))
-    await click('[aria-label="关闭批量点赞"]');
+  for (const label of ['关闭批量点赞', '关闭回复窗口', '关闭转发窗口'])
+    if (await evaluate(`!!document.querySelector('[aria-label="${label}"]')`))
+      await click(`[aria-label="${label}"]`);
+  if (historyBefore) {
+    const queueExpression = `require('./features/accountTools/bulkRuntime').getBulkQueue(window.ferdium.stores)`;
+    await evaluate(
+      `(async()=>{const q=${queueExpression};if(q.activeIds.size)throw Error('Test queue is still active; history backup retained');const ipc=require('electron').ipcRenderer;await q.remove(q.records.map(r=>r.id));return true})()`,
+    );
+    for (const record of [...historyBefore].reverse())
+      await evaluate(
+        `require('electron').ipcRenderer.invoke('account-tools-history',${JSON.stringify(record)})`,
+      );
+    await evaluate(
+      `(async()=>{const q=${queueExpression};q.records=await require('electron').ipcRenderer.invoke('account-tools-history');q.notify();return true})()`,
+    );
+    rmSync(historyBackup, { force: true });
+  }
   for (const id of ids)
     await evaluate(
       `(async()=>{if(window.ferdium.stores.services.all.some(s=>s.id===${JSON.stringify(id)}))await window.ferdium.stores.services._deleteService({serviceId:${JSON.stringify(id)},redirect:false})})()`,

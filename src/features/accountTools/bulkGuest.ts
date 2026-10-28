@@ -11,8 +11,30 @@ export async function waitForBulkReceipt(
     throw new Error('当前会话不是 WhatsApp');
   if (!messageId || !chatId) throw new Error('缺少原消息编号或聊天');
   const page = window as any;
-  const idOf = (value: any): string =>
-    typeof value === 'string' ? value : value?._serialized || '';
+  const idOf = (value: any): string => {
+    if (typeof value === 'string') return value;
+    if (value?._serialized) return value._serialized;
+    const result = value?.toString?.();
+    return result && result !== '[object Object]' ? result : '';
+  };
+  const ownKey = messageId.startsWith(`true_${chatId}_`);
+  const belongs = (message: any) => {
+    const id = idOf(message?.id);
+    const remote =
+      idOf(message?.id?.remote || message?.to) ||
+      /^(?:true|false)_([^_]+)_/.exec(id)?.[1];
+    return (
+      id === messageId &&
+      remote === chatId &&
+      !id.startsWith('false_') &&
+      message?.id?.fromMe !== false &&
+      Boolean(
+        message?.id?.fromMe ||
+          message?.isSentByMe ||
+          id.startsWith(`true_${chatId}_`),
+      )
+    );
+  };
   const pending = {
     messageId,
     confirmed: false,
@@ -33,12 +55,40 @@ export async function waitForBulkReceipt(
     }
     const read = async () => {
       const native = store?.get?.(messageId);
-      if (native) return native;
-      if (page.WPP?.isReady && page.WPP.chat?.getMessageById)
-        return page.WPP.chat.getMessageById(messageId);
-      return null;
+      if (native && !belongs(native)) return { invalidIdentity: true };
+      if (native && Number(native.ack ?? native.attributes?.ack) >= 1)
+        return native;
+      const api = page.WPP?.isReady ? page.WPP.chat : undefined;
+      let message = native;
+      if (api?.getMessageById) {
+        try {
+          message = (await api.getMessageById(messageId)) || native;
+        } catch {
+          /* A live native model can remain usable during a DB read failure. */
+        }
+      }
+      if (message && !belongs(message)) return { invalidIdentity: true };
+      if (message && Number(message.ack ?? message.attributes?.ack) >= 1)
+        return message;
+      if (
+        (message || native || ownKey) &&
+        typeof api?.getMessageACK === 'function'
+      ) {
+        const info = await api.getMessageACK(messageId);
+        const delivered = info?.participants?.some(
+          p => Number(p.deliveredAt || p.readAt || p.playedAt) > 0,
+        );
+        if (info?.fromMe === true && (Number(info.ack) >= 1 || delivered))
+          return { receiptConfirmed: true };
+      }
+      return message || native;
     };
-    if (!store?.get && !page.WPP?.chat?.getMessageById) return pending;
+    if (
+      !store?.get &&
+      !page.WPP?.chat?.getMessageById &&
+      !page.WPP?.chat?.getMessageACK
+    )
+      return pending;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const message: any = await Promise.race([
@@ -51,15 +101,22 @@ export async function waitForBulkReceipt(
         }),
       ]);
       // An unresolved read is not a reason to accumulate more pending reads.
-      if (message === undefined) return pending;
-      if (message) {
+      if (message === undefined) {
+        const current = store?.get?.(messageId);
         if (
-          idOf(message.id) !== messageId ||
-          !(message.id?.fromMe || message.isSentByMe) ||
-          idOf(message.id?.remote || message.to) !== chatId
+          current &&
+          belongs(current) &&
+          Number(current.ack ?? current.attributes?.ack) >= 1
         )
-          return pending;
-        if (Number(message.ack) >= 1) return { messageId, confirmed: true };
+          return { messageId, confirmed: true };
+        return pending;
+      }
+      if (message?.invalidIdentity) return pending;
+      if (message?.receiptConfirmed) return { messageId, confirmed: true };
+      if (message) {
+        if (!belongs(message)) return pending;
+        if (Number(message.ack ?? message.attributes?.ack) >= 1)
+          return { messageId, confirmed: true };
       }
     } catch {
       // Missing or temporarily unavailable models remain unconfirmed.
@@ -142,11 +199,19 @@ export async function sendBulkMessage(
     options.quotedMsg = compose.quotedMessageId;
   }
   if (spec.reply) {
-    const idOf = (id: any): string =>
-      typeof id === 'string'
-        ? id
-        : id?._serialized ||
-          (id?.user && id?.server ? `${id.user}@${id.server}` : '');
+    const idOf = (id: any): string => {
+      if (typeof id === 'string') return id;
+      if (id?._serialized) return id._serialized;
+      if (id?.user && id?.server) return `${id.user}@${id.server}`;
+      const value = id?.toString?.();
+      if (value && value !== '[object Object]') return value;
+      try {
+        const Key = wpp.whatsapp?.MsgKey;
+        return id?.remote && id?.id && Key ? new Key(id).toString() : '';
+      } catch {
+        return '';
+      }
+    };
     const owner = spec.targets.find(r => r.id === chatId)?.ownerId;
     const own = () => {
       let prefs: any;
@@ -172,7 +237,18 @@ export async function sendBulkMessage(
       throw new Error('账号登录身份已变化，请重新选择回复账号');
     if (!wpp.chat.getMessages || !wpp.chat.getMessageById)
       throw new Error('引用消息读取接口未就绪，未发送');
-    const wanted = spec.reply.text.trim();
+    const visibleText = (value: string) =>
+      value
+        .normalize('NFC')
+        .replaceAll(/\r\n?/g, '\n')
+        .replaceAll(/[\u2028\u2029]/g, '\n')
+        .replaceAll(/[\u00A0\u202F]/g, ' ')
+        .replaceAll(
+          /[\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,
+          '',
+        )
+        .trim();
+    const wanted = visibleText(spec.reply.text);
     if (
       !wanted ||
       !['exact', 'contains', 'normalized'].includes(spec.reply.match)
@@ -198,7 +274,7 @@ export async function sendBulkMessage(
       const remote =
         idOf(m.id?.remote) || /^(?:true|false)_([^_]+)_/.exec(idOf(m.id))?.[1];
       if (remote !== chatId) return false;
-      const text = String(m.caption || m.body || '');
+      const text = visibleText(String(m.caption || m.body || ''));
       if (spec.reply!.match === 'contains') return text.includes(wanted);
       if (spec.reply!.match === 'normalized')
         return (
@@ -208,38 +284,174 @@ export async function sendBulkMessage(
         text.trim().replaceAll('\r\n', '\n') === wanted.replaceAll('\r\n', '\n')
       );
     };
-    const seen = new Set<string>();
-    let before: string | undefined;
-    let found: any;
+    const diagnostic = {
+      revision: 1,
+      phase: 'lookup',
+      historyScanned: 0,
+      indexScanned: 0,
+      indexAvailable: false,
+      historyLimited: false,
+    };
+    (window as any).__zlBulkReply = diagnostic;
     const deadline = Date.now() + 20_000;
-    for (let round = 0; round < 50 && Date.now() < deadline; round += 1) {
+    const bounded = async <T>(request: Promise<T>): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          request,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('历史消息读取超时，未发送引用回复')),
+              Math.max(1, Math.min(3000, deadline - Date.now())),
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const timeOf = (message: any) => {
+      const value = Number(message?.t || message?.timestamp || 0);
+      return Number.isFinite(value) ? (value < 1e12 ? value * 1000 : value) : 0;
+    };
+    let found: any;
+    let indexedMatch = false;
+    let indexComplete = false;
+    const consider = (rows: any[]) => {
+      for (const message of rows)
+        if (matches(message) && (!found || timeOf(message) > timeOf(found)))
+          found = message;
+    };
+    let cached: any[] = [];
+    try {
+      cached = chat?.msgs?.getModelsArray?.() || [];
+    } catch {
+      /* Optional live cache. */
+    }
+    cached = cached
+      .filter(
+        message =>
+          idOf(message?.id) &&
+          (idOf(message.id?.remote) ||
+            /^(?:true|false)_([^_]+)_/.exec(idOf(message.id))?.[1]) === chatId,
+      )
+      .sort((a, b) => timeOf(b) - timeOf(a));
+    consider(cached);
+    // The same scoped local DB index used for chat searches can find messages
+    // outside the loaded scrollback, including newer outgoing messages.
+    try {
+      const search = wpp.whatsapp?.functions?.msgFindSearch;
+      if (typeof search === 'function' && chat?.id) {
+        diagnostic.indexAvailable = true;
+        const indexed = new Set<string>();
+        for (
+          let page = 0;
+          page < 10 && Date.now() < deadline - 8000;
+          page += 1
+        ) {
+          if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
+          const result: any = await bounded(
+            Promise.resolve(
+              search({ searchTerm: wanted, remote: chat.id, count: 200, page }),
+            ),
+          );
+          if (result?.canceled || !Array.isArray(result?.messages)) break;
+          const rows = result.messages.filter(
+            message => idOf(message?.id) && !indexed.has(idOf(message.id)),
+          );
+          for (const message of rows) indexed.add(idOf(message.id));
+          diagnostic.indexScanned = indexed.size;
+          if (rows.some(message => matches(message))) indexedMatch = true;
+          consider(rows);
+          if (result.eof) indexComplete = true;
+          if (result.eof || rows.length === 0) break;
+        }
+      }
+    } catch {
+      /* An unavailable index is not evidence that the message is absent. */
+    }
+    if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
+    // Choose the newest known anchor instead of implicitly starting before
+    // lastReceivedKey, which can exclude the account's own recent messages.
+    const anchors = [...cached];
+    if (chat?.lastReceivedKey) {
+      try {
+        const anchor = await bounded(
+          Promise.resolve(wpp.chat.getMessageById(idOf(chat.lastReceivedKey))),
+        );
+        const remote =
+          idOf(anchor?.id?.remote) ||
+          /^(?:true|false)_([^_]+)_/.exec(idOf(anchor?.id))?.[1];
+        if (anchor && remote === chatId) anchors.push(anchor);
+      } catch {
+        /* Continue with the live cache or the helper's default anchor. */
+      }
+    }
+    anchors.sort((a, b) => timeOf(b) - timeOf(a));
+    let before: string | undefined =
+      anchors.length > 0 ? idOf(anchors[0].id) : undefined;
+    consider(anchors);
+    const seen = new Set<string>();
+    diagnostic.phase = 'history';
+    for (let round = 0; round < 50; round += 1) {
+      // An exhausted scoped index gives the complete exact-match candidate
+      // set. Do not page thousands of unrelated messages after finding it.
+      if (indexComplete && indexedMatch && spec.reply.match === 'exact') break;
+      // Reserve time for one last history read and verification of its ID.
+      if (Date.now() >= deadline - 6000) {
+        diagnostic.historyLimited = true;
+        break;
+      }
       if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
-      const source = await wpp.chat.getMessages(chatId, {
-        count: 200,
-        direction: 'before',
-        ...(before ? { id: before } : {}),
-      });
+      const source = await bounded(
+        Promise.resolve(
+          wpp.chat.getMessages(chatId, {
+            count: 200,
+            direction: 'before',
+            ...(before ? { id: before } : {}),
+          }),
+        ),
+      );
       if (!Array.isArray(source))
         throw new Error('目标消息读取结果异常，未发送');
       const rows = source
         .filter(m => idOf(m.id) && !seen.has(idOf(m.id)))
-        .sort(
-          (a, b) =>
-            Number(b.t || b.timestamp || 0) - Number(a.t || a.timestamp || 0),
-        );
-      if (rows.length === 0) break;
-      found = rows.find(m => matches(m));
-      if (found) break;
-      for (const m of rows) seen.add(idOf(m.id));
-      before = idOf(rows.at(-1).id);
+        .sort((a, b) => timeOf(b) - timeOf(a));
+      if (rows.length === 0) {
+        diagnostic.historyLimited = source.length > 0;
+        break;
+      }
+      consider(rows);
+      for (const message of rows) seen.add(idOf(message.id));
+      diagnostic.historyScanned = seen.size;
+      // Once chronological scrollback reaches a found candidate, older pages
+      // cannot replace it. Every candidate is reloaded and checked below.
+      if (found && timeOf(rows.at(-1)) <= timeOf(found)) break;
+      const next = idOf(rows.at(-1).id);
+      if (next === before) {
+        diagnostic.historyLimited = true;
+        break;
+      }
+      before = next;
+      if (round === 49) diagnostic.historyLimited = true;
     }
-    if (!found) throw new Error('可用历史消息中未找到匹配内容，未发送引用回复');
+    if (!found) {
+      diagnostic.phase = 'not-found';
+      throw new Error(
+        diagnostic.historyLimited
+          ? `历史读取未完成（已查找 ${seen.size} 条），未发送引用回复；请稍后重试`
+          : `可用历史消息中未找到匹配内容（已查找 ${seen.size} 条），未发送引用回复`,
+      );
+    }
     const quoteId = idOf(found.id);
-    const latest = await wpp.chat.getMessageById(quoteId);
+    const latest = await bounded(
+      Promise.resolve(wpp.chat.getMessageById(quoteId)),
+    );
     if (idOf(latest?.id) !== quoteId || !matches(latest))
       throw new Error('目标消息已删除、编辑或不再匹配，未发送');
     if (!own()) throw new Error('账号登录身份已变化，未发送引用回复');
     options.quotedMsg = quoteId;
+    diagnostic.phase = 'verified';
   }
   if (spec.mentionAll && chatId.endsWith('@g.us')) {
     const participants = await wpp.group.getParticipants(chatId);
@@ -461,13 +673,27 @@ export async function reconcileBulkMessage(
       ? value
       : '';
   };
-  const owns = (message: any) =>
-    Boolean(message?.id?.fromMe || message?.isSentByMe) &&
-    serialized(message.id?.remote || message.to) === chatId;
+  const owns = (message: any) => {
+    const key = serialized(message?.id);
+    const remote =
+      serialized(message?.id?.remote || message?.to) ||
+      /^(?:true|false)_([^_]+)_/.exec(key)?.[1];
+    return (
+      !key.startsWith('false_') &&
+      message?.id?.fromMe !== false &&
+      Boolean(
+        message?.id?.fromMe ||
+          message?.isSentByMe ||
+          key.startsWith(`true_${chatId}_`),
+      ) &&
+      remote === chatId
+    );
+  };
   let message: any;
   if (messageId) {
     message = await wpp.chat.getMessageById(messageId);
-    if (!owns(message)) throw new Error('消息不属于当前账号或聊天，未修改记录');
+    if (serialized(message?.id) !== messageId || !owns(message))
+      throw new Error('消息不属于当前账号或聊天，或编号不符，未修改记录');
   } else {
     if (spec?.reply)
       throw new Error(

@@ -150,10 +150,84 @@ export async function verifyBulkReplies({
       2,
       'no fallback send on missing target',
     );
+    const original =
+      'Mas e pra quem tá começando do zero, igual eu, que nem sabe mexer no aplicativo ainda? 😅 Como faço pra abrir uma conta numa corretora e começar a acompanhar as operações aqui do grupo? 🙏';
+    const targets = [];
+    for (const id of [first, second]) {
+      const ownerId = await guest(id, `fixture.ownPhone+'@c.us'`);
+      for (const chat of ['10001@g.us', '10002@c.us'])
+        targets.push({
+          accountId: id,
+          ownerId,
+          id: chat,
+          name: chat,
+          group: chat.endsWith('@g.us'),
+        });
+      await guest(
+        id,
+        `(()=>{
+        const text=${JSON.stringify(original)},read=WPP.chat.getMessageById;
+        const indexed=chat=>({id:'false_'+chat+'_PORTUGUESE',body:text.normalize('NFD').replaceAll(' ','\u00A0')+'\u200B',type:'chat',t:4});
+        fixture.replyIndexCalls=[];
+        WPP.chat.get=async chat=>({id:{_serialized:chat}});
+        WPP.chat.getMessages=async()=>[];
+        WPP.chat.getMessageById=async id=>id.endsWith('_PORTUGUESE')?indexed(id.split('_')[1]):read(id);
+        WPP.whatsapp={functions:{msgFindSearch:async query=>{
+          if(query.searchTerm!==text||!query.remote?._serialized)throw Error('Unexpected native scoped search query');
+          fixture.replyIndexCalls.push(query.remote._serialized);
+          return {messages:[indexed(query.remote._serialized),indexed('99999@g.us')],eof:true};
+        }}};return true;
+      })()`,
+      );
+    }
+    const input = {
+      type: 'text',
+      text: 'Portuguese quote regression',
+      reply: { text: original, match: 'exact' },
+      targets,
+      intervalMin: 0.5,
+      intervalMax: 0.5,
+      typingSeconds: 0,
+      mentionAll: false,
+      failure: 'continue',
+    };
+    const indexed = await evaluate(
+      `(async()=>{const q=${expression};const id=await q.submit(${JSON.stringify(input)});return q.records.find(r=>r.id===id)})()`,
+    );
+    assert.equal(
+      indexed.success,
+      4,
+      'references outside loaded scrollback are found by indexed search',
+    );
+    for (const id of [first, second]) {
+      assert.equal(
+        await guest(id, 'fixture.replyCalls.length'),
+        4,
+        'one dispatch per target',
+      );
+      assert(
+        await guest(
+          id,
+          `fixture.replyCalls.slice(-2).every(c=>c.options.quotedMsg==='false_'+c.chat+'_PORTUGUESE')`,
+        ),
+      );
+      assert.equal(await guest(id, 'fixture.replyIndexCalls.length'), 2);
+    }
+    console.log(
+      'PASS reported Portuguese text: native scoped search outside loaded history, Unicode/emoji preservation, exact quote IDs and one dispatch per account/chat',
+    );
     await click('[aria-label="关闭回复窗口"]');
     console.log(
       'PASS native bulk replies: two accounts, group/private targets, latest quotes, explicit confirmation, no automatic mentions, isolated preferences/history and no ordinary fallback',
     );
+  } catch (error) {
+    console.error(
+      'Reply fixture diagnostics',
+      await evaluate(
+        `${expression}.records.filter(r=>!${JSON.stringify(recordsBefore)}.includes(r.id)).map(r=>({status:r.status,success:r.success,failed:r.failed,details:r.details,deliveries:r.deliveries?.map(d=>({status:d.status,error:d.error}))}))`,
+      ),
+    );
+    throw error;
   } finally {
     await evaluate(
       `(async()=>{const q=${expression};const ids=q.records.filter(r=>!${JSON.stringify(recordsBefore)}.includes(r.id)).map(r=>r.id);for(const id of ids)await q.stop(id);if(q.activeIds.size)throw Error('Reply test still active');await q.remove(ids);await require('electron').ipcRenderer.invoke('account-tools-reply-preferences',${JSON.stringify(replyBefore)});return true})()`,

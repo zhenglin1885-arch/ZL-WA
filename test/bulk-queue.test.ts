@@ -220,6 +220,73 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.send).toHaveBeenCalledTimes(1);
     expect(queue.records[0].status).toBe('待确认');
   });
+  it('refreshes earlier uncertain receipts at batch end by original ID without resending', async () => {
+    (adapter.send as jest.Mock).mockResolvedValueOnce({
+      messageId: 'known-pending',
+      confirmed: false,
+    });
+    adapter.reconcile = jest.fn(async (_target, messageId) => ({
+      messageId: messageId!,
+      confirmed: true,
+    }));
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+    expect(adapter.reconcile).toHaveBeenCalledTimes(1);
+    expect((adapter.reconcile as jest.Mock).mock.calls[0][1]).toBe(
+      'known-pending',
+    );
+    expect(queue.records[0]).toMatchObject({
+      status: '已完成',
+      success: 2,
+      failed: 0,
+      deliveries: [
+        { messageId: 'known-pending', status: 'sent' },
+        { status: 'sent' },
+      ],
+    });
+  });
+  it('keeps an uncertain result when a receipt check returns a different message ID', async () => {
+    (adapter.send as jest.Mock).mockResolvedValueOnce({
+      messageId: 'known-pending',
+      confirmed: false,
+    });
+    adapter.reconcile = jest.fn(async () => ({
+      messageId: 'other-message',
+      confirmed: true,
+    }));
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+    expect(queue.records[0]).toMatchObject({
+      status: '待确认',
+      success: 1,
+      deliveries: [
+        { messageId: 'known-pending', status: 'uncertain' },
+        { status: 'sent' },
+      ],
+    });
+  });
+  it('bounds the final read-only sweep if a receipt lookup hangs', async () => {
+    (adapter.send as jest.Mock).mockResolvedValueOnce({
+      messageId: 'known-pending',
+      confirmed: false,
+    });
+    adapter.reconcile = jest.fn(() => new Promise(() => {}));
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+    expect(adapter.reconcile).toHaveBeenCalledTimes(1);
+    expect(queue.records[0].status).toBe('待确认');
+  });
+  it('does not reconcile or resume a still-running timed-out send', async () => {
+    (adapter.send as jest.Mock).mockResolvedValueOnce({
+      messageId: 'known-pending',
+      confirmed: false,
+      timedOut: true,
+    });
+    adapter.reconcile = jest.fn();
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(adapter.reconcile).not.toHaveBeenCalled();
+  });
   it('stops on an internally timed-out native send even with a known ID and continue selected', async () => {
     (adapter.send as jest.Mock).mockResolvedValue({
       messageId: 'pending-native-send',
