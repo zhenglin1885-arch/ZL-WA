@@ -3,7 +3,7 @@ name: ZL-WA Windows
 on:
   # Isolated fallback for this test build while the local GitHub API is unavailable.
   push:
-    branches: ['test/7.3.5-20261027-6']
+    branches: ['test/7.3.5-20261027-7']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -45,7 +45,7 @@ jobs:
         if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-6' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-7' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
@@ -121,10 +121,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-6' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261027-7' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-6 群发语音波形测试包" --notes '独立测试包：群发语音改为实际解码全部声道生成波形，并将64个波形采样写入最终原生语音消息字段；解码失败时停止发送，不降级为普通音频。已通过OGG/Opus离线解码及最终字段验证，真实接收端效果仍需实测。本次修改针对群发语音入口，聊天窗口＋→Audio仍需另行适配。保留此前客户功能、下载、群发回执及图文翻译修复。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-7 Audio语音与批量点赞优化测试包" --notes '独立测试包：聊天窗口＋→Audio现在通过试听确认窗口复用群发原生语音路径，解码所有声道并将64个波形采样写入最终语音消息；支持单条音频及当前引用回复，发送前核对账号和聊天，失败不自动重发。批量点赞结果超过10条默认折叠，展开后仍限制列表高度；查找旁显示多账号累计匹配任务数，未匹配项不计入；重复正文和参考图片合并存储及传输，保留执行检查点、未确认状态及旧记录文件。已通过离线自动化和桌面回归，真实WhatsApp接收端头像、波形仍需本包实测。保留此前下载、客户资料、群发回执和图文翻译修复。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
           if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }
