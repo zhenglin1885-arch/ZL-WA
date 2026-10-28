@@ -247,6 +247,8 @@ export async function sendBulkMessage(
           /[\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,
           '',
         )
+        .replaceAll('\uFE0E', '')
+        .replaceAll('\uFE0F', '')
         .trim();
     const wanted = visibleText(spec.reply.text);
     if (

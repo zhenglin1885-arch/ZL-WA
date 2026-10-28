@@ -1444,6 +1444,16 @@ export function translationSurfaceDiagnostics() {
       revision: (window as any).__zlAudioUpload?.revision ?? null,
       last: (window as any).__zlAudioUpload?.last ?? null,
     },
+    reactionLookup: (window as any).__zlReactionLookup
+      ? {
+          revision: (window as any).__zlReactionLookup.revision,
+          phase: (window as any).__zlReactionLookup.phase,
+          indexAvailable: (window as any).__zlReactionLookup.indexAvailable,
+          indexScanned: (window as any).__zlReactionLookup.indexScanned,
+          historyScanned: (window as any).__zlReactionLookup.historyScanned,
+          historyLimited: (window as any).__zlReactionLookup.historyLimited,
+        }
+      : null,
     bulkReply: (window as any).__zlBulkReply
       ? {
           revision: (window as any).__zlBulkReply.revision,
@@ -1523,6 +1533,16 @@ export function translationDiagnostics() {
       revision: (window as any).__zlAudioUpload?.revision ?? null,
       last: (window as any).__zlAudioUpload?.last ?? null,
     },
+    reactionLookup: (window as any).__zlReactionLookup
+      ? {
+          revision: (window as any).__zlReactionLookup.revision,
+          phase: (window as any).__zlReactionLookup.phase,
+          indexAvailable: (window as any).__zlReactionLookup.indexAvailable,
+          indexScanned: (window as any).__zlReactionLookup.indexScanned,
+          historyScanned: (window as any).__zlReactionLookup.historyScanned,
+          historyLimited: (window as any).__zlReactionLookup.historyLimited,
+        }
+      : null,
     bulkReply: (window as any).__zlBulkReply
       ? {
           revision: (window as any).__zlBulkReply.revision,

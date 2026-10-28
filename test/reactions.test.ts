@@ -340,11 +340,15 @@ describe('reaction guest matching and dispatch', () => {
       ...overrides,
     });
   it('selects only the newest matching message even if raw rows are unsorted', async () => {
-    wpp.chat.getMessages.mockResolvedValue([
+    const rows = [
       message('old', '你好吗', 1),
       message('new', '你好吗', 3),
       message('other', 'other', 4),
-    ]);
+    ];
+    wpp.chat.getMessages.mockResolvedValue(rows);
+    wpp.chat.getMessageById.mockImplementation(async id =>
+      rows.find(row => row.id === id),
+    );
     expect(await find()).toMatchObject({
       messageId: `false_${groupId}_new`,
       timestamp: 3000,
@@ -352,19 +356,26 @@ describe('reaction guest matching and dispatch', () => {
     expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
   });
   it('paginates older history, ignores quoted text and never returns another group', async () => {
+    const found = message('found');
+    wpp.chat.getMessageById.mockResolvedValue(found);
     wpp.chat.getMessages
       .mockResolvedValueOnce([
         { ...message('x', '无关'), quotedMsg: { body: '你好吗' } },
         { ...message('z'), id: 'false_999@g.us_Z' },
       ])
-      .mockResolvedValueOnce([message('found')]);
+      .mockResolvedValueOnce([found]);
     expect(await find()).toMatchObject({ messageId: `false_${groupId}_found` });
     expect(wpp.chat.getMessages).toHaveBeenCalledTimes(2);
   });
   it('matches media captions and supports normalized/contains text', async () => {
-    wpp.chat.getMessages.mockResolvedValue([
-      { ...message('cap'), body: '', caption: '你 好，吗？', type: 'image' },
-    ]);
+    const caption = {
+      ...message('cap'),
+      body: '',
+      caption: '你 好，吗？',
+      type: 'image',
+    };
+    wpp.chat.getMessages.mockResolvedValue([caption]);
+    wpp.chat.getMessageById.mockResolvedValue(caption);
     expect(
       await reactionGuest({
         ownerId,
@@ -372,9 +383,9 @@ describe('reaction guest matching and dispatch', () => {
         rules: { ...rules(), match: 'normalized' },
       }),
     ).toHaveProperty('messageId');
-    wpp.chat.getMessages.mockResolvedValue([
-      message('contains', '问候：你好吗？'),
-    ]);
+    const contains = message('contains', '问候：你好吗？');
+    wpp.chat.getMessages.mockResolvedValue([contains]);
+    wpp.chat.getMessageById.mockResolvedValue(contains);
     expect(
       await reactionGuest({
         ownerId,
@@ -382,6 +393,134 @@ describe('reaction guest matching and dispatch', () => {
         rules: { ...rules(), match: 'contains' },
       }),
     ).toHaveProperty('messageId');
+  });
+  it.each(['exact', 'contains', 'normalized'] as const)(
+    'finds the reported welcome text outside the loaded page using %s',
+    async mode => {
+      const original =
+        'Sejam muito bem-vindos, novos amigos! 🌹\nNão precisam ter pressa, seja você iniciante no mundo dos investimentos ou alguém ainda se familiarizando com as operações na plataforma. Vamos passar por cada etapa juntos.';
+      const text =
+        mode === 'contains'
+          ? `Olá!\n${original}\nFim.`
+          : mode === 'normalized'
+            ? original.replaceAll(/\p{P}/gu, '').replaceAll(' ', '\n ')
+            : original;
+      const target = message(
+        'indexed',
+        `${text.normalize('NFD').replaceAll(' ', '\u00A0').replaceAll('🌹', '🌹\uFE0F')}\u200B`,
+        10,
+      );
+      const wid = { _serialized: groupId };
+      wpp.chat.get = jest.fn(async () => ({ id: wid }));
+      wpp.chat.getMessages
+        .mockResolvedValueOnce(
+          Array.from({ length: 166 }, (_v, i) =>
+            message(`recent${i}`, '无关内容', 100 + i),
+          ),
+        )
+        .mockResolvedValue([]);
+      wpp.chat.getMessageById.mockResolvedValue(target);
+      wpp.whatsapp = {
+        functions: {
+          msgFindSearch: jest.fn(async query => ({
+            messages:
+              query.searchTerm === original
+                ? []
+                : [
+                    target,
+                    { ...target, id: 'false_99999@g.us_FOREIGN', t: 999 },
+                  ],
+            eof: true,
+          })),
+        },
+      };
+      const result = await reactionGuest({
+        ownerId,
+        groupId,
+        rules: { ...rules(), text: original, match: mode },
+      });
+      expect(result).toMatchObject({ messageId: target.id, text: target.body });
+      expect(
+        wpp.whatsapp.functions.msgFindSearch.mock.calls.every(
+          ([query]) => query.remote === wid,
+        ),
+      ).toBe(true);
+      expect(
+        wpp.whatsapp.functions.msgFindSearch.mock.calls.some(
+          ([query]) => query.searchTerm !== original,
+        ),
+      ).toBe(true);
+      expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['missing', 'wrong-chat'])(
+    'uses an explicit native Wid when the chat model is %s',
+    async kind => {
+      const wid = { _serialized: groupId };
+      const target = message('db-only');
+      wpp.chat.get =
+        kind === 'missing'
+          ? jest.fn().mockRejectedValue(new Error('chat not loaded'))
+          : jest.fn(async () => ({ id: { _serialized: '99999@g.us' } }));
+      wpp.chat.getMessageById.mockResolvedValue(target);
+      wpp.whatsapp = {
+        WidFactory: { createWid: jest.fn(() => wid) },
+        functions: {
+          msgFindSearch: jest.fn(async () => ({
+            messages: [target],
+            eof: true,
+          })),
+        },
+      };
+      expect(await find()).toMatchObject({ messageId: target.id });
+      expect(wpp.whatsapp.functions.msgFindSearch.mock.calls[0][0].remote).toBe(
+        wid,
+      );
+      expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+    },
+  );
+  it('starts from a newer cached outgoing message instead of the older received anchor', async () => {
+    const old = message('old', '无关', 1);
+    const target = {
+      ...message('own', '你好吗', 10),
+      id: `true_${groupId}_OWN`,
+    };
+    wpp.chat.get = jest.fn(async () => ({
+      lastReceivedKey: old.id,
+      msgs: { getModelsArray: () => [target] },
+    }));
+    wpp.chat.getMessageById.mockImplementation(async id =>
+      id === target.id ? target : old,
+    );
+    wpp.chat.getMessages.mockResolvedValue([old]);
+    expect(await find()).toMatchObject({ messageId: target.id });
+    expect(wpp.chat.getMessages.mock.calls[0][1].id).toBe(target.id);
+    expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+  });
+  it('reports a stalled page as incomplete instead of declaring the message absent', async () => {
+    wpp.chat.getMessages.mockResolvedValue([message('repeat', '不匹配')]);
+    expect(await find()).toMatchObject({
+      error: expect.stringContaining('读取未完成'),
+    });
+    expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
+  });
+  it('rejects a keyword-only hit or an indexed message changed before preview', async () => {
+    const wrong = message('keyword', '你好吗，附加内容');
+    wpp.chat.get = jest.fn(async () => ({ id: { _serialized: groupId } }));
+    wpp.whatsapp = {
+      functions: {
+        msgFindSearch: jest.fn(async () => ({ messages: [wrong], eof: true })),
+      },
+    };
+    expect(await find()).toHaveProperty('error');
+    const target = message('target');
+    wpp.whatsapp.functions.msgFindSearch.mockResolvedValue({
+      messages: [target],
+      eof: true,
+    });
+    wpp.chat.getMessageById.mockResolvedValue({ ...target, body: '已编辑' });
+    await expect(find()).rejects.toThrow('已删除、编辑');
+    expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
   });
   it('reports not-found and rate limits without sending', async () => {
     expect(await find()).toHaveProperty('error');
@@ -421,6 +560,8 @@ describe('reaction guest matching and dispatch', () => {
       isRevoked: true,
     });
     expect(await send({ token: 'b' })).toMatchObject({ status: 'failed' });
+    wpp.chat.getMessageById.mockResolvedValue(message('other-id'));
+    expect(await send({ token: 'c' })).toMatchObject({ status: 'failed' });
     expect(wpp.chat.sendReactionToMessage).not.toHaveBeenCalled();
   });
   it('distinguishes server rejection from ambiguous transport errors without automatic retries', async () => {

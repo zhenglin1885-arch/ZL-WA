@@ -388,6 +388,98 @@ export async function verifyReactions({
       '点赞验证消息',
       'switching mode retains the original text setting',
     );
+    // Reproduce a message that manual search can find in the same group, but
+    // which is outside a 166-message loaded page. Searching must stay read-only.
+    const welcome =
+      'Sejam muito bem-vindos, novos amigos! 🌹\nNão precisam ter pressa, seja você iniciante no mundo dos investimentos ou alguém ainda se familiarizando com as operações na plataforma. Vamos passar por cada etapa juntos.';
+    const beforeLookupCounts = [];
+    for (const id of [first, second]) {
+      beforeLookupCounts.push(await guest(id, 'fixture.reactionCalls.length'));
+      await guest(
+        id,
+        String.raw`(()=>{
+        const text=${JSON.stringify(welcome)},oldRead=WPP.chat.getMessageById;
+        const indexed=group=>{
+          const mode=fixture.reactionLookupMode;
+          const variant=mode==='contains'?'Olá!\n'+text+'\nFim.':mode==='normalized'?text.replaceAll(/\p{P}/gu,'').replaceAll(' ','\n '):text;
+          return {id:'false_'+group+'_INDEXED_LOOKUP',body:variant.normalize('NFD').replaceAll(' ','\u00A0').replaceAll('🌹','🌹\uFE0F')+'\u200B',type:'chat',t:10};
+        };
+        WPP.chat.get=async group=>({id:{_serialized:group}});
+        WPP.chat.getMessages=async(group,options)=>options.id?[]:Array.from({length:166},(_,i)=>({id:'false_'+group+'_RECENT'+i,body:'其他内容',type:'chat',t:100+i}));
+        WPP.chat.getMessageById=async id=>id.endsWith('_INDEXED_LOOKUP')?indexed(id.split('_')[1]):oldRead(id);
+        WPP.whatsapp.functions.msgFindSearch=async query=>{
+          if(!query.remote?._serialized)throw Error('Unscoped reaction search');
+          return {messages:query.searchTerm===text?[]:[indexed(query.remote._serialized),indexed('99999@g.us')],eof:true};
+        };return true;
+      })()`,
+      );
+    }
+    for (const id of [first, second]) {
+      const selector = `.reaction-accounts [data-account-id="${id}"] input`;
+      if (
+        !(await evaluate(
+          `document.querySelector(${JSON.stringify(selector)}).checked`,
+        ))
+      )
+        await click(selector);
+      await wait(
+        `document.querySelectorAll('.reaction-groups .group-tools-group').length===3 && !document.querySelector('.reaction-groups button').disabled`,
+        'lookup accounts ready',
+      );
+    }
+    for (const group of ['10001@g.us', '10003@g.us']) {
+      const selector = `.reaction-groups [data-group-id="${group}"] input`;
+      if (
+        !(await evaluate(
+          `document.querySelector(${JSON.stringify(selector)}).checked`,
+        ))
+      )
+        await click(selector);
+    }
+    await evaluate(
+      `(()=>{const n=document.querySelector('[aria-label="点赞匹配文字"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(n,${JSON.stringify(welcome)});n.dispatchEvent(new Event('input',{bubbles:true}))})()`,
+    );
+    for (const mode of ['exact', 'contains', 'normalized']) {
+      for (const id of [first, second])
+        await guest(
+          id,
+          `fixture.reactionLookupMode=${JSON.stringify(mode)};true`,
+        );
+      await evaluate(
+        `(()=>{const n=document.querySelector('[aria-label="点赞文字匹配方式"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(n,${JSON.stringify(mode)});n.dispatchEvent(new Event('change',{bubbles:true}))})()`,
+      );
+      await clickText('查找匹配消息');
+      await wait(
+        `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 4 项') && [...document.querySelectorAll('.reaction-tools-dialog button')].some(b=>b.textContent==='查找匹配消息'&&!b.disabled)`,
+        `indexed welcome text found using ${mode}`,
+      );
+      assert.equal(
+        await evaluate(
+          `document.querySelectorAll('.reaction-preview article').length`,
+        ),
+        4,
+      );
+      for (const id of [first, second]) {
+        assert.equal(
+          await guest(id, 'window.__zlReactionLookup.phase'),
+          'verified',
+        );
+        assert.equal(
+          await guest(id, 'window.__zlReactionLookup.indexAvailable'),
+          true,
+        );
+      }
+    }
+    for (const [index, id] of [first, second].entries())
+      assert.equal(
+        await guest(id, 'fixture.reactionCalls.length'),
+        beforeLookupCounts[index],
+        'lookup never sends or repeats a reaction',
+      );
+    await shot('/workspace/ZL-WA-reactions-indexed-welcome.png');
+    console.log(
+      'PASS reported welcome text: all three matching modes, scoped DB search beyond 166 loaded messages, two-account totals, correct group/message IDs, Unicode formatting and no mutation during lookup',
+    );
     await click('[aria-label="关闭批量点赞"]');
     console.log(
       'PASS native reaction UI: merged groups, multi-account selection, newest-only preview, random emoji selection, staggered background execution, persisted results, cancellable future window, uploaded image previews and compressed-image matching',

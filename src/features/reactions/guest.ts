@@ -30,11 +30,19 @@ export async function reactionGuest(
     throw new Error('当前页面不是 WhatsApp');
   const page = window as any;
   const wpp = page.WPP;
-  const idOf = (id: any): string =>
-    typeof id === 'string'
-      ? id
-      : id?._serialized ||
-        (id?.user && id?.server ? `${id.user}@${id.server}` : '');
+  const idOf = (id: any): string => {
+    if (typeof id === 'string') return id;
+    if (typeof id?._serialized === 'string') return id._serialized;
+    if (id?.user && id?.server) return `${id.user}@${id.server}`;
+    const text = id?.toString?.();
+    if (typeof text === 'string' && text !== '[object Object]') return text;
+    try {
+      const Key = wpp.whatsapp?.MsgKey;
+      return id?.remote && id?.id && Key ? new Key(id).toString() : '';
+    } catch {
+      return '';
+    }
+  };
   const ownIds = () => {
     let prefs: any;
     try {
@@ -63,10 +71,24 @@ export async function reactionGuest(
     throw new Error('无效群组编号');
   if (!(await wpp.group.iAmMember(request.groupId)))
     throw new Error('当前账号已不在该群');
+  const visibleText = (text: string) =>
+    text
+      .normalize('NFC')
+      .replaceAll(/\r\n?/g, '\n')
+      .replaceAll(/[\u2028\u2029]/g, '\n')
+      .replaceAll(/[\u00A0\u202F]/g, ' ')
+      .replaceAll(
+        /[\u200B\u200E\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g,
+        '',
+      )
+      .replaceAll('\uFE0E', '')
+      .replaceAll('\uFE0F', '')
+      .trim();
   const normalize = (text: string) =>
     text.normalize('NFKC').replaceAll(/[\p{P}\p{Z}\s]/gu, '');
-  const matches = (text: string) => {
-    const wanted = request.rules.text.trim();
+  const matches = (input: string) => {
+    const wanted = visibleText(request.rules.text);
+    const text = visibleText(input);
     if (!wanted) return false;
     if (request.rules.match === 'contains') return text.includes(wanted);
     if (request.rules.match === 'normalized')
@@ -136,8 +158,221 @@ export async function reactionGuest(
   };
   const timeOf = (m: any) => {
     const n = Number(m.t || m.timestamp || 0);
-    return n < 1e12 ? n * 1000 : n;
+    return Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : 0;
   };
+  if (!request.messageId && !imageMode) {
+    const diagnostic = {
+      revision: 1,
+      phase: 'lookup',
+      indexAvailable: false,
+      indexScanned: 0,
+      historyScanned: 0,
+      historyLimited: false,
+    };
+    page.__zlReactionLookup = diagnostic;
+    const deadline = Date.now() + 20_000;
+    const bounded = async <T>(promise: Promise<T>): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('点赞消息读取超时，请稍后重新查找')),
+              Math.max(1, Math.min(3000, deadline - Date.now())),
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const wanted = visibleText(request.rules.text);
+    if (
+      !wanted ||
+      !['exact', 'contains', 'normalized'].includes(request.rules.match)
+    )
+      throw new Error('匹配文字或规则无效');
+    let chat: any;
+    try {
+      chat =
+        typeof wpp.chat.get === 'function'
+          ? await bounded(Promise.resolve(wpp.chat.get(request.groupId)))
+          : undefined;
+    } catch {
+      /* A DB search may still be possible without a loaded chat. */
+    }
+    if (chat?.id && idOf(chat.id) !== request.groupId) chat = undefined;
+    let scopedWid = chat?.id;
+    if (!scopedWid) {
+      try {
+        scopedWid = wpp.whatsapp?.WidFactory?.createWid?.(request.groupId);
+      } catch {
+        /* Optional native Wid factory. */
+      }
+    }
+    let found: any;
+    const consider = (rows: any[]) => {
+      for (const message of rows)
+        if (
+          eligibleBase(message) &&
+          matches(rawText(message)) &&
+          (!found || timeOf(message) > timeOf(found))
+        )
+          found = message;
+    };
+    let cached: any[] = [];
+    try {
+      cached = chat?.msgs?.getModelsArray?.() || [];
+    } catch {
+      /* Optional live collection. */
+    }
+    cached = cached
+      .filter(
+        message => idOf(message?.id) && remote(message) === request.groupId,
+      )
+      .sort((a, b) => timeOf(b) - timeOf(a));
+    consider(cached);
+    let indexedMatch = false;
+    let indexComplete = false;
+    try {
+      const search = wpp.whatsapp?.functions?.msgFindSearch;
+      if (typeof search === 'function' && scopedWid) {
+        diagnostic.indexAvailable = true;
+        const indexed = new Set<string>();
+        const words = [...new Set(wanted.match(/[\p{L}\p{N}]{4,}/gu) || [])]
+          .sort((a, b) => b.length - a.length)
+          .slice(0, 2);
+        let complete = true;
+        for (const term of new Set([wanted, ...words])) {
+          const termSeen = new Set<string>();
+          let exhausted = false;
+          try {
+            for (
+              let index = 0;
+              index < 10 && Date.now() < deadline - 8000;
+              index += 1
+            ) {
+              if (!own()) throw new Error('登录身份已变化，请重新选择账号');
+              const result: any = await bounded(
+                Promise.resolve(
+                  search({
+                    searchTerm: term,
+                    remote: scopedWid,
+                    count: 200,
+                    page: index,
+                  }),
+                ),
+              );
+              if (result?.canceled || !Array.isArray(result?.messages)) break;
+              const rows = result.messages.filter(
+                message => idOf(message?.id) && !termSeen.has(idOf(message.id)),
+              );
+              for (const message of rows) {
+                termSeen.add(idOf(message.id));
+                indexed.add(idOf(message.id));
+              }
+              diagnostic.indexScanned = indexed.size;
+              if (
+                rows.some(
+                  message => eligibleBase(message) && matches(rawText(message)),
+                )
+              )
+                indexedMatch = true;
+              consider(rows);
+              if (result.eof) exhausted = true;
+              if (result.eof || rows.length === 0) break;
+            }
+          } catch {
+            /* Try the other scoped term; lookup never sends a reaction. */
+          }
+          complete = complete && exhausted;
+        }
+        indexComplete = complete;
+      }
+    } catch {
+      /* Unavailable index falls back to chronological history. */
+    }
+    if (!own()) throw new Error('登录身份已变化，请重新选择账号');
+    const anchors = [...cached];
+    if (chat?.lastReceivedKey && wpp.chat.getMessageById) {
+      try {
+        const anchor = await bounded(
+          Promise.resolve(wpp.chat.getMessageById(idOf(chat.lastReceivedKey))),
+        );
+        if (anchor && remote(anchor) === request.groupId) anchors.push(anchor);
+      } catch {
+        /* The live cache or helper default remains available. */
+      }
+    }
+    anchors.sort((a, b) => timeOf(b) - timeOf(a));
+    consider(anchors);
+    let before = anchors.length > 0 ? idOf(anchors[0].id) : undefined;
+    const seen = new Set<string>();
+    diagnostic.phase = 'history';
+    for (let round = 0; round < 50; round += 1) {
+      if (indexComplete && indexedMatch && request.rules.match === 'exact')
+        break;
+      if (Date.now() >= deadline - 6000) {
+        diagnostic.historyLimited = true;
+        break;
+      }
+      if (!own()) throw new Error('登录身份已变化，请重新选择账号');
+      const source = await bounded(
+        Promise.resolve(
+          wpp.chat.getMessages(request.groupId, {
+            count: 200,
+            direction: 'before',
+            ...(before ? { id: before } : {}),
+          }),
+        ),
+      );
+      if (!Array.isArray(source)) throw new Error('消息读取结果异常');
+      const rows = source
+        .filter(message => idOf(message?.id) && !seen.has(idOf(message.id)))
+        .sort((a, b) => timeOf(b) - timeOf(a));
+      if (rows.length === 0) {
+        diagnostic.historyLimited = source.length > 0;
+        break;
+      }
+      for (const message of rows) seen.add(idOf(message.id));
+      diagnostic.historyScanned = seen.size;
+      consider(rows);
+      if (found && timeOf(rows.at(-1)) <= timeOf(found)) break;
+      const next = idOf(rows.at(-1).id);
+      if (next === before) {
+        diagnostic.historyLimited = true;
+        break;
+      }
+      before = next;
+      if (round === 49) diagnostic.historyLimited = true;
+    }
+    if (!found) {
+      diagnostic.phase = 'not-found';
+      return {
+        error: diagnostic.historyLimited
+          ? `历史消息读取未完成（已查找 ${seen.size} 条），尚不能确认匹配结果，请稍后重试`
+          : `当前账号的该群未找到匹配消息（历史 ${seen.size} 条，搜索候选 ${diagnostic.indexScanned} 条）`,
+      };
+    }
+    const key = idOf(found.id);
+    if (!wpp.chat.getMessageById)
+      throw new Error('目标消息读取接口未就绪，请稍后重新查找');
+    const latest = await bounded(Promise.resolve(wpp.chat.getMessageById(key)));
+    if (
+      idOf(latest?.id) !== key ||
+      !eligibleBase(latest) ||
+      !matches(rawText(latest))
+    )
+      throw new Error('目标消息已删除、编辑或不再匹配，请重新查找');
+    if (!own()) throw new Error('登录身份已变化，请重新选择账号');
+    diagnostic.phase = 'verified';
+    return {
+      messageId: key,
+      text: rawText(latest).slice(0, 20_000),
+      timestamp: timeOf(latest),
+    };
+  }
   if (!request.messageId) {
     const seen = new Set<string>();
     let before: string | undefined;
@@ -276,6 +511,7 @@ export async function reactionGuest(
   try {
     const message = await wpp.chat.getMessageById(request.messageId);
     if (
+      idOf(message?.id) !== request.messageId ||
       !(await eligible(message)) ||
       (!imageMode && rawText(message).slice(0, 20_000) !== request.expectedText)
     )

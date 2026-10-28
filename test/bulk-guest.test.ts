@@ -193,7 +193,7 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
           : mode === 'normalized'
             ? original.replaceAll(/\p{P}/gu, '').replaceAll(' ', '\n ')
             : original;
-      rows[1].body = `${variant.normalize('NFD').replaceAll(' ', '\u00A0')}\u200B`;
+      rows[1].body = `${variant.normalize('NFD').replaceAll(' ', '\u00A0').replaceAll('🙏', '🙏\uFE0F')}\u200B`;
       const input = replySpec(mode);
       input.reply!.text = original;
       await sendBulkMessage('10001@g.us', input);
