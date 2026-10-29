@@ -315,7 +315,7 @@ export function customerTick(
       .zl-chat-note::placeholder{color:#8a969c}
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
       .zl-chat-note[data-save-state="error"]{box-shadow:0 1px #ff6060}
-      .zl-customer-flags{display:inline-flex;gap:3px;vertical-align:middle;height:auto!important;margin-left:5px}
+      .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-left:5px}
       .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px!important;border-radius:50%;font:12px sans-serif;color:white}
     `;
     document.head.append(style);
@@ -651,22 +651,88 @@ export function customerTick(
   // unique exact name, never for two contacts sharing the same display name.
   const models: any[] = page.__zlCustomerAdapter?.models() || [];
   const idOf = (model: any) => page.__zlCustomerAdapter?.wid(model?.id) || '';
-  const nameOf = (model: any) =>
-    String(
-      model.formattedTitle ||
-        model.name ||
-        model.contact?.name ||
-        model.contact?.pushname ||
-        model.id?.user ||
-        '',
-    );
-  const names = new Map<string, string[]>();
+  const normalizeTitle = (value: string) =>
+    value
+      .normalize('NFC')
+      .replaceAll(/[\u00A0\u202F]/g, ' ')
+      .replaceAll(/[\u200B\u200E\u200F\uFEFF]/g, '')
+      .trim();
+  // Business verified names and push names can differ from the stored phone
+  // title. Index all native aliases, while keeping duplicate names ambiguous.
+  const titlesOf = (model: any): string[] => {
+    const values: string[] = [];
+    for (const read of [
+      () => model.formattedTitle,
+      () => model.name,
+      () => model.title?.(),
+      () => model.contact?.name,
+      () => model.contact?.pushname,
+      () => model.contact?.verifiedName,
+      () => model.contact?.formattedName,
+      () => model.contact?.formattedShortName,
+      () => model.contact?.formattedPhone,
+      () => model.id?.user,
+    ]) {
+      try {
+        const value = read();
+        if (typeof value === 'string' && normalizeTitle(value))
+          values.push(normalizeTitle(value));
+      } catch {
+        /* A contact getter can be unavailable during sync. */
+      }
+    }
+    return [...new Set(values)];
+  };
+  const names = new Map<string, Set<string>>();
   for (const model of models) {
-    const name = nameOf(model);
-    const matches = names.get(name);
-    if (matches) matches.push(idOf(model));
-    else names.set(name, [idOf(model)]);
+    for (const name of titlesOf(model)) {
+      const matches = names.get(name);
+      if (matches) matches.add(idOf(model));
+      else names.set(name, new Set([idOf(model)]));
+    }
   }
+  const titleMarkers = (row: HTMLElement): HTMLElement[] => {
+    const native = row.querySelector<HTMLElement>(
+      '[data-testid="cell-frame-title"]',
+    );
+    return [
+      ...(native || row).querySelectorAll<HTMLElement>(
+        native ? '[title], [dir="auto"], span' : '[title], [dir="auto"]',
+      ),
+      ...(native ? [native] : []),
+    ].filter(marker => !marker.closest('[data-zl-customers]'));
+  };
+  const labelOf = (element: HTMLElement): string =>
+    normalizeTitle(
+      element.getAttribute('title') ||
+        [...element.childNodes]
+          .filter(
+            node =>
+              !(
+                node.nodeType === 1 && (node as HTMLElement).dataset.zlCustomers
+              ),
+          )
+          .map(node => node.textContent || '')
+          .join(''),
+    );
+  const clearRow = (row: HTMLElement) => {
+    for (const element of [row, ...row.querySelectorAll('*')]) {
+      const old = state.layouts.get(element);
+      if (old) {
+        (element as HTMLElement).style.position = old.position;
+        (element as HTMLElement).style.top = old.top;
+        state.layouts.delete(element);
+      }
+    }
+    row.querySelectorAll('[data-zl-customers]').forEach(n => {
+      state.commits.get(n)?.();
+      n.remove();
+    });
+    const { dataset } = row;
+    delete dataset.zlCustomerKey;
+    delete dataset.zlCustomerRendered;
+    state.rowGeometry.delete(row);
+  };
   const modelIds = new Set(models.map(model => idOf(model)));
   state.models = models;
   state.idOf = idOf;
@@ -696,16 +762,12 @@ export function customerTick(
         '',
     );
     if (modelIds.has(possible)) return possible;
-    const markers = [
-      ...row.querySelectorAll<HTMLElement>(
-        '[data-testid="cell-frame-title"] [title], [title]:not([data-zl-customers])',
-      ),
-    ].filter(marker => !marker.closest('[data-zl-customers]'));
+    const markers = titleMarkers(row);
     const ids = [
       ...new Set(
         markers.flatMap(marker => {
-          const name = marker.getAttribute('title') || marker.textContent || '';
-          return names.get(name)?.length === 1 ? names.get(name)! : [];
+          const name = labelOf(marker);
+          return names.get(name)?.size === 1 ? [...names.get(name)!] : [];
         }),
       ),
     ];
@@ -761,16 +823,21 @@ export function customerTick(
         if (seen.has(row)) continue;
         seen.add(row);
         const match = state.resolveRow(row);
-        const marker = [
-          ...row.querySelectorAll<HTMLElement>(
-            '[data-testid="cell-frame-title"] span, [title]:not([data-zl-customers])',
-          ),
-        ].find(element =>
-          names
-            .get(element.getAttribute('title') || element.textContent || '')
-            ?.includes(match),
-        );
-        if (!marker) continue;
+        const marker =
+          titleMarkers(row).find(element =>
+            names.get(labelOf(element))?.has(match),
+          ) ||
+          (match
+            ? row.querySelector<HTMLElement>(
+                '[data-testid="cell-frame-title"] [dir="auto"], [data-testid="cell-frame-title"] [title], [data-testid="cell-frame-title"] span, [data-testid="cell-frame-title"]',
+              )
+            : undefined);
+        if (!match || !marker) {
+          // Virtual rows can be reused for a different conversation. Never
+          // leave a previous customer's widgets on an unidentified row.
+          clearRow(row);
+          continue;
+        }
         const key = `${match}:${data.revision}`;
         const existingNote =
           row.querySelector<HTMLInputElement>('.zl-chat-note');
@@ -820,18 +887,7 @@ export function customerTick(
             continue;
           }
         }
-        for (const element of [row, ...row.querySelectorAll('*')]) {
-          const old = state.layouts.get(element);
-          if (old) {
-            (element as HTMLElement).style.position = old.position;
-            (element as HTMLElement).style.top = old.top;
-            state.layouts.delete(element);
-          }
-        }
-        row.querySelectorAll('[data-zl-customers]').forEach(n => {
-          state.commits.get(n)?.();
-          n.remove();
-        });
+        clearRow(row);
         row.dataset.zlCustomerKey = key;
         if (!match) continue;
         let titleLine =
@@ -1031,7 +1087,15 @@ export function customerTick(
         !header.querySelector('[data-zl-customers=header]'))
     ) {
       header.querySelectorAll('[data-zl-customers]').forEach(n => n.remove());
-      const name = header.querySelector('[title]');
+      const name =
+        [...header.querySelectorAll<HTMLElement>('[title], [dir="auto"]')].find(
+          element =>
+            !element.closest('[data-zl-customers]') &&
+            names.get(labelOf(element))?.has(active),
+        ) ||
+        header.querySelector(
+          '[data-testid="conversation-info-header-chat-title"], [title]',
+        );
       if (name && active) {
         const line = document.createElement('span');
         line.dataset.zlCustomers = 'header';
