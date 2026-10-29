@@ -3,7 +3,7 @@ name: ZL-WA Windows
 on:
   # Isolated fallback for this test build while the local GitHub API is unavailable.
   push:
-    branches: ['test/7.3.5-20261028-9']
+    branches: ['test/7.3.5-20261028-10']
   workflow_dispatch:
     inputs:
       release_tag:
@@ -45,7 +45,7 @@ jobs:
         if: inputs.download_tag != '' || github.event_name == 'push'
         shell: pwsh
         env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-9' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-10' }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
@@ -121,10 +121,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-9' }}
+          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261028-10' }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-9 代理白屏与认证恢复测试包" --notes '独立测试包：修复代理或网络加载失败后白屏且不显示错误的问题，显示具体错误、代理检查提示与重载按钮；修改代理密码后刷新账号页面，切换代理配置时清理该账号旧认证缓存并重新建立连接，保留登录Cookie及其他账号数据。保留test-8的回复群发、回执核验、点赞查找修复，以及此前Audio语音波形等功能。自动化及本地Chromium代理认证和界面测试通过，实际代理供应商线路仍需实测。暂不更新正式版及自动更新。安装前请完全退出软件（包括托盘）后覆盖安装。'
+          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-10 群发发送适配与原会话诊断测试包" --notes '独立排查测试包：普通文字群发使用当前发送适配层，不再走旧的手工消息构造路径；明确发送错误及负ACK暂停后续群发，保留原消息编号，不自动重发。修正聊天列表仍在但连接未恢复时误报在线的问题。右侧翻译或代理面板新增检查并复制发送诊断，直接读取原会话连接、同步状态及已加载消息的发送状态计数，不包含消息内容、号码、消息编号、代理地址或密钥；不会清理登录或聊天数据。保留test-9及此前功能。本包自动化和本地模拟验证通过，实际故障原因仍需在原故障会话采集诊断后判断，不能保证已恢复发送。暂不更新正式版及自动更新。请完全退出软件含托盘后覆盖安装。'
           if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }
