@@ -68,6 +68,12 @@ class ServiceWebview extends Component<IProps> {
   componentDidMount(): void {
     this.startupTimer = setTimeout(() => {
       if (!this.startupDone) {
+        // History sync can outlive the startup queue budget. A loaded page
+        // must keep its linked-device state alive while other accounts start.
+        if (this.webview?.view && this.props.service.isLoading === false) {
+          this.finishStartup();
+          return;
+        }
         this.webview?.view?.stop();
         runInAction(() => {
           this.startupError = true;

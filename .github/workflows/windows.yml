@@ -23,12 +23,21 @@ jobs:
   build:
     permissions:
       contents: write
+      actions: write
     runs-on: windows-2022
     timeout-minutes: 45
     env:
       CI: true
       CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
+      # Replace the superseded test-10 candidate before it publishes old code.
+      - name: Cancel superseded test build
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh run cancel 40796320767
       - uses: actions/checkout@v4
         with:
           submodules: recursive

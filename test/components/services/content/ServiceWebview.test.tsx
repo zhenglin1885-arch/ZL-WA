@@ -79,6 +79,35 @@ const ServiceWebview = jest.requireActual<
 >('../../../../src/components/services/content/ServiceWebview').default;
 
 describe('ServiceWebview', () => {
+  it('keeps an already loaded WhatsApp page alive while history sync exceeds the startup budget', () => {
+    jest.useFakeTimers();
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isLoading: false,
+      accountSnapshot: { status: 'loading' },
+    });
+    const onStartupReady = jest.fn();
+    const component = new ServiceWebview({
+      ...props,
+      onStartupReady,
+    } as any) as ServiceWebviewClass;
+    const view = Object.assign(createMockWebviewElement(), {
+      stop: jest.fn(),
+      executeJavaScript: jest.fn(async () => false),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      component.componentDidMount();
+      jest.advanceTimersByTime(45_001);
+      expect(view.stop).not.toHaveBeenCalled();
+      expect(component.startupError).toBe(false);
+      expect(onStartupReady).toHaveBeenCalledTimes(1);
+    } finally {
+      component.componentWillUnmount();
+      jest.useRealTimers();
+    }
+  });
   it('waits for proxy preparation before navigating and keeps accounts isolated under shared-session settings', async () => {
     // esbuild-runner uses classic JSX; the real renderer supplies global React.
     const originalReact = Object.getOwnPropertyDescriptor(globalThis, 'React');
