@@ -1078,6 +1078,7 @@ export function customerTick(
     } catch {
       /* No conversation. */
     }
+    state.activeChatId = active;
     const header = document.querySelector('#main header');
     // Remove notes left by an older injected version without touching native text.
     header?.querySelectorAll('.zl-header-note').forEach(n => n.remove());

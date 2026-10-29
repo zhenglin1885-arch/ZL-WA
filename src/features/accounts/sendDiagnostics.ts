@@ -60,6 +60,64 @@ export function readSendDiagnostics() {
       }
     }
   }
+  // Only booleans/counts leave the page. Native IDs and customer text stay
+  // local, including when a virtual row cannot be matched to a chat model.
+  const customer = page.__zlCustomers;
+  const adapter = page.__zlCustomerAdapter;
+  const customerModels = read(() => adapter.models());
+  const active = read(() => customer.activeChatId) || '';
+  const canonical = (id: string) => customer?.data?.aliases?.[id] || id;
+  const rows: HTMLElement[] =
+    read(() =>
+      [
+        ...new Set(
+          [
+            ...document.querySelectorAll<HTMLElement>(
+              '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
+            ),
+          ].map(row => row.closest<HTMLElement>('[role="row"]') || row),
+        ),
+      ].slice(0, 100),
+    ) || [];
+  const resolved = rows.map(row => read(() => customer.resolveRow(row)) || '');
+  const activeRow =
+    rows.find(
+      (_row, i) =>
+        active && resolved[i] && canonical(resolved[i]) === canonical(active),
+    ) ||
+    rows.find(
+      row =>
+        row.getAttribute('aria-selected') === 'true' ||
+        row.querySelector('[aria-selected="true"]'),
+    );
+  const customers = {
+    installed: Boolean(customer?.data),
+    ownerMatches:
+      read(() => adapter.owners().includes(customer.data.owner)) === true,
+    models: Array.isArray(customerModels) ? customerModels.length : null,
+    loadedRows: rows.length,
+    resolvedRows: resolved.filter(Boolean).length,
+    rowsWithNotes: rows.filter(row => row.querySelector('.zl-chat-note'))
+      .length,
+    activeChatKnown: Boolean(active),
+    activeModelPresent: Boolean(
+      active &&
+        Array.isArray(customerModels) &&
+        customerModels.some(
+          model => canonical(adapter.wid(model.id)) === canonical(active),
+        ),
+    ),
+    activeSummaryPresent: Boolean(
+      active && customer?.data?.summaries?.[canonical(active)],
+    ),
+    activeRowLocated: Boolean(activeRow),
+    activeTitleContainer: Boolean(
+      activeRow?.querySelector('[data-testid="cell-frame-title"]'),
+    ),
+    activeNotePresent: Boolean(activeRow?.querySelector('.zl-chat-note')),
+    activeFlagCount:
+      activeRow?.querySelectorAll('.zl-customer-flag').length ?? null,
+  };
   return {
     format: 1,
     browserOnline: bool(read(() => navigator.onLine)),
@@ -74,5 +132,6 @@ export function readSendDiagnostics() {
     mainLoaded: bool(read(() => wpp.conn.isMainLoaded())),
     messageStoreReadable: Array.isArray(models),
     outgoing,
+    customers,
   };
 }

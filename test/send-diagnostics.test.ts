@@ -1,16 +1,59 @@
 import vm from 'node:vm';
 import { readSendDiagnostics } from '../src/features/accounts/sendDiagnostics';
 
-const run = (page: any) =>
+const run = (page: any, document?: any) =>
   JSON.parse(
     JSON.stringify(
       vm.runInNewContext(`(${readSendDiagnostics.toString()})()`, {
         window: page,
         location: { hostname: 'web.whatsapp.com' },
         navigator: { onLine: true },
+        document,
       }),
     ),
   );
+
+it('reports original customer row recognition without copying saved customer text or IDs', () => {
+  const id = '10002@c.us';
+  const row: any = {
+    closest: () => row,
+    querySelector: () => ({}),
+    querySelectorAll: () => [{}],
+  };
+  const result = run(
+    {
+      __zlCustomerAdapter: {
+        models: () => [{ id }],
+        owners: () => ['private-owner'],
+        wid: (value: string) => value,
+      },
+      __zlCustomers: {
+        activeChatId: id,
+        data: {
+          owner: 'private-owner',
+          aliases: {},
+          summaries: { [id]: { remarkName: 'private-note' } },
+        },
+        resolveRow: () => id,
+      },
+    },
+    { querySelectorAll: () => [row] },
+  );
+  expect(result.customers).toMatchObject({
+    installed: true,
+    ownerMatches: true,
+    loadedRows: 1,
+    resolvedRows: 1,
+    activeModelPresent: true,
+    activeSummaryPresent: true,
+    activeRowLocated: true,
+    activeNotePresent: true,
+    activeFlagCount: 1,
+  });
+  expect(JSON.stringify(result)).not.toMatch(
+    /private-owner|private-note|10002@c.us/,
+  );
+});
 
 it('reads live session readiness and bounded outgoing ACK counts without reading message content or mutating the session', () => {
   const mutate = jest.fn(() => {

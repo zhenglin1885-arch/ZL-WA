@@ -70,11 +70,15 @@ try {
           anonymous.dataset.id=id;anonymous.__reactProps$fixture={chat:model};await render();
           check(valid(),'Exact ID did not disambiguate duplicate business names');
           check(row().querySelector('.fixture-preview').textContent.startsWith('Waiting for this message'),'Native pending-message preview was changed');
+          row().querySelector('.fixture-preview').textContent='This business is now using a secure service from Meta to manage this chat.';
+          document.querySelector('#messages').replaceChildren();
+          await render();check(valid(),'Removing the pending message hid customer controls');
+          check(!document.querySelector('#messages [data-id]'),'Fixture should have no ordinary message IDs');
           const note=row().querySelector('.zl-chat-note');note.focus();note.value='new business note';note.dispatchEvent(new Event('input',{bubbles:true}));note.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
           const actions=tick(undefined,id);
           check(actions.some(a=>a.action==='saveRemark'&&a.chatId===id&&a.value==='new business note'&&a.owner===owner),'Inline note saved to wrong account/chat');
           note.blur();const bounds=note.getBoundingClientRect();
-          return {verifiedBusiness:true,exactIdWithChangedDisplay:true,titleWithoutAttribute:true,uniqueAlias:true,duplicateNamesProtected:true,staleWidgetsRemoved:true,waitingPreviewPreserved:true,inlineSaveOwnerCorrect:true,point:{x:Math.round(bounds.x+bounds.width/2),y:Math.round(bounds.y+bounds.height/2)}};
+          return {verifiedBusiness:true,exactIdWithChangedDisplay:true,titleWithoutAttribute:true,uniqueAlias:true,duplicateNamesProtected:true,staleWidgetsRemoved:true,waitingPreviewPreserved:true,inlineSaveOwnerCorrect:true,metaServiceOnly:true,point:{x:Math.round(bounds.x+bounds.width/2),y:Math.round(bounds.y+bounds.height/2)}};
         })()`);
           win.show();
           win.focus();
