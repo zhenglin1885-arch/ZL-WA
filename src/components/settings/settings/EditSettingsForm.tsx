@@ -1398,7 +1398,7 @@ class EditSettingsForm extends Component<IProps, IState> {
                 <Toggle {...form.$('beta').bind()} />
                 <GitHubUpdatesPanel />
                 <p className="settings__message">
-                  <Icon icon={mdiGithub} /> Ferdium is based on{' '}
+                  <Icon icon={mdiGithub} /> ZL-WA is based on{' '}
                   <a
                     href={`${GITHUB_FRANZ_URL}/franz`}
                     target="_blank"
