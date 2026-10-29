@@ -27,7 +27,7 @@ const messages = defineMessages({
   },
   hibernatingAction: {
     id: 'service.hibernating.action',
-    defaultMessage: 'Try switching services or reloading Ferdium.',
+    defaultMessage: 'Try switching services or reloading ZL-WA.',
   },
 });
 
