@@ -46,6 +46,16 @@ export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
     )
   )
     return { status: 'logged-out' };
+  // A cached chat list can survive a disconnected socket. It is not proof
+  // that this linked device is currently able to send.
+  if (typeof socketState === 'string' && socketState !== 'CONNECTED')
+    return { status: 'loading' };
+  try {
+    if (page.WPP?.isReady && page.WPP.conn?.isMainReady?.() === false)
+      return { status: 'loading' };
+  } catch {
+    /* Keep native socket detection when this optional SDK read fails. */
+  }
   const loggedIn =
     socketState === 'CONNECTED' ||
     Boolean(document.querySelector('#pane-side, #side'));

@@ -47,6 +47,28 @@ describe('WhatsApp account adapter', () => {
     const snapshot2 = await readWhatsAppSnapshot();
     expect(snapshot2.status).toBe('error');
   });
+  it('does not treat a cached sidebar as online while the socket is reconnecting', async () => {
+    selectors.add('#pane-side, #side');
+    modules.WAWebSocketModel = { Socket: { state: 'OPENING' } };
+    await expect(readWhatsAppSnapshot()).resolves.toMatchObject({
+      status: 'loading',
+    });
+    modules.WAWebSocketModel.Socket.state = 'CONNECTED';
+    await expect(readWhatsAppSnapshot()).resolves.toMatchObject({
+      status: 'online',
+    });
+  });
+  it('waits for linked-device synchronisation even after the socket connects', async () => {
+    modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
+    (window as any).WPP = { isReady: true, conn: { isMainReady: () => false } };
+    await expect(readWhatsAppSnapshot()).resolves.toMatchObject({
+      status: 'loading',
+    });
+    (window as any).WPP.conn.isMainReady = () => true;
+    await expect(readWhatsAppSnapshot()).resolves.toMatchObject({
+      status: 'online',
+    });
+  });
 
   it('identifies logout, connected and conflicting sessions from actual socket state', async () => {
     modules.WAWebSocketModel = { Socket: { state: 'UNPAIRED' } };

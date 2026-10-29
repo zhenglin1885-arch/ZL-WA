@@ -15,6 +15,9 @@ const {
   sendTextToChat,
 } = require('../build/features/accountTools/guest');
 const { defaultTools } = require('../build/features/accountTools/config');
+const {
+  readSendDiagnostics,
+} = require('../build/features/accounts/sendDiagnostics');
 
 const { captureChat } = require('../build/features/chatBackup/guest');
 const advanced = require('../build/features/accountTools/bulkGuest');
@@ -65,6 +68,10 @@ const {
   });
   const call = (fn, args = []) =>
     vm.runInContext(`(${fn.toString()})(...${JSON.stringify(args)})`, context);
+  const connection = JSON.parse(JSON.stringify(call(readSendDiagnostics)));
+  assert.equal(connection.socket, 'CONNECTED');
+  assert.equal(connection.messageStoreReadable, false);
+  assert.equal(connection.outgoing.inspected, 0);
   assert.deepEqual(
     JSON.parse(JSON.stringify(call(customers.readCustomerContext))),
     {

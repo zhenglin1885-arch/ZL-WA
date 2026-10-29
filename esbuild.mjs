@@ -95,6 +95,7 @@ const runEsbuild = async () => {
   // esbuild's module-scope __name helper inside otherwise self-contained code.
   const guestEntries = [
     'src/features/accounts/whatsapp.ts',
+    'src/features/accounts/sendDiagnostics.ts',
     'src/features/accounts/unread.ts',
     'src/features/accounts/layout.ts',
     'src/features/accounts/voice.ts',

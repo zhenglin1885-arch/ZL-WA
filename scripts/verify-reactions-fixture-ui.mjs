@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop -- Isolated native desktop fixture setup, verification and cleanup. */
+/* eslint-disable no-await-in-loop, no-console -- Isolated native desktop fixture setup, verification and cleanup. */
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import {
@@ -88,7 +88,47 @@ try {
       writeFileSync(path, Buffer.from(result.data, 'base64'));
     },
   };
-  if (process.argv.includes('--bulk-replies')) {
+  if (process.argv.includes('--send-diagnostics')) {
+    const clipboardBefore = await evaluate(
+      `require('electron').clipboard.readText()`,
+    );
+    try {
+      await evaluate(
+        `document.querySelectorAll('.account-tools button').forEach(b=>{if(b.querySelector('span')?.textContent==='翻译')b.click()})`,
+      );
+      await wait(
+        `!![...document.querySelectorAll('button')].find(b=>b.textContent==='检查并复制发送诊断')`,
+        'diagnostic button mounted',
+      );
+      await clickText('检查并复制发送诊断');
+      await wait(
+        `document.body.textContent.includes('发送诊断已复制')`,
+        'diagnostic copied',
+      );
+      const result = await evaluate(
+        `JSON.parse(require('electron').clipboard.readText())`,
+      );
+      assert.equal(result.connection.socket, 'CONNECTED');
+      assert.equal(result.connection.format, 1);
+      assert(result.browser.chromium);
+      assert.equal(result.proxy.enabled, false);
+      assert.equal(result.connection.outgoing.inspected, 0);
+      console.log(
+        'PASS native diagnostic button copies only version, connection readiness and ACK counts without enabling proxy or sending',
+      );
+    } catch (error) {
+      throw new Error(
+        `${String(error)}; notice: ${await evaluate(`document.querySelector('.tools-notice')?.textContent`)}`,
+      );
+    } finally {
+      await evaluate(
+        `require('electron').clipboard.writeText(${JSON.stringify(clipboardBefore)})`,
+      );
+      await evaluate(
+        `document.querySelectorAll('.account-tools button[aria-pressed="true"]').forEach(b=>{if(b.querySelector('span')?.textContent==='翻译')b.click()})`,
+      );
+    }
+  } else if (process.argv.includes('--bulk-replies')) {
     const queueExpression = `require('./features/accountTools/bulkRuntime').getBulkQueue(window.ferdium.stores)`;
     await evaluate(
       `(async()=>{const q=${queueExpression};await q.load();if(q.activeIds.size||q.records.some(r=>r.status==='待发送'))throw Error('Use a QA profile without active or scheduled bulk tasks')})()`,
