@@ -2,7 +2,6 @@ import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import type { Recipient } from './config';
 import BulkQueue from './BulkQueue';
-import { sendTextToChat } from './guest';
 import {
   sendBulkMessage,
   revokeBulkMessage,
@@ -77,32 +76,20 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         remove: ids => ipcRenderer.invoke('account-tools-history-delete', ids),
         send: async (target, spec) => {
           const view = viewFor(target);
-          let outcome;
-          // Retain the small, tested text adapter for ordinary text sends.
-          if (
-            spec.type === 'text' &&
-            !spec.reply &&
-            !spec.mentionAll &&
-            spec.typingSeconds === 0 &&
-            !target.contactOnly
-          ) {
-            outcome = await view.executeJavaScript(
-              `(${sendTextToChat.toString()})(${JSON.stringify(target.id)},${JSON.stringify(spec.text)})`,
-            );
-          } else {
-            await ensureBulkLibrary(view);
-            const dataUrl = spec.media
-              ? await ipcRenderer.invoke(
-                  'account-tools-media-read',
-                  spec.media.id,
-                )
-              : undefined;
-            if (viewFor(target) !== view)
-              throw new Error('账号窗口已变化，请重新检查');
-            outcome = await view.executeJavaScript(
-              `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)})`,
-            );
-          }
+          // Ordinary text also needs the current sender/addressing/session
+          // preparation. Never fall back to constructing a raw MsgModel.
+          await ensureBulkLibrary(view);
+          const dataUrl = spec.media
+            ? await ipcRenderer.invoke(
+                'account-tools-media-read',
+                spec.media.id,
+              )
+            : undefined;
+          if (viewFor(target) !== view)
+            throw new Error('账号窗口已变化，请重新检查');
+          const outcome = await view.executeJavaScript(
+            `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)})`,
+          );
           if (!outcome.confirmed && outcome.messageId) {
             try {
               if (viewFor(target) !== view) return outcome;
@@ -111,6 +98,8 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
               );
               if (viewFor(target) === view && receipt.confirmed)
                 return { ...outcome, confirmed: true, error: undefined };
+              if (viewFor(target) === view && receipt.halt)
+                return { ...outcome, ...receipt };
             } catch {
               // The original message ID survives failed read-only checks.
               // Never submit the message again to obtain a cleaner result.
@@ -136,7 +125,9 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
             throw new Error('账号窗口已变化，请重新核对');
           return receipt.confirmed
             ? { ...outcome, confirmed: true, error: undefined }
-            : outcome;
+            : receipt.halt
+              ? { ...outcome, ...receipt }
+              : outcome;
         },
         edit: async (target, messageId, text) => {
           const view = viewFor(target);

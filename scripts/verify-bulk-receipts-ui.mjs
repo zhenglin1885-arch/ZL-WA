@@ -14,16 +14,19 @@ export async function verifyBulkReceipts({
     const collections=window.require('WAWebCollections'),sender=window.require('WAWebSendMsgChatAction');
     fixture.receiptProof={collections,sender,oldStore:collections.Msg,oldSend:sender.addAndSendMsgToChat,oldChat:WPP.chat,count:0,messages:new Map(),mode:'delayed'};
     const p=fixture.receiptProof;
-    WPP.chat={...(WPP.chat||{}),getMessageById:async id=>p.messages.get(id)};
-    collections.Msg={get:id=>p.messages.get(id)};
-    sender.addAndSendMsgToChat=(chat,message)=>{
-      p.count++;message.id.fromMe=true;message.id.remote=chat.id;
-      p.messages.set(message.id._serialized,message);
+    WPP.chat={...(WPP.chat||{}),get:async id=>collections.Chat.get(id),getMessageById:async id=>p.messages.get(id),sendTextMessage:async(id,body)=>{
+      const chat=collections.Chat.get(id);
+      const key={_serialized:'true_'+id+'_RECEIPT_'+Date.now()+'_'+p.count,fromMe:true,remote:chat.id};
+      const message={id:key,body,ack:0};
+      p.count++;p.messages.set(key._serialized,message);
       if(p.mode==='delayed')setTimeout(()=>message.ack=1,400);
+      else if(p.mode==='failed')message.ack=-1;
       else if(p.count>1)message.ack=1;
       if(p.mode==='late-first'&&p.count>1)for(const m of p.messages.values())m.ack=1;
-      return [Promise.resolve(message),Promise.resolve({})];
-    };
+      return {id:key._serialized,ack:message.ack};
+    }};
+    collections.Msg={get:id=>p.messages.get(id)};
+    sender.addAndSendMsgToChat=()=>{throw Error('Legacy raw message shortcut must not run')};
     return true;
   })()`,
   );
@@ -78,6 +81,21 @@ export async function verifyBulkReceipts({
       await guest(first, 'fixture.receiptProof.count'),
       2,
       'late receipt sweep never resends',
+    );
+    await guest(
+      first,
+      `fixture.receiptProof.mode='failed';fixture.receiptProof.count=0;fixture.receiptProof.messages.clear();true`,
+    );
+    const failed = await evaluate(
+      `(async()=>{const q=${queueExpression};const id=await q.submit(${JSON.stringify(spec)});return q.records.find(r=>r.id===id)})()`,
+    );
+    assert.equal(failed.status, '待确认');
+    assert.equal(failed.deliveries.length, 1);
+    assert.match(failed.deliveries[0].error, /ACK=-1/);
+    assert.equal(
+      await guest(first, 'fixture.receiptProof.count'),
+      1,
+      'negative ACK pauses following sends without replay',
     );
     console.log(
       'PASS actual bulk runtime: delayed native ACK resolves to success; settled pending IDs honor continue policy with no resend and retain history',

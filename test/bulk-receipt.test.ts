@@ -21,6 +21,37 @@ describe('read-only settling of a newly sent message receipt', () => {
       Object.defineProperty(globalThis, key, { configurable: true, value });
     }
   });
+  it.each([-1, -2, -3, -4, -5, -6, -7])(
+    'reports native negative ACK %s as a paused send error without mutating or retrying',
+    async ack => {
+      message.ack = ack;
+      const result = await waitForBulkReceipt('chat@g.us', 'outgoing-id');
+      expect(result).toMatchObject({
+        messageId: 'outgoing-id',
+        confirmed: false,
+        halt: true,
+      });
+      expect(result.error).toContain(`ACK=${ack}`);
+    },
+  );
+  it('preserves a live negative ACK even if the supplementary message read hangs', async () => {
+    page.WPP = {
+      isReady: true,
+      chat: { getMessageById: jest.fn(() => new Promise(() => {})) },
+    };
+    setTimeout(() => {
+      message.ack = -1;
+    }, 100);
+    const check = waitForBulkReceipt('chat@g.us', 'outgoing-id');
+    await jest.runAllTimersAsync();
+    expect(await check).toMatchObject({
+      messageId: 'outgoing-id',
+      confirmed: false,
+      halt: true,
+      error: expect.stringContaining('ACK=-1'),
+    });
+    expect(page.WPP.chat.getMessageById).toHaveBeenCalledTimes(1);
+  });
   afterEach(() => {
     jest.useRealTimers();
     for (const [key, descriptor] of originals) {

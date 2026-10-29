@@ -40,6 +40,22 @@ export async function waitForBulkReceipt(
     confirmed: false,
     error: '已记录消息编号，服务器回执仍待确认；未重发原消息',
   };
+  const failedReceipt = (ack: number): BulkSendOutcome => {
+    const reasons: Record<number, string> = {
+      '-1': '发送失败',
+      '-2': '消息已过期',
+      '-3': '媒体已不可用',
+      '-4': '内容过大',
+      '-5': '内容无法上传',
+      '-6': '消息未激活',
+      '-7': '设备协议降级',
+    };
+    return {
+      ...pending,
+      halt: true,
+      error: `WhatsApp 消息状态：${reasons[ack] || '发送错误'}（ACK=${ack}）；已暂停后续发送，请先检查账号连接及原消息，未自动重发`,
+    };
+  };
   const until = Date.now() + 6000;
   for (const delay of [0, 200, 400, 800, 1200, 2000]) {
     if (delay)
@@ -56,7 +72,11 @@ export async function waitForBulkReceipt(
     const read = async () => {
       const native = store?.get?.(messageId);
       if (native && !belongs(native)) return { invalidIdentity: true };
-      if (native && Number(native.ack ?? native.attributes?.ack) >= 1)
+      if (
+        native &&
+        (Number(native.ack ?? native.attributes?.ack) >= 1 ||
+          Number(native.ack ?? native.attributes?.ack) < 0)
+      )
         return native;
       const api = page.WPP?.isReady ? page.WPP.chat : undefined;
       let message = native;
@@ -68,7 +88,11 @@ export async function waitForBulkReceipt(
         }
       }
       if (message && !belongs(message)) return { invalidIdentity: true };
-      if (message && Number(message.ack ?? message.attributes?.ack) >= 1)
+      if (
+        message &&
+        (Number(message.ack ?? message.attributes?.ack) >= 1 ||
+          Number(message.ack ?? message.attributes?.ack) < 0)
+      )
         return message;
       if (
         (message || native || ownKey) &&
@@ -109,12 +133,22 @@ export async function waitForBulkReceipt(
           Number(current.ack ?? current.attributes?.ack) >= 1
         )
           return { messageId, confirmed: true };
+        if (
+          current &&
+          belongs(current) &&
+          Number(current.ack ?? current.attributes?.ack) < 0
+        )
+          return failedReceipt(Number(current.ack ?? current.attributes?.ack));
         return pending;
       }
       if (message?.invalidIdentity) return pending;
       if (message?.receiptConfirmed) return { messageId, confirmed: true };
       if (message) {
         if (!belongs(message)) return pending;
+        const ack = Number(message.ack ?? message.attributes?.ack);
+        if (ack < 0) {
+          return failedReceipt(ack);
+        }
         if (Number(message.ack ?? message.attributes?.ack) >= 1)
           return { messageId, confirmed: true };
       }
@@ -156,6 +190,14 @@ export async function sendBulkMessage(
   const wpp = (window as any).WPP;
   if (!wpp?.isReady)
     throw new Error('WhatsApp 消息接口尚未就绪，请刷新账号后重试');
+  let socketState: unknown;
+  try {
+    socketState = (window as any).require?.('WAWebSocketModel')?.Socket?.state;
+  } catch {
+    /* Some versions only expose connection state through WPP. */
+  }
+  if (typeof socketState === 'string' && socketState !== 'CONNECTED')
+    throw new Error('WhatsApp 账号未连接，未提交消息；请先恢复账号连接');
   const chat = await wpp.chat.get(chatId);
   if (
     chat?.isReadOnly ||
@@ -490,9 +532,25 @@ export async function sendBulkMessage(
       throw new Error('未能读取群成员，无法 @所有人');
   }
   let result: any;
-  if (spec.type === 'text')
-    result = await wpp.chat.sendTextMessage(chatId, content, options);
-  else if (spec.type === 'contact')
+  if (spec.type === 'text') {
+    try {
+      result = await wpp.chat.sendTextMessage(chatId, content, options);
+    } catch (error) {
+      // Submission may have happened before the promise rejected. Do not
+      // classify it as safely retryable or expose provider/user message text.
+      const code = (error as any)?.code || (error as any)?.name;
+      const label =
+        typeof code === 'string' && /^[_a-z][\w-]{0,59}$/i.test(code)
+          ? `（${code}）`
+          : '';
+      return {
+        messageId: '',
+        confirmed: false,
+        halt: true,
+        error: `WhatsApp 文字发送接口报错${label}；发送结果待核验，已暂停后续发送，未自动重发`,
+      };
+    }
+  } else if (spec.type === 'contact')
     result = await wpp.chat.sendVCardContactMessage(
       chatId,
       { id: `${spec.contactPhone}@c.us`, name: spec.contactName },
@@ -655,6 +713,13 @@ export async function sendBulkMessage(
       result.ack >= 1 ||
       ['OK', 'success'].includes(result.sendMsgResult) ||
       ['OK', 'success'].includes(result.sendMsgResult?.messageSendResult),
+    ...(Number(result.ack) < 0
+      ? {
+          confirmed: false,
+          halt: true,
+          error: `WhatsApp 发送错误（ACK=${Number(result.ack)}）；已暂停后续发送，未自动重发`,
+        }
+      : {}),
   };
 }
 

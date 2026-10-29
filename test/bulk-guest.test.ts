@@ -493,6 +493,42 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     });
     expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
   });
+  it('keeps a text submission exception uncertain, pauses and reports only the error code without replaying', async () => {
+    wpp.chat.sendTextMessage.mockRejectedValue(
+      Object.assign(new Error('private message and proxy password'), {
+        code: 'send_message_failed',
+      }),
+    );
+    const result = await sendBulkMessage('chat@g.us', spec());
+    expect(result).toMatchObject({
+      messageId: '',
+      confirmed: false,
+      halt: true,
+    });
+    expect(result.error).toContain('send_message_failed');
+    expect(result.error).not.toContain('private message');
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
+  it('checks the actual socket before submission even when the account sidebar still appears online', async () => {
+    (window as any).require = () => ({ Socket: { state: 'UNPAIRED' } });
+    await expect(sendBulkMessage('chat@g.us', spec())).rejects.toThrow(
+      '账号未连接',
+    );
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
+  it('does not count a negative ACK as accepted even if the helper also reports OK', async () => {
+    wpp.chat.sendTextMessage.mockResolvedValue({
+      id: 'own-message',
+      ack: -1,
+      sendMsgResult: 'OK',
+    });
+    expect(await sendBulkMessage('chat@g.us', spec())).toMatchObject({
+      messageId: 'own-message',
+      confirmed: false,
+      halt: true,
+      error: expect.stringContaining('ACK=-1'),
+    });
+  });
   it('constructs a contact card from the user supplied name and international number', async () => {
     await sendBulkMessage('chat@g.us', spec('contact'));
     expect(wpp.chat.sendVCardContactMessage).toHaveBeenCalledWith(

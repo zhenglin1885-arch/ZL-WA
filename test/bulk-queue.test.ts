@@ -220,6 +220,28 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.send).toHaveBeenCalledTimes(1);
     expect(queue.records[0].status).toBe('待确认');
   });
+  it('pauses after an explicit WhatsApp send error even with continue selected, preserving the original ID', async () => {
+    (adapter.send as jest.Mock).mockResolvedValue({
+      messageId: 'failed-original',
+      confirmed: false,
+      halt: true,
+      error: 'WhatsApp ACK=-1',
+    });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(queue.records[0]).toMatchObject({
+      status: '待确认',
+      deliveries: [
+        {
+          messageId: 'failed-original',
+          status: 'uncertain',
+          error: 'WhatsApp ACK=-1',
+        },
+      ],
+    });
+    await queue.tick();
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+  });
   it('refreshes earlier uncertain receipts at batch end by original ID without resending', async () => {
     (adapter.send as jest.Mock).mockResolvedValueOnce({
       messageId: 'known-pending',

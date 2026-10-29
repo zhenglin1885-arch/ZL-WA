@@ -174,6 +174,7 @@ export interface BulkDelivery {
   editRequestedAt?: string;
 }
 export interface BulkSendOutcome {
+  halt?: boolean;
   timedOut?: boolean;
   quotedMessageId?: string;
   messageId: string;

@@ -315,6 +315,7 @@ export default class BulkQueue {
             !confirmed &&
             (spec.failure !== 'continue' ||
               !delivery.messageId ||
+              (typeof result !== 'string' && result.halt) ||
               (typeof result !== 'string' && result.timedOut))
           )
             this.stopped.add(record.id);
