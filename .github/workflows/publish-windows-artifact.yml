@@ -1,84 +1,51 @@
-name: Publish existing ZL-WA Windows build
+name: Publish verified ZL-WA 7.3.6
 
 on:
-  workflow_dispatch:
-    inputs:
-      build_run_id:
-        description: 'Successful ZL-WA Windows workflow run to publish'
-        required: true
-        type: string
-      release_tag:
-        description: 'Existing version tag matching the built commit'
-        required: true
-        type: string
+  push:
+    branches: ['publish/7.3.6-20261029']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BUILD_RUN_ID: ${{ inputs.build_run_id }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      SOURCE_SHA: c474a0c42b81784609495a3e91d022582e1150d1
+      EXPECTED_FILES: '{"ZL-WA-win-AutoSetup-7.3.6-x64.exe":"f8b2297d65c52bd35a0b47d997fdf596049bb292b5a42818a7cee20648154ec7","ZL-WA-win-Portable-7.3.6-x64.exe":"e548b538f43f060e77c2f007cd033dd47567e47e93f716acc352360aabb87058"}'
     steps:
-      - name: Validate source build and release tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > run.json
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" > tag.json
-          node <<'JS'
-          const fs = require('node:fs');
-          const run = JSON.parse(fs.readFileSync('run.json'));
-          const tag = JSON.parse(fs.readFileSync('tag.json'));
-          if (run.name !== 'ZL-WA Windows' || run.conclusion !== 'success' ||
-              tag.object.type !== 'commit' || tag.object.sha !== run.head_sha) {
-            throw Error('Only a successful Windows build at the exact release tag may be published.');
-          }
-          JS
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.release_tag }}
-      - name: Check version
-        run: |
-          node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) throw Error("Version mismatch")'
-      - uses: actions/download-artifact@v4
-        with:
-          name: ZL-WA-Windows-x64
-          path: out
-          run-id: ${{ inputs.build_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Validate packages and create checksums
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Verify candidate source and download inspected packages
         shell: bash
         run: |
           set -euo pipefail
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/candidate-7.3.6-20261029" --jq '.object.sha')
+          test "$actual" = "$SOURCE_SHA"
+          test "$(node -p 'require("./package.json").version')" = '7.3.6'
+          mkdir out
+          gh release download candidate-7.3.6-20261029 --repo "$GITHUB_REPOSITORY" --dir out --pattern 'ZL-WA-win-*-7.3.6-x64.exe' --pattern SHA256SUMS.txt
+          (cd out && sha256sum -c SHA256SUMS.txt)
           node <<'JS'
           const fs = require('node:fs');
-          const version = require('./package.json').version;
-          const expected = ['AutoSetup', 'Portable'].map(type => `ZL-WA-win-${type}-${version}-x64.exe`).sort();
-          const files = fs.readdirSync('out').sort();
-          if (JSON.stringify(files) !== JSON.stringify(expected)) throw Error('Unexpected package set');
-          for (const name of files) {
-            const data = fs.readFileSync(`out/${name}`);
-            if (data.length < 1000000 || data.toString('ascii', 0, 2) !== 'MZ' ||
-                !data.subarray(data.readUInt32LE(0x3c), data.readUInt32LE(0x3c) + 4).equals(Buffer.from('PE\0\0'))) {
-              throw Error(`Invalid Windows executable: ${name}`);
-            }
+          const crypto = require('node:crypto');
+          const expected = JSON.parse(process.env.EXPECTED_FILES);
+          const actual = fs.readdirSync('out').sort();
+          if (JSON.stringify(actual) !== JSON.stringify([...Object.keys(expected), 'SHA256SUMS.txt'].sort())) throw Error('Unexpected asset set');
+          for (const [name, hash] of Object.entries(expected)) {
+            const data = fs.readFileSync('out/' + name);
+            if (data.length < 100000000 || data.toString('ascii', 0, 2) !== 'MZ' ||
+                !data.subarray(data.readUInt32LE(0x3c), data.readUInt32LE(0x3c)+4).equals(Buffer.from('PE\0\0')) ||
+                crypto.createHash('sha256').update(data).digest('hex') !== hash) throw Error('Unverified package: ' + name);
           }
           JS
-          (cd out && sha256sum *.exe > SHA256SUMS.txt)
-          cp docs/ACCOUNT-TOOLS.md out/Windows-testing-guide.md
-      - name: Replace release packages
+      - name: Publish formal 7.3.6 update
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" out/*.exe out/SHA256SUMS.txt out/Windows-testing-guide.md --repo "$GITHUB_REPOSITORY" --clobber
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          gh release create v7.3.6 out/*.exe out/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title 'ZL-WA 7.3.6' --notes-file docs/RELEASE-7.3.6.md --latest
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v7.3.6" --jq '.object.sha')" = "$SOURCE_SHA"
+          gh release view v7.3.6 --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease --jq 'select(.tagName == "v7.3.6" and .isDraft == false and .isPrerelease == false)'
