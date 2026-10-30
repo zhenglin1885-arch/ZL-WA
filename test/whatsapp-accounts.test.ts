@@ -128,6 +128,31 @@ describe('WhatsApp account adapter', () => {
     const other = await readWhatsAppSnapshot();
     expect(other.avatar).toBeUndefined();
   });
+  it('omits unchanged avatar payloads only on request and sends updated own avatars', async () => {
+    modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
+    modules.WAWebUserPrefsMeUser = {
+      getMaybeMePnUser: () => ({ user: '8613800000001', server: 'c.us' }),
+    };
+    const get = jest
+      .fn()
+      .mockReturnValue({ imgFull: 'data:image/png;base64,b3du' });
+    modules.WAWebProfilePicThumbCollection = { ProfilePicThumb: { get } };
+    const first = await readWhatsAppSnapshot();
+    const next = await readWhatsAppSnapshot(true);
+    expect(first.avatar).toBe('data:image/png;base64,b3du');
+    expect(next.avatar).toBeUndefined();
+    expect(mergeAccountSnapshot(first, next).avatar).toBe(first.avatar);
+    get.mockReturnValue({ imgFull: 'data:image/png;base64,bmV3' });
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 11_000);
+    try {
+      const changed = await readWhatsAppSnapshot(true);
+      expect(changed.avatar).toBe('data:image/png;base64,bmV3');
+      const explicit = await readWhatsAppSnapshot();
+      expect(explicit.avatar).toBe(changed.avatar);
+    } finally {
+      clock.mockRestore();
+    }
+  });
   it('queries an unloaded own thumbnail at most once a minute', async () => {
     modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
     modules.WAWebUserPrefsMeUser = {

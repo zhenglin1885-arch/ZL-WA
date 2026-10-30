@@ -11,7 +11,9 @@ export interface AccountSnapshot {
   unreadMessages?: number;
 }
 
-export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
+export async function readWhatsAppSnapshot(
+  omitUnchangedAvatar = false,
+): Promise<AccountSnapshot> {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     return { status: 'error' };
   const page = window as any;
@@ -220,6 +222,11 @@ export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
   );
   if (ownerId && latestOwner && latestOwner !== ownerId)
     return { status: 'loading' };
+  const transferredAvatar =
+    omitUnchangedAvatar && avatar === cache.lastTransferredAvatar
+      ? undefined
+      : avatar;
+  if (avatar) cache.lastTransferredAvatar = avatar;
   return {
     status: 'online',
     ownerId: ownerId || undefined,
@@ -232,7 +239,7 @@ export async function readWhatsAppSnapshot(): Promise<AccountSnapshot> {
       !String(rawPhone).includes('@lid') && /^\d{6,16}$/.test(phone)
         ? phone
         : undefined,
-    avatar,
+    avatar: transferredAvatar,
     unreadMessages: (() => {
       const collection = module('WAWebCollections')?.Chat;
       const chats = collection?.getModelsArray?.() ?? collection?.models;

@@ -80,11 +80,14 @@ export function watchWhatsAppUnread(): boolean {
     }
     const signature = `${ownerId}:${count}`;
     if (
-      (force || signature !== state.last) &&
+      (force ||
+        signature !== state.last ||
+        Date.now() - (state.lastPublishedAt ?? 0) >= 10_000) &&
       typeof page.ferdium?.pushWhatsAppUnread === 'function'
     ) {
       page.ferdium.pushWhatsAppUnread({ ownerId, count });
       state.last = signature;
+      state.lastPublishedAt = Date.now();
     }
   };
   function schedule() {

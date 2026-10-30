@@ -1,3 +1,5 @@
+/* eslint-disable no-await-in-loop -- Sequential account setup isolates per-account cache expectations. */
+import { observable, runInAction } from 'mobx';
 import type ServiceWebviewClass from '../../../../src/components/services/content/ServiceWebview';
 
 type Listener = (...args: any[]) => void;
@@ -69,6 +71,9 @@ jest.mock('mobx-react', () => ({
   observer: mockObserver,
 }));
 jest.mock('react-electron-web-view', () => 'webview');
+jest.mock('../../../../src/features/accountTools/bulkRuntime', () => ({
+  ensureBulkLibrary: jest.fn(async () => {}),
+}));
 jest.mock('electron', () => ({
   ipcRenderer: { invoke: jest.fn().mockImplementation(async () => ({})) },
 }));
@@ -149,6 +154,7 @@ describe('ServiceWebview', () => {
     const props = createProps();
     Object.assign(props.service, {
       recipe: { id: 'whatsapp' },
+      isActive: true,
       accountSnapshot: { status: 'online' },
     });
     const component = new ServiceWebview(props as any) as ServiceWebviewClass;
@@ -262,5 +268,127 @@ describe('ServiceWebview', () => {
 
     expect(props.setWebviewReference).not.toHaveBeenCalled();
     jest.useRealTimers();
+  });
+  it('keeps 25 background accounts live while reusing adapters and reducing status maintenance frequency', async () => {
+    jest.useFakeTimers();
+    const components: ServiceWebviewClass[] = [];
+    const views: any[] = [];
+    try {
+      for (let i = 0; i < 25; i += 1) {
+        const props = createProps();
+        Object.assign(props.service, {
+          id: `background-${i}`,
+          recipe: { id: 'whatsapp' },
+          isEnabled: true,
+          accountSnapshot: { status: 'online' },
+        });
+        const component = new ServiceWebview(
+          props as any,
+        ) as ServiceWebviewClass;
+        const view: any = Object.assign(createMockWebviewElement(), {
+          setZoomFactor: jest.fn(),
+          executeJavaScript: jest.fn(async (code: string) =>
+            code.includes('readWhatsAppSnapshot')
+              ? {
+                  status: 'online',
+                  ownerId: '8613800000001@c.us',
+                  ownerIds: ['8613800000001@c.us'],
+                  unreadMessages: 0,
+                }
+              : true,
+          ),
+        });
+        component._setWebview(createMockWebview(view) as any);
+        components.push(component);
+        views.push(view);
+        await component.pollAccount();
+      }
+      const calls = () =>
+        views.reduce(
+          (sum, view) => sum + view.executeJavaScript.mock.calls.length,
+          0,
+        );
+      expect(calls()).toBe(75);
+      const snapshots = components.map(
+        component => component.props.service.accountSnapshot,
+      );
+      await jest.advanceTimersByTimeAsync(12_000);
+      expect(calls()).toBe(75);
+      await jest.advanceTimersByTimeAsync(6000);
+      expect(calls()).toBe(100);
+      expect(
+        components.every(
+          (component, i) =>
+            component.props.service.accountSnapshot === snapshots[i],
+        ),
+      ).toBe(true);
+      expect(
+        views.every(
+          view =>
+            !view.executeJavaScript.mock.calls.some(
+              ([code]) =>
+                code.includes('configureWhatsAppAudioUpload') ||
+                code.includes('configureWhatsAppLayout'),
+            ),
+        ),
+      ).toBe(true);
+      expect(
+        jest.requireMock('../../../../src/features/accountTools/bulkRuntime')
+          .ensureBulkLibrary,
+      ).not.toHaveBeenCalled();
+      for (const component of components)
+        expect(component.props.service.isHibernating).not.toBe(true);
+    } finally {
+      for (const component of components) component.componentWillUnmount();
+      jest.useRealTimers();
+    }
+  });
+  it('installs active account tools immediately on selection and reinstalls them after navigation', async () => {
+    jest.useFakeTimers();
+    const props = createProps();
+    props.service = observable({
+      ...props.service,
+      recipe: { id: 'whatsapp' },
+      isEnabled: true,
+      accountSnapshot: { status: 'online' },
+    }) as any;
+    const component = new ServiceWebview(props as any) as ServiceWebviewClass;
+    const view: any = Object.assign(createMockWebviewElement(), {
+      setZoomFactor: jest.fn(),
+      executeJavaScript: jest.fn(async (code: string) =>
+        code.includes('readWhatsAppSnapshot')
+          ? {
+              status: 'online',
+              ownerId: '8613800000001@c.us',
+              unreadMessages: 0,
+            }
+          : true,
+      ),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      await component.pollAccount();
+      runInAction(() => {
+        props.service.isActive = true;
+      });
+      await jest.advanceTimersByTimeAsync(1);
+      const uploads = () =>
+        view.executeJavaScript.mock.calls.filter(([code]: [string]) =>
+          code.includes('configureWhatsAppAudioUpload'),
+        ).length;
+      expect(uploads()).toBe(1);
+      expect(
+        jest.requireMock('../../../../src/features/accountTools/bulkRuntime')
+          .ensureBulkLibrary,
+      ).toHaveBeenCalled();
+      await component.pollAccount();
+      expect(uploads()).toBe(1);
+      component.accountNavigationStarted();
+      await component.pollAccount();
+      expect(uploads()).toBe(2);
+    } finally {
+      component.componentWillUnmount();
+      jest.useRealTimers();
+    }
   });
 });

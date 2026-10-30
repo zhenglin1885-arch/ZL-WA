@@ -8,7 +8,7 @@ class StaticController {
     return response.send({
       isServiceProxyEnabled: true,
       isWorkspaceEnabled: true,
-      isAnnouncementsEnabled: true,
+      isAnnouncementsEnabled: false,
       isSettingsWSEnabled: false,
       isMagicBarEnabled: true,
       isTodosEnabled: true,

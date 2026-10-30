@@ -894,6 +894,14 @@ export default class ServicesStore extends TypedStore {
 
       case 'notification': {
         const { notificationId, options } = args[0];
+        const closeNotification = () => {
+          if (service?.webview)
+            this._sendIPCMessage({
+              serviceId,
+              channel: `notification-onclose:${notificationId}`,
+              args: {},
+            });
+        };
 
         const { isTwoFactorAutoCatcherEnabled, twoFactorAutoCatcherMatcher } =
           this.stores.settings.all.app;
@@ -949,6 +957,7 @@ export default class ServicesStore extends TypedStore {
           scheduledDNDEnabled &&
           isInTimeframe(scheduledDNDStart, scheduledDNDEnd)
         ) {
+          closeNotification();
           return;
         }
 
@@ -978,7 +987,7 @@ export default class ServicesStore extends TypedStore {
             options,
             serviceId,
           });
-        }
+        } else closeNotification();
 
         break;
       }

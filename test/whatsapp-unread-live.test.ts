@@ -100,4 +100,19 @@ describe('live WhatsApp unread signals', () => {
     expect(listeners.size).toBe(0);
     expect(clearInterval).toHaveBeenCalledWith(123);
   });
+  it('sends a lightweight unchanged heartbeat so legacy database polling can stay idle', () => {
+    watchWhatsAppUnread();
+    page.ferdium.pushWhatsAppUnread.mockClear();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 11_000);
+    try {
+      page.__zlWaUnread.tick();
+      expect(page.ferdium.pushWhatsAppUnread).toHaveBeenCalledTimes(1);
+      expect(page.ferdium.pushWhatsAppUnread).toHaveBeenCalledWith({
+        ownerId: '8613800000001@c.us',
+        count: 1,
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
 });

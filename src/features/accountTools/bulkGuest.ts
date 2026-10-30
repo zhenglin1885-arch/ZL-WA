@@ -198,6 +198,17 @@ export async function sendBulkMessage(
   }
   if (typeof socketState === 'string' && socketState !== 'CONNECTED')
     throw new Error('WhatsApp 账号未连接，未提交消息；请先恢复账号连接');
+  // Background accounts initialize advanced helpers on demand. A loaded SDK
+  // alone does not prove that linked-device history/encryption sync is ready.
+  if (wpp.conn?.isMainReady?.() === false)
+    return {
+      messageId: '',
+      notSubmitted: true,
+      confirmed: false,
+      halt: true,
+      error:
+        '账号仍在同步聊天记录，尚未提交消息；请等待账号准备完成后检查任务记录',
+    };
   const chat = await wpp.chat.get(chatId);
   if (
     chat?.isReadOnly ||

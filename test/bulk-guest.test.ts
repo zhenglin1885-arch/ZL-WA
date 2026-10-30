@@ -910,4 +910,15 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     });
     expect(voiceSend).toHaveBeenCalledTimes(1);
   });
+  it('pauses a lazily initialized account before dispatch while linked-device history is still synchronizing', async () => {
+    wpp.conn = { isMainReady: () => false };
+    const result = await sendBulkMessage('chat@g.us', spec());
+    expect(result).toMatchObject({
+      confirmed: false,
+      halt: true,
+      messageId: '',
+    });
+    expect(wpp.chat.get).not.toHaveBeenCalled();
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+  });
 });

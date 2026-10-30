@@ -291,9 +291,13 @@ export default class BulkQueue {
             }),
           ]);
           const confirmed = typeof result === 'string' || result.confirmed;
+          const notSubmitted =
+            typeof result !== 'string' &&
+            result.notSubmitted === true &&
+            !result.messageId;
           delivery = {
             ...delivery,
-            status: confirmed ? 'sent' : 'uncertain',
+            status: confirmed ? 'sent' : notSubmitted ? 'failed' : 'uncertain',
             messageId: typeof result === 'string' ? result : result.messageId,
             ...(typeof result !== 'string' && result.quotedMessageId
               ? { quotedMessageId: result.quotedMessageId }

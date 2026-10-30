@@ -2,30 +2,43 @@ import { ipcRenderer } from 'electron';
 
 import { v4 as uuidV4 } from 'uuid';
 
-const debug = require('../preload-safe-debug')('Ferdium:Notifications');
-
 export class NotificationsHandler {
   onNotify = (data: { title: string; options: any; notificationId: string }) =>
     data;
 
-  displayNotification(title: string, options: any) {
+  private pending = new Map<string, { finish: (clicked: boolean) => void }>();
+
+  dispose() {
+    for (const item of this.pending.values()) item.finish(false);
+  }
+
+  displayNotification(title: string, options: any): Promise<boolean> {
     return new Promise(resolve => {
-      debug('New notification', title, options);
-
       const notificationId = uuidV4();
-
-      ipcRenderer.sendToHost(
-        'notification',
-        this.onNotify({
-          title,
-          options,
-          notificationId,
-        }),
-      );
-
-      ipcRenderer.once(`notification-onclick:${notificationId}`, () => {
-        resolve(true);
-      });
+      const clickChannel = `notification-onclick:${notificationId}`;
+      const closeChannel = `notification-onclose:${notificationId}`;
+      const callbacks: { click: () => void; close: () => void } = {
+        click: () => {},
+        close: () => {},
+      };
+      const finish = (value: boolean) => {
+        if (!this.pending.delete(notificationId)) return;
+        ipcRenderer.removeListener(clickChannel, callbacks.click);
+        ipcRenderer.removeListener(closeChannel, callbacks.close);
+        resolve(value);
+      };
+      callbacks.click = () => finish(true);
+      callbacks.close = () => finish(false);
+      this.pending.set(notificationId, { finish });
+      ipcRenderer.once(clickChannel, callbacks.click);
+      ipcRenderer.once(closeChannel, callbacks.close);
+      try {
+        const value = this.onNotify({ title, options, notificationId });
+        if (value) ipcRenderer.sendToHost('notification', value);
+        else finish(false);
+      } catch {
+        finish(false);
+      }
     });
   }
 }
@@ -46,7 +59,7 @@ class WrapNotification {
       .displayNotification(title, options)
       .then((value) => {  
         // When clicked, the assigned onclick will execute
-        if (this._onclick)
+        if (value && typeof this._onclick === 'function')
         {
           this._onclick();
         }

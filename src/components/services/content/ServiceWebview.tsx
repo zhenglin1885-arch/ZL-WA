@@ -1,3 +1,4 @@
+/* eslint-disable no-void -- Detached account refresh handles errors internally. */
 // ZL-WA modification: independent WhatsApp sessions, live metadata and overlay focus.
 import { join } from 'node:path';
 import { ipcRenderer } from 'electron';
@@ -19,6 +20,7 @@ import {
   readWhatsAppSnapshot,
   mergeAccountSnapshot,
   accountIdentity,
+  type AccountIdentity,
 } from '../../../features/accounts/whatsapp';
 import { configureWhatsAppLayout } from '../../../features/accounts/layout';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
@@ -113,11 +115,23 @@ class ServiceWebview extends Component<IProps> {
 
   private accountPollRunning = false;
 
+  private accountDocumentEpoch = 0;
+
+  private uiAdaptersReady = false;
+
+  private unreadAdapterReady = false;
+
+  private lastAccountTheme?: boolean;
+
+  private lastAccountPollAt = 0;
+
+  private activeReactionDisposer: IReactionDisposer;
+
   private unreadRevision = 0;
 
   private lastAppliedZoom: number | null = null;
 
-  private lastStoredIdentity = '';
+  private lastStoredIdentity?: AccountIdentity;
 
   private disposed = false;
 
@@ -126,38 +140,66 @@ class ServiceWebview extends Component<IProps> {
     const view = this.webview?.view;
     if (
       !view ||
+      service.isHibernating ||
+      service.isEnabled === false ||
       service.recipe?.id !== 'whatsapp' ||
       this.accountPollRunning ||
       this.disposed
     )
       return;
     this.accountPollRunning = true;
-    const { unreadRevision } = this;
+    this.lastAccountPollAt = Date.now();
+    const { unreadRevision, accountDocumentEpoch } = this;
+    const current = () =>
+      !this.disposed &&
+      this.webview?.view === view &&
+      this.accountDocumentEpoch === accountDocumentEpoch;
     try {
-      // Mount the split handle independently of unread/theme adapters: a
-      // changed WhatsApp module must not prevent this basic UI control.
-      await view
-        .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
-        .catch(error => debug('Could not mount WhatsApp split handle', error));
-      await view
-        .executeJavaScript(
-          `(${configureWhatsAppVoice.toString()})();(${configureWhatsAppAudioUpload.toString()})(${sendBulkMessage.toString()})`,
-        )
-        .catch(error =>
-          debug('Could not configure WhatsApp voice uploads', error),
+      // Background accounts keep receiving messages, but do not need editor,
+      // layout or upload UI installation until explicitly opened.
+      if (service.isActive && !this.uiAdaptersReady) {
+        const layoutReady = await view
+          .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
+          .catch(error =>
+            debug('Could not mount WhatsApp split handle', error),
+          );
+        const uploadReady = await view
+          .executeJavaScript(
+            `(${configureWhatsAppVoice.toString()})();(${configureWhatsAppAudioUpload.toString()})(${sendBulkMessage.toString()})`,
+          )
+          .catch(error =>
+            debug('Could not configure WhatsApp voice uploads', error),
+          );
+        if (!current()) return;
+        this.uiAdaptersReady = Boolean(layoutReady && uploadReady);
+      }
+      if (!this.unreadAdapterReady) {
+        const ready = await view.executeJavaScript(
+          `(${watchWhatsAppUnread.toString()})()`,
         );
-      await view.executeJavaScript(`(${watchWhatsAppUnread.toString()})()`);
-      await view.executeJavaScript(
-        `(${applyWhatsAppTheme.toString()})(${Boolean(stores?.ui.isDarkThemeActive || service.isDarkModeEnabled)})`,
+        if (!current()) return;
+        this.unreadAdapterReady = Boolean(ready);
+      }
+      const dark = Boolean(
+        stores?.ui?.isDarkThemeActive || service.isDarkModeEnabled,
       );
-      await configureTranslation(
-        service,
-        stores?.settings.app.translationTextColor,
-      );
+      if (this.lastAccountTheme !== dark) {
+        await view.executeJavaScript(
+          `(${applyWhatsAppTheme.toString()})(${dark})`,
+        );
+        if (!current()) return;
+        this.lastAccountTheme = dark;
+      }
+      if (service.isActive)
+        await configureTranslation(
+          service,
+          stores?.settings.app.translationTextColor,
+        );
       const snapshot = await view.executeJavaScript(
-        `(${readWhatsAppSnapshot.toString()})()`,
+        `(${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)})`,
       );
-      if (snapshot.status === 'online')
+      if (!current()) return;
+      if (snapshot.status === 'online' && service.isActive)
         ensureBulkLibrary(view).catch(error =>
           debug('Could not prepare WhatsApp Audio upload interface', error),
         );
@@ -165,10 +207,18 @@ class ServiceWebview extends Component<IProps> {
         this.finishStartup();
       if (this.webview?.view !== view || this.disposed) return;
       runInAction(() => {
-        service.accountSnapshot = mergeAccountSnapshot(
-          service.accountSnapshot,
-          snapshot,
-        );
+        const next = mergeAccountSnapshot(service.accountSnapshot, snapshot);
+        const old = service.accountSnapshot;
+        if (
+          old.status !== next.status ||
+          old.ownerId !== next.ownerId ||
+          old.nickname !== next.nickname ||
+          old.phone !== next.phone ||
+          old.avatar !== next.avatar ||
+          old.unreadMessages !== next.unreadMessages ||
+          JSON.stringify(old.ownerIds) !== JSON.stringify(next.ownerIds)
+        )
+          service.accountSnapshot = next;
         if (
           (unreadRevision === this.unreadRevision &&
             Number.isFinite(snapshot.unreadMessages)) ||
@@ -180,15 +230,23 @@ class ServiceWebview extends Component<IProps> {
       });
       if (snapshot.status === 'online' && snapshot.ownerId) {
         const profile = accountIdentity(service.accountSnapshot);
-        const identity = JSON.stringify(profile);
-        if (identity !== this.lastStoredIdentity) {
+        const old = this.lastStoredIdentity;
+        if (
+          profile &&
+          (!old ||
+            profile.ownerId !== old.ownerId ||
+            profile.nickname !== old.nickname ||
+            profile.phone !== old.phone ||
+            profile.avatar !== old.avatar ||
+            JSON.stringify(profile.ownerIds) !== JSON.stringify(old.ownerIds))
+        ) {
           await ipcRenderer
             .invoke('account-tools-profile', service.id, {
               ...profile,
               status: 'online',
             })
             .then(() => {
-              this.lastStoredIdentity = identity;
+              this.lastStoredIdentity = profile;
             })
             .catch(error => {
               debug('Could not save last WhatsApp identity', error);
@@ -216,6 +274,14 @@ class ServiceWebview extends Component<IProps> {
   };
 
   handleUnread = (event: Electron.IpcMessageEvent): void => {
+    if (
+      event.channel === 'zl-wa-unread-stale' &&
+      event.currentTarget === this.webview?.view &&
+      !this.disposed
+    ) {
+      this.props.service.accountUnreadLive = false;
+      return;
+    }
     if (
       event.channel !== 'zl-wa-unread' ||
       event.currentTarget !== this.webview?.view ||
@@ -245,16 +311,22 @@ class ServiceWebview extends Component<IProps> {
     runInAction(() => {
       service.unreadDirectMessageCount = value.count;
       service.unreadIndirectMessageCount = 0;
-      service.accountSnapshot = {
-        ...service.accountSnapshot,
-        unreadMessages: value.count,
-      };
+      if (service.accountSnapshot.unreadMessages !== value.count)
+        service.accountSnapshot = {
+          ...service.accountSnapshot,
+          unreadMessages: value.count,
+        };
     });
   };
 
   accountNavigationStarted = (): void => {
     this.props.service.accountUnreadLive = false;
     this.lastAppliedZoom = null;
+    this.accountDocumentEpoch += 1;
+    this.uiAdaptersReady = false;
+    this.unreadAdapterReady = false;
+    this.lastAccountTheme = undefined;
+    this.lastAccountPollAt = 0;
     runInAction(() => {
       this.props.service.accountSnapshot = {
         ...this.props.service.accountSnapshot,
@@ -270,6 +342,16 @@ class ServiceWebview extends Component<IProps> {
 
     makeObservable(this);
 
+    this.activeReactionDisposer = reaction(
+      () => [
+        this.props.service.isActive,
+        this.props.service.isDarkModeEnabled,
+        this.props.stores?.ui?.isDarkThemeActive,
+      ],
+      () => {
+        if (this.props.service.isActive) void this.pollAccount();
+      },
+    );
     this.webviewReactionDisposer = reaction(
       () => this.webview?.view ?? null,
       (webview, previousWebview) => {
@@ -284,6 +366,7 @@ class ServiceWebview extends Component<IProps> {
     this.finishStartup();
     const { service, detachService } = this.props;
     this.webviewReactionDisposer();
+    this.activeReactionDisposer();
     this.removeWebviewEventListeners(this.webview?.view ?? null);
     if (this.didAttachTimeout) {
       clearTimeout(this.didAttachTimeout);
@@ -366,6 +449,13 @@ class ServiceWebview extends Component<IProps> {
       return;
     }
 
+    this.accountDocumentEpoch += 1;
+    this.uiAdaptersReady = false;
+    this.unreadAdapterReady = false;
+    this.lastAccountTheme = undefined;
+    this.lastAccountPollAt = 0;
+    this.lastAppliedZoom = null;
+
     webview.addEventListener('did-stop-loading', this.startupStopped);
     webview.addEventListener('did-fail-load', this.startupFailed);
     webview.addEventListener('console-message', this.handleConsoleMessage);
@@ -379,7 +469,12 @@ class ServiceWebview extends Component<IProps> {
       webview.addEventListener('ipc-message', this.handleUnread);
       webview.addEventListener('did-stop-loading', this.pollAccount);
       this.accountPollTimer = setInterval(() => {
-        this.pollAccount();
+        if (
+          this.props.service.isActive ||
+          this.props.service.accountSnapshot?.status !== 'online' ||
+          Date.now() - this.lastAccountPollAt >= 18_000
+        )
+          this.pollAccount();
       }, 6000);
     }
   }

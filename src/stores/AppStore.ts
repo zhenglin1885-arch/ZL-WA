@@ -501,7 +501,21 @@ export default class AppStore extends TypedStore {
 
   // Actions
   @action _notify({ title, options, notificationId, serviceId = null }) {
-    if (this.stores.settings.all.app.isAppMuted) return;
+    const closed = () => {
+      if (
+        serviceId &&
+        this.stores.services.all.some(service => service.id === serviceId)
+      )
+        this.actions.service.sendIPCMessage({
+          channel: `notification-onclose:${notificationId}`,
+          args: {},
+          serviceId,
+        });
+    };
+    if (this.stores.settings.all.app.isAppMuted) {
+      closed();
+      return;
+    }
 
     // TODO: is there a simple way to use blobs for notifications without storing them on disk?
     if (options.icon?.startsWith('blob:')) {
@@ -510,10 +524,18 @@ export default class AppStore extends TypedStore {
     }
 
     if (serviceId) playNotificationSound(Boolean(options.silent));
-    const notification = new window.Notification(title, {
-      ...options,
-      silent: true,
-    });
+    let notification: Notification;
+    try {
+      notification = new window.Notification(title, {
+        ...options,
+        silent: true,
+      });
+    } catch {
+      closed();
+      return;
+    }
+    notification.addEventListener('close', closed, { once: true });
+    notification.addEventListener('error', closed, { once: true });
 
     debug('New notification', title, options);
 

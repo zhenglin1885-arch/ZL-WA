@@ -66,6 +66,7 @@ const dialogTitleHandler = new DialogTitleHandler();
 const sessionHandler = new SessionHandler();
 
 const notificationsHandler = new NotificationsHandler();
+let lastLiveUnreadAt: number | undefined;
 
 // Patching window.open
 contextBridge.executeInMainWorld({ func: configureWhatsAppDownloads });
@@ -142,8 +143,10 @@ contextBridge.exposeInMainWorld('ferdium', {
       /^\d{5,30}@(c\.us|lid)$/.test(value.ownerId) &&
       Number.isSafeInteger(value.count) &&
       value.count >= 0
-    )
+    ) {
+      lastLiveUnreadAt = Date.now();
       ipcRenderer.sendToHost('zl-wa-unread', value);
+    }
   },
   setBadge: (
     direct: string | number | null | undefined,
@@ -301,6 +304,8 @@ class RecipeController {
   }
 
   destroy() {
+    this.recipe?.dispose();
+    notificationsHandler.dispose();
     this.automaticLanguageDetection.destroy();
   }
 
@@ -312,11 +317,23 @@ class RecipeController {
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete require.cache[require.resolve(modulePath)];
     try {
+      this.recipe?.dispose();
       this.recipe = new RecipeWebview(
         badgeHandler,
         dialogTitleHandler,
         notificationsHandler,
         sessionHandler,
+        () => {
+          const live =
+            globalThis.location.hostname === 'web.whatsapp.com' &&
+            lastLiveUnreadAt !== undefined &&
+            Date.now() - lastLiveUnreadAt < 15_000;
+          if (!live && lastLiveUnreadAt !== undefined) {
+            lastLiveUnreadAt = undefined;
+            ipcRenderer.sendToHost('zl-wa-unread-stale');
+          }
+          return live;
+        },
       );
       if (existsSync(modulePath)) {
         require(modulePath)(this.recipe, { ...config, recipe });

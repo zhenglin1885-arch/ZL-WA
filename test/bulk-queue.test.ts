@@ -593,4 +593,21 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.revoke).toHaveBeenCalledTimes(2);
     expect(queue.records[0].deliveries?.every(d => d.revoked)).toBe(true);
   });
+  it('distinguishes known preflight rejection from uncertain submissions and stops without retry', async () => {
+    jest.mocked(adapter.send).mockResolvedValue({
+      confirmed: false,
+      messageId: '',
+      notSubmitted: true,
+      halt: true,
+      error: 'history still syncing, not submitted',
+    });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(queue.records[0].deliveries?.[0]).toMatchObject({
+      status: 'failed',
+      error: 'history still syncing, not submitted',
+    });
+    await queue.tick();
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+  });
 });

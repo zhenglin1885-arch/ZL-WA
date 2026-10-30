@@ -21,21 +21,39 @@ class RecipeWebview {
     dialogTitleHandler,
     notificationsHandler,
     sessionHandler,
+    hasLiveWhatsAppUnread: () => boolean = () => false,
   ) {
     this.badgeHandler = badgeHandler;
     this.dialogTitleHandler = dialogTitleHandler;
     this.notificationsHandler = notificationsHandler;
     this.sessionHandler = sessionHandler;
 
-    ipcRenderer.on('poll', () => {
-      this.loopFunc();
+    this.pollHandler = () => {
+      if (this.inspectedLoop !== this.loopFunc) {
+        this.inspectedLoop = this.loopFunc;
+        this.legacyUnreadLoop =
+          this.loopFunc.toString().replaceAll(/\s/g, '') ===
+          '()=>{getMessages();getActiveDialogTitle();}';
+      }
+      if (!this.legacyUnreadLoop || !hasLiveWhatsAppUnread()) this.loopFunc();
 
       debug('Poll event');
 
       // This event is for checking if the service recipe is still actively
       // communicating with the client
       ipcRenderer.sendToHost('alive');
-    });
+    };
+    ipcRenderer.on('poll', this.pollHandler);
+  }
+
+  private pollHandler: () => void;
+
+  private inspectedLoop?: () => unknown;
+
+  private legacyUnreadLoop = false;
+
+  dispose() {
+    ipcRenderer.removeListener('poll', this.pollHandler);
   }
 
   loopFunc = () => null;
