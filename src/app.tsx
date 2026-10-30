@@ -15,6 +15,7 @@ import storeFactory from './stores';
 
 import I18N from './I18n';
 import FerdiumRoutes from './routes';
+import AppErrorBoundary from './components/util/AppErrorBoundary';
 
 // Basic electron Setup
 webFrame.setVisualZoomLevelLimits(1, 1);
@@ -38,11 +39,13 @@ window.addEventListener('load', () => {
     features: {},
     render() {
       const preparedApp = (
-        <Provider stores={stores} actions={actions}>
-          <I18N stores={{ app: stores.app, user: stores.user }}>
-            <FerdiumRoutes history={history} />
-          </I18N>
-        </Provider>
+        <AppErrorBoundary>
+          <Provider stores={stores} actions={actions}>
+            <I18N stores={{ app: stores.app, user: stores.user }}>
+              <FerdiumRoutes history={history} />
+            </I18N>
+          </Provider>
+        </AppErrorBoundary>
       );
       const container = document.querySelector('#root');
       const root = createRoot(container!);

@@ -45,6 +45,7 @@ import {
   userDataPath,
 } from '../environment-remote';
 import sleep from '../helpers/async-helpers';
+import ResumeReload from '../helpers/ResumeReload';
 import { getLocale, getTranslatedText } from '../helpers/i18n-helpers';
 import {
   getServiceIdsFromPartitions,
@@ -320,32 +321,34 @@ export default class AppStore extends TypedStore {
       this.isFocused = isFocused;
     });
 
-    powerMonitor.on('suspend', () => {
-      debug('System suspended starting timer');
-
+    const resumeReload = new ResumeReload({
+      enabled: () => this.stores.settings.app.reloadAfterResume,
+      thresholdMinutes: () => this.stores.settings.app.reloadAfterResumeTime,
+      online: () => this.isOnline,
+      reload: () => window.location.reload(),
+    });
+    const suspended = () => {
       this.timeSuspensionStart = moment();
-    });
-
-    powerMonitor.on('resume', () => {
-      debug('System resumed, last suspended on', this.timeSuspensionStart);
+      resumeReload.suspend();
+    };
+    const resumed = () => {
       this.actions.service.resetLastPollTimer();
-
-      const idleTime = this.stores.settings.app.reloadAfterResumeTime;
-
-      if (
-        this.timeSuspensionStart.add(idleTime, 'm').isBefore(moment()) &&
-        this.stores.settings.app.reloadAfterResume
-      ) {
-        debug('Reloading services, user info and features');
-
-        setInterval(() => {
-          debug('Reload app interval is starting');
-          if (this.isOnline) {
-            window.location.reload();
-          }
-        }, ms('2s'));
-      }
-    });
+      resumeReload.resume();
+    };
+    const online = () => resumeReload.online();
+    powerMonitor.on('suspend', suspended);
+    powerMonitor.on('resume', resumed);
+    window.addEventListener('online', online);
+    window.addEventListener(
+      'beforeunload',
+      () => {
+        resumeReload.dispose();
+        powerMonitor.removeListener('suspend', suspended);
+        powerMonitor.removeListener('resume', resumed);
+        window.removeEventListener('online', online);
+      },
+      { once: true },
+    );
 
     // macOS catalina notifications hack
     // notifications got stuck after upgrade but forcing a notification

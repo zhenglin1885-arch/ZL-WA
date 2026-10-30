@@ -11,6 +11,7 @@ import {
   globalShortcut,
   ipcMain,
   nativeTheme,
+  powerMonitor,
   session,
 } from 'electron';
 
@@ -53,6 +54,10 @@ import ipcApi from './electron/ipc-api';
 import CacheLocation from './electron/CacheLocation';
 import { recoverCacheLocation } from './electron/cacheStartup';
 import { downloadWhatsAppPopup } from './electron/serviceDownloads';
+import {
+  installWindowRecovery,
+  recordWindowHealth,
+} from './electron/windowHealth';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -332,6 +337,72 @@ const createWindow = () => {
       webviewTag: true,
     },
     ...(isLinux ? linuxMainWindowConf : {}),
+  });
+
+  const healthPath = join(app.getPath('userData'), 'window-health.json');
+  const recordHealth = (details: Parameters<typeof recordWindowHealth>[1]) =>
+    recordWindowHealth(healthPath, details);
+  recordHealth({ event: 'window-created' });
+  installWindowRecovery(mainWindow, {
+    record: recordHealth,
+    quitting: () => willQuitApp || overrideAppQuitForUpdate,
+  });
+  const processGone = (_event: unknown, details: Electron.Details) => {
+    if (details.type === 'GPU')
+      recordHealth({
+        event: 'gpu-process-gone',
+        reason: details.reason,
+        exitCode: details.exitCode,
+        processType: details.type,
+      });
+  };
+  const suspended = () => recordHealth({ event: 'system-suspend' });
+  const resumed = () => recordHealth({ event: 'system-resume' });
+  const rendererError = (event: Electron.IpcMainEvent, details: unknown) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      event.senderFrame !== mainWindow?.webContents.mainFrame
+    )
+      return;
+    const data = details as { reason?: unknown; frames?: unknown };
+    const reason =
+      typeof data?.reason === 'string' &&
+      [
+        'Error',
+        'TypeError',
+        'ReferenceError',
+        'RangeError',
+        'SyntaxError',
+      ].includes(data.reason)
+        ? data.reason
+        : 'Error';
+    const frames = Array.isArray(data?.frames)
+      ? data.frames
+          .filter(
+            (frame): frame is string =>
+              typeof frame === 'string' &&
+              /^[\w.-]+\.(?:js|tsx?):\d+:\d+$/.test(frame),
+          )
+          .slice(0, 8)
+      : [];
+    recordHealth({ event: 'renderer-exception', reason, frames });
+  };
+  mainWindow.webContents.on(
+    'did-fail-load',
+    (_event, code, _description, _url, isMainFrame) => {
+      if (isMainFrame)
+        recordHealth({ event: 'renderer-load-failed', exitCode: code });
+    },
+  );
+  app.on('child-process-gone', processGone);
+  powerMonitor.on('suspend', suspended);
+  powerMonitor.on('resume', resumed);
+  ipcMain.on('zl-window-renderer-error', rendererError);
+  mainWindow.once('closed', () => {
+    app.removeListener('child-process-gone', processGone);
+    powerMonitor.removeListener('suspend', suspended);
+    powerMonitor.removeListener('resume', resumed);
+    ipcMain.removeListener('zl-window-renderer-error', rendererError);
   });
 
   enableWebContents(mainWindow.webContents);

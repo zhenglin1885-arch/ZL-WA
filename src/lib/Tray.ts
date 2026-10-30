@@ -1,5 +1,6 @@
 // ZL-WA modification: independent application identity; upstream functionality retained.
 import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 
 import {
   BrowserWindow,
@@ -10,9 +11,11 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  dialog,
   systemPreferences,
 } from 'electron';
 import macosVersion from 'macos-version';
+import { readWindowHealth } from '../electron/windowHealth';
 
 import { isLinux, isMac, isWindows } from '../environment';
 import { getTranslatedText } from '../helpers/i18n-helpers';
@@ -109,6 +112,53 @@ export default class TrayIcon {
         click() {
           if (!tray.mainWindow) return;
           tray.mainWindow.webContents.send('muteApp');
+        },
+      },
+      {
+        label: '重新载入界面',
+        click() {
+          const window = tray.mainWindow;
+          if (
+            !window ||
+            window.isDestroyed() ||
+            window.webContents.isDestroyed()
+          )
+            return;
+          window.webContents.reload();
+          window.show();
+        },
+      },
+      {
+        label: '导出窗口诊断',
+        async click() {
+          try {
+            const result = await dialog.showSaveDialog({
+              title: '导出窗口诊断',
+              defaultPath: 'ZL-WA-window-diagnostics.json',
+              filters: [{ name: 'JSON', extensions: ['json'] }],
+            });
+            if (result.canceled || !result.filePath) return;
+            await writeFile(
+              result.filePath,
+              JSON.stringify(
+                {
+                  version: app.getVersion(),
+                  platform: process.platform,
+                  events: readWindowHealth(
+                    join(app.getPath('userData'), 'window-health.json'),
+                  ),
+                },
+                null,
+                2,
+              ),
+              'utf8',
+            );
+          } catch {
+            dialog.showErrorBox(
+              '无法导出窗口诊断',
+              '请确认保存位置可写后再试。',
+            );
+          }
         },
       },
       {
