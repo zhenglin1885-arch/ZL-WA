@@ -734,44 +734,120 @@ export function customerTick(
     state.rowGeometry.delete(row);
   };
   const modelIds = new Set(models.map(model => idOf(model)));
+  const byCanonical = new Map<string, Set<string>>();
+  for (const id of modelIds) {
+    const key = canonical(id);
+    const set = byCanonical.get(key) || new Set<string>();
+    set.add(id);
+    byCanonical.set(key, set);
+  }
+  state.rowIdentity ||= new WeakMap();
+  state.rowStatus ||= new WeakMap();
   state.models = models;
   state.idOf = idOf;
-  state.resolveRow = (row: HTMLElement) => {
-    // Native virtual rows often have no data-jid. Read the exact model from
-    // React props before any display-name fallback (duplicate names are valid).
-    for (const element of [row, ...row.querySelectorAll('*')]) {
-      const propsKey = Object.keys(element).find(k =>
-        k.startsWith('__reactProps$'),
-      );
-      const props = propsKey ? (element as any)[propsKey] : undefined;
-      for (const candidate of [
-        props?.chat,
-        props?.data?.chat,
-        props?.chatModel,
-        props?.data,
-        props?.model,
-      ]) {
-        const id = idOf(candidate || {});
-        if (id && modelIds.has(id)) return id;
+  const known = (value: any): string => {
+    try {
+      const id = page.__zlCustomerAdapter?.wid(value?.id || value) || '';
+      if (modelIds.has(id)) return id;
+      const aliases = byCanonical.get(canonical(id));
+      return aliases?.size ? [...aliases][0] : '';
+    } catch {
+      return '';
+    }
+  };
+  const identities = (props: any, allowId = false): string[] => {
+    if (!props || typeof props !== 'object') return [];
+    const ids: string[] = [];
+    for (const read of [
+      () => props.chat,
+      () => props.chatModel,
+      () => props.chatId,
+      () => props.conversation,
+      () => props.conversationId,
+      () => props.model,
+      () => props.data?.chat,
+      () => props.data?.chatId,
+      () => props.data,
+      () => props.item?.chat,
+      () => props.item?.chatId,
+      () => props.item,
+      () => (allowId ? props.id : undefined),
+    ]) {
+      try {
+        const id = known(read());
+        if (id) ids.push(id);
+      } catch {
+        /* Skip a temporarily unavailable native getter. */
       }
     }
-    const possible = page.__zlCustomerAdapter?.wid(
-      row.dataset.id ||
-        row.dataset.jid ||
-        row.querySelector('[data-id]')?.getAttribute('data-id') ||
-        '',
-    );
-    if (modelIds.has(possible)) return possible;
-    const markers = titleMarkers(row);
+    return [...new Set(ids)];
+  };
+  const unique = (ids: string[]): string => {
+    const keys = new Set(ids.map(id => canonical(id)));
+    return keys.size === 1 ? ids[0] : '';
+  };
+  state.resolveRow = (row: HTMLElement) => {
+    state.rowIdentity.delete(row);
+    const identify = (ids: string[], source: string) => {
+      const match = unique(ids);
+      if (match) state.rowIdentity.set(row, source);
+      return match;
+    };
+    const elements = [row, ...row.querySelectorAll('*')];
+    const propsIds: string[] = [];
+    for (const element of elements) {
+      const key = Object.keys(element).find(k => k.startsWith('__reactProps$'));
+      if (key) propsIds.push(...identities((element as any)[key]));
+    }
+    if (propsIds.length > 0) return identify(propsIds, 'react-props');
+    const nativeIds = [
+      row.dataset.id,
+      row.dataset.jid,
+      row.querySelector('[data-id]')?.getAttribute('data-id'),
+    ]
+      .map(value => known(value))
+      .filter(Boolean);
+    if (nativeIds.length > 0) return identify(nativeIds, 'native-id');
+    // Recent rows can keep chatId on a composite Fiber, rather than DOM props.
+    // Stop at list ancestors: their active/selected chat may belong to another row.
+    const fibers = new Set<any>();
+    const fiberIds: string[] = [];
+    for (const element of [row, ...titleMarkers(row)]) {
+      const key = Object.keys(element).find(k => k.startsWith('__reactFiber$'));
+      let fiber = key ? (element as any)[key] : undefined;
+      for (
+        let depth = 0;
+        fiber && depth < 12 && !fibers.has(fiber);
+        depth += 1
+      ) {
+        fibers.add(fiber);
+        const node = fiber.stateNode;
+        if (
+          node instanceof HTMLElement &&
+          node !== row &&
+          !row.contains(node) &&
+          (node.matches('#pane-side, [role="grid"], [role="list"]') ||
+            node.querySelectorAll('[role="row"]').length > 1)
+        )
+          break;
+        fiberIds.push(
+          ...identities(fiber.memoizedProps || fiber.pendingProps, true),
+        );
+        fiber = fiber.return;
+      }
+    }
+    if (fiberIds.length > 0) return identify(fiberIds, 'react-fiber');
     const ids = [
       ...new Set(
-        markers.flatMap(marker => {
+        titleMarkers(row).flatMap(marker => {
+          const box = marker.getBoundingClientRect();
+          if (!box.width || !box.height) return [];
           const name = labelOf(marker);
           return names.get(name)?.size === 1 ? [...names.get(name)!] : [];
         }),
       ),
     ];
-    return ids.length === 1 ? ids[0] : '';
+    return identify(ids, 'unique-title');
   };
   state.installPinCommands();
   // Project local pins onto the native model, so WhatsApp's own collection,
@@ -823,19 +899,23 @@ export function customerTick(
         if (seen.has(row)) continue;
         seen.add(row);
         const match = state.resolveRow(row);
+        const candidates = titleMarkers(row).filter(element => {
+          const box = element.getBoundingClientRect();
+          return box.width > 0 && box.height > 0 && !!labelOf(element);
+        });
         const marker =
-          titleMarkers(row).find(element =>
-            names.get(labelOf(element))?.has(match),
-          ) ||
+          candidates.find(element => names.get(labelOf(element))?.has(match)) ||
           (match
-            ? row.querySelector<HTMLElement>(
-                '[data-testid="cell-frame-title"] [dir="auto"], [data-testid="cell-frame-title"] [title], [data-testid="cell-frame-title"] span, [data-testid="cell-frame-title"]',
+            ? candidates.find(
+                element =>
+                  !!element.closest('[data-testid="cell-frame-title"]'),
               )
             : undefined);
         if (!match || !marker) {
           // Virtual rows can be reused for a different conversation. Never
           // leave a previous customer's widgets on an unidentified row.
           clearRow(row);
+          state.rowStatus.set(row, match ? 'missing-title' : 'unresolved');
           continue;
         }
         const key = `${match}:${data.revision}`;
@@ -861,8 +941,9 @@ export function customerTick(
         state.watchSize(row);
         state.watchSize(marker);
         // A newly logged-in list can still be hidden, animating or waiting for
-        // its initial font/layout. Wait for two stable samples before adding
-        // the third line; later resizes invalidate the geometry cache above.
+        // its initial font/layout. Prefer two stable samples, but do not let
+        // a visible title animation postpone insertion indefinitely. Later
+        // resizes invalidate the geometry cache above.
         if (!existingNote) {
           const bounds = row.getBoundingClientRect();
           const nameBounds = marker.getBoundingClientRect();
@@ -872,17 +953,35 @@ export function customerTick(
             !nameBounds.width ||
             !nameBounds.height
           ) {
+            state.rowStatus.set(row, 'waiting-layout');
             state.dirty = true;
             continue;
           }
           const signature = state.geometry(row, marker);
-          const initial = state.initialGeometry.get(row);
+          const previousInitial = state.initialGeometry.get(row);
+          const identity = `${data.owner}:${match}`;
+          const initial =
+            previousInitial?.identity === identity
+              ? previousInitial
+              : undefined;
+          const firstAt = initial?.firstAt ?? initial?.at ?? Date.now();
           if (!initial || initial.signature !== signature) {
-            state.initialGeometry.set(row, { signature, at: Date.now() });
-            state.dirty = true;
-            continue;
-          }
-          if (Date.now() - initial.at < 150) {
+            state.initialGeometry.set(row, {
+              signature,
+              at: Date.now(),
+              firstAt,
+              identity,
+            });
+            if (Date.now() - firstAt < 2000) {
+              state.rowStatus.set(row, 'waiting-layout');
+              state.dirty = true;
+              continue;
+            }
+          } else if (
+            Date.now() - initial.at < 150 &&
+            Date.now() - firstAt < 2000
+          ) {
+            state.rowStatus.set(row, 'waiting-layout');
             state.dirty = true;
             continue;
           }
@@ -924,6 +1023,7 @@ export function customerTick(
           titleLine.style.position = 'relative';
         titleLine.append(flags(match));
         row.dataset.zlCustomerRendered = 'true';
+        state.rowStatus.set(row, 'rendered');
         const note = summary(match)?.remarkName;
         {
           const line = document.createElement('input');

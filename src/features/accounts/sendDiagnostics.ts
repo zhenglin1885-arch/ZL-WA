@@ -90,6 +90,8 @@ export function readSendDiagnostics() {
         row.getAttribute('aria-selected') === 'true' ||
         row.querySelector('[aria-selected="true"]'),
     );
+  const resolution = read(() => customer.rowIdentity.get(activeRow));
+  const renderStage = read(() => customer.rowStatus.get(activeRow));
   const customers = {
     installed: Boolean(customer?.data),
     ownerMatches:
@@ -111,6 +113,35 @@ export function readSendDiagnostics() {
       active && customer?.data?.summaries?.[canonical(active)],
     ),
     activeRowLocated: Boolean(activeRow),
+    activeRowResolved: Boolean(
+      activeRow &&
+        active &&
+        resolved[rows.indexOf(activeRow)] &&
+        canonical(resolved[rows.indexOf(activeRow)]) === canonical(active),
+    ),
+    activeResolution: [
+      'react-props',
+      'native-id',
+      'react-fiber',
+      'unique-title',
+    ].includes(resolution)
+      ? resolution
+      : null,
+    activeRenderStage: [
+      'unresolved',
+      'missing-title',
+      'waiting-layout',
+      'rendered',
+    ].includes(renderStage)
+      ? renderStage
+      : null,
+    unresolvedRows: resolved.filter(id => !id).length,
+    waitingLayoutRows: rows.filter(
+      row => read(() => customer.rowStatus.get(row)) === 'waiting-layout',
+    ).length,
+    missingTitleRows: rows.filter(
+      row => read(() => customer.rowStatus.get(row)) === 'missing-title',
+    ).length,
     activeTitleContainer: Boolean(
       activeRow?.querySelector('[data-testid="cell-frame-title"]'),
     ),

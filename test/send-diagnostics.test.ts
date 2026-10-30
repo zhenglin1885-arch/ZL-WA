@@ -155,3 +155,39 @@ it('caps message inspection and does not copy unexpected version strings or stre
     stream: { mode: null, info: null },
   });
 });
+it('does not mistake a selected DOM row for a resolved contact or leak unexpected stage values', () => {
+  const row: any = {
+    closest: () => row,
+    getAttribute: () => 'true',
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const result = run(
+    {
+      __zlCustomerAdapter: {
+        models: () => [{ id: 'private-chat' }],
+        owners: () => ['owner'],
+        wid: (value: string) => value,
+      },
+      __zlCustomers: {
+        activeChatId: 'private-chat',
+        data: { owner: 'owner', summaries: { 'private-chat': {} } },
+        resolveRow: () => '',
+        rowIdentity: { get: () => 'private-identity' },
+        rowStatus: { get: () => 'private-stage' },
+      },
+    },
+    { querySelectorAll: () => [row] },
+  );
+  expect(result.customers).toMatchObject({
+    activeRowLocated: true,
+    activeRowResolved: false,
+    activeNotePresent: false,
+    unresolvedRows: 1,
+    activeResolution: null,
+    activeRenderStage: null,
+  });
+  expect(JSON.stringify(result)).not.toMatch(
+    /private-chat|private-identity|private-stage/,
+  );
+});
