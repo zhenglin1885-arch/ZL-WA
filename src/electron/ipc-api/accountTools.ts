@@ -11,12 +11,14 @@ import { join } from 'node:path';
 import {
   defaultTools,
   translationEngines,
-  type TranslationEngine,
+  credentialEngines,
+  type CredentialEngine,
   proxyRules,
   type ToolsConfig,
   type SendRecord,
 } from '../../features/accountTools/config';
 import { translateAccount } from '../accountTranslation';
+import { transcribeVoice } from '../voiceTranscription';
 import { translateMyMemory } from '../myMemoryTranslation';
 import { createSocksBridge } from '../socksProxy';
 import { accountTransport } from '../accountTransport';
@@ -45,7 +47,7 @@ import initReactions from './reactions';
 
 type StoredConfig = ToolsConfig & {
   encryptedPassword?: string;
-  encryptedKeys?: Partial<Record<TranslationEngine, string>>;
+  encryptedKeys?: Partial<Record<CredentialEngine, string>>;
 };
 const decrypt = (value?: string) =>
   value ? safeStorage.decryptString(Buffer.from(value, 'base64')) : '';
@@ -64,6 +66,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   initBulkMedia(mainWindow);
   const path = join(app.getPath('userData'), 'account-tools.json');
   const translations = new TranslationQueue();
+  const speech = new TranslationQueue();
   const pendingTranslations = new Map<
     string,
     Promise<Awaited<ReturnType<typeof translateAccount>>>
@@ -130,7 +133,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         cacheRevision: TranslationCache.key([c.providers, c.encryptedKeys]),
       },
       providers: Object.fromEntries(
-        translationEngines.map(engine => [
+        credentialEngines.map(engine => [
           engine,
           {
             model: c.providers?.[engine]?.model,
@@ -146,6 +149,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   >();
   app.on('before-quit', () => {
     translations.dispose();
+    speech.dispose();
     translationCache.flush();
     for (const bridge of bridges.values()) bridge.close();
     bridges.clear();
@@ -316,6 +320,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       if (
         !translationEngines.includes(input.translation.engine) ||
         !translationEngines.includes(input.translation.receiveEngine) ||
+        (input.translation.voiceLanguage !== undefined &&
+          !/^[a-z]{2,3}-(?:[A-Z][a-z]{3}-)?[A-Z]{2}$/.test(
+            input.translation.voiceLanguage,
+          )) ||
         ![
           input.translation.source,
           input.translation.receiveSource,
@@ -331,7 +339,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           : undefined;
       const encryptedKeys = { ...previous.encryptedKeys };
       const providers: ToolsConfig['providers'] = {};
-      for (const engine of translationEngines) {
+      for (const engine of credentialEngines) {
         const credential = input.providers?.[engine];
         if (credential?.apiKey !== undefined)
           encryptedKeys[engine] = credential.apiKey
@@ -363,6 +371,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           preview: Boolean(input.translation.preview),
           engine: input.translation.engine,
           receiveEngine: input.translation.receiveEngine,
+          voiceLanguage: input.translation.voiceLanguage || 'pt-BR',
           source: input.translation.source,
           receiveSource: input.translation.receiveSource,
           sendTarget: input.translation.sendTarget,
@@ -459,6 +468,49 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     if (!response.ok) throw new Error(`连接失败：HTTP ${response.status}`);
     return { route, milliseconds: Date.now() - started };
   });
+  const voiceConfig = (id: string) => {
+    const config = get(id);
+    if (!config.translation.incoming) throw new Error('请先启用接收翻译并应用');
+    const engine = 'GoogleCloudSpeech';
+    if (!config.encryptedKeys?.[engine])
+      throw new Error(
+        '请在翻译设置中填写此账号的 Google Cloud 语音识别 API Key 并应用；文字翻译通道无需更改',
+      );
+    return config;
+  };
+  ipcMain.handle('account-tools-voice-ready', (event, id: string) => {
+    check(event, id);
+    voiceConfig(id);
+    return true;
+  });
+  ipcMain.handle(
+    'account-tools-transcribe',
+    async (event, id: string, audio: string) => {
+      check(event, id);
+      const snapshot = voiceConfig(id);
+      if (typeof audio !== 'string' || audio.length > 26_000_000)
+        throw new Error('语音数据过大或无效');
+      return speech.enqueue(id, false, async () => {
+        const sameConfig = () =>
+          JSON.stringify(get(id)) === JSON.stringify(snapshot);
+        if (!sameConfig()) throw new Error('账号设置已变化，请重新翻译');
+        await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
+        if (!sameConfig()) throw new Error('账号设置已变化，请重新翻译');
+        const s = session.fromPartition(`persist:service-${id}`);
+        const result = await transcribeVoice(
+          accountTransport(s, snapshot.proxy, () =>
+            decrypt(snapshot.encryptedPassword),
+          ),
+          audio,
+          decrypt(snapshot.encryptedKeys?.GoogleCloudSpeech),
+          snapshot.translation.voiceLanguage || 'pt-BR',
+        );
+        return sameConfig()
+          ? result
+          : { text: '', error: true, message: '账号设置已变化，请重新翻译' };
+      });
+    },
+  );
   ipcMain.handle(
     'account-tools-translate',
     async (

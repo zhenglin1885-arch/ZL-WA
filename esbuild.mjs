@@ -102,6 +102,7 @@ const runEsbuild = async () => {
     'src/features/accounts/audioUpload.ts',
     'src/webview/downloads.ts',
     'src/features/accountTools/guest.ts',
+    'src/features/accountTools/voiceTranslationGuest.ts',
     'src/features/accountTools/bulkGuest.ts',
     'src/features/customers/guest.ts',
     'src/features/groups/guest.ts',

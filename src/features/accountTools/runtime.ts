@@ -2,7 +2,14 @@
 /* eslint-disable @typescript-eslint/no-loop-func -- stopped is intentionally shared by pending jobs on cleanup. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
-import { getBulkQueue } from './bulkRuntime';
+import { getBulkQueue, ensureBulkLibrary } from './bulkRuntime';
+import {
+  voiceTranslationTick,
+  readVoiceTranslationAudio,
+  voiceTranslationResult,
+  voiceTranslationCurrent,
+  type VoiceTranslationJob,
+} from './voiceTranslationGuest';
 import { type ToolsConfig } from './config';
 import {
   translationTick,
@@ -37,10 +44,14 @@ export async function configureTranslation(
   textColor?: string,
 ): Promise<void> {
   const config = await getTools(service.id);
-  if (service.webview)
+  if (service.webview) {
     await service.webview.executeJavaScript(
       `(${translationTick.toString()})(${JSON.stringify({ ...config.translation, textColor })},false)`,
     );
+    await service.webview.executeJavaScript(
+      `(${voiceTranslationTick.toString()})(${Boolean(config.translation.incoming)},${JSON.stringify(JSON.stringify(config.translation))},false)`,
+    );
+  }
 }
 export function startTranslations(stores: RealStores): () => void {
   const bulk = getBulkQueue(stores);
@@ -48,6 +59,72 @@ export function startTranslations(stores: RealStores): () => void {
   let stopped = false;
   const running = new Set<string>();
   const pending = new Set<string>();
+  const voiceJobs = new Set<string>();
+  const runVoice = async (
+    service: RealStores['services']['all'][number],
+    view: Electron.WebviewTag,
+    job: VoiceTranslationJob,
+  ) => {
+    if (voiceJobs.has(service.id)) return;
+    voiceJobs.add(service.id);
+    let transcript = '';
+    try {
+      // Check credentials before downloading/decrypting any media.
+      await ipcRenderer.invoke('account-tools-voice-ready', service.id);
+      await ensureBulkLibrary(view);
+      const media = await view.executeJavaScript(
+        `(${readVoiceTranslationAudio.toString()})(${JSON.stringify(job)})`,
+      );
+      if (
+        stopped ||
+        service.webview !== view ||
+        !(await view.executeJavaScript(
+          `(${voiceTranslationCurrent.toString()})(${JSON.stringify(job)})`,
+        ))
+      )
+        return;
+      const recognized = media.transcript
+        ? { text: media.transcript, error: false }
+        : await ipcRenderer.invoke(
+            'account-tools-transcribe',
+            service.id,
+            media.audio,
+          );
+      if (recognized.error)
+        throw new Error(recognized.message || '语音识别失败');
+      transcript = recognized.text;
+      if (
+        stopped ||
+        service.webview !== view ||
+        !(await view.executeJavaScript(
+          `(${voiceTranslationCurrent.toString()})(${JSON.stringify(job)})`,
+        ))
+      )
+        return;
+      const result = await ipcRenderer.invoke(
+        'account-tools-translate',
+        service.id,
+        transcript,
+        'incoming',
+      );
+      if (!stopped && service.webview === view)
+        await view.executeJavaScript(
+          `(${voiceTranslationResult.toString()})(${JSON.stringify(job)},${JSON.stringify({ ...result, transcript })})`,
+        );
+    } catch (error) {
+      if (!stopped && service.webview === view) {
+        try {
+          await view.executeJavaScript(
+            `(${voiceTranslationResult.toString()})(${JSON.stringify(job)},${JSON.stringify({ error: true, transcript, message: error instanceof Error ? error.message : '语音翻译失败，请重试' })})`,
+          );
+        } catch {
+          /* Navigation discards results belonging to the previous document. */
+        }
+      }
+    } finally {
+      voiceJobs.delete(service.id);
+    }
+  };
   const tick = async (service: RealStores['services']['all'][number]) => {
     const view = service.webview;
     if (
@@ -65,6 +142,14 @@ export function startTranslations(stores: RealStores): () => void {
       const jobs: TranslationRequest[] = await view.executeJavaScript(
         `(${translationTick.toString()})(${JSON.stringify({ ...c.translation, textColor: stores.settings.app.translationTextColor })})`,
       );
+      try {
+        const voice: VoiceTranslationJob[] = await view.executeJavaScript(
+          `(${voiceTranslationTick.toString()})(${Boolean(c.translation.incoming)},${JSON.stringify(JSON.stringify(c.translation))},${!voiceJobs.has(service.id)})`,
+        );
+        for (const job of voice) void runVoice(service, view, job);
+      } catch {
+        /* A voice decoration failure must not discard drained text jobs. */
+      }
       for (const job of jobs.sort(
         (a, b) =>
           Number(b.direction === 'outgoing') -

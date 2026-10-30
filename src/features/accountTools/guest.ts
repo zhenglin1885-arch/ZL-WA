@@ -93,7 +93,7 @@ export function translationTick(
     // loses them, so read only message text and reconstruct emoji alt characters.
     state.readText = (root: Node): string => {
       const metadata =
-        '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
+        '[data-zl-voice-translation], [data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
       const excluded = (element: Element) => {
         if (element.matches(metadata)) return true;
         const text = (element.textContent || '').trim();

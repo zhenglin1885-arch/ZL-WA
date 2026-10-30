@@ -17,6 +17,11 @@ export const translationEngines = [
   'LibreTranslate',
 ] as const;
 export type TranslationEngine = (typeof translationEngines)[number];
+export const credentialEngines = [
+  ...translationEngines,
+  'GoogleCloudSpeech',
+] as const;
+export type CredentialEngine = (typeof credentialEngines)[number];
 export interface ProviderCredential {
   apiKey?: string;
   hasApiKey?: boolean;
@@ -30,6 +35,7 @@ export interface TranslationConfig {
   preview: boolean;
   engine: TranslationEngine;
   receiveEngine: TranslationEngine;
+  voiceLanguage?: string;
   receiveSource: string;
   source: string;
   sendTarget: string;
@@ -38,7 +44,7 @@ export interface TranslationConfig {
 export interface ToolsConfig {
   proxy: ProxyConfig;
   translation: TranslationConfig;
-  providers?: Partial<Record<TranslationEngine, ProviderCredential>>;
+  providers?: Partial<Record<CredentialEngine, ProviderCredential>>;
 }
 export const defaultTools = (): ToolsConfig => ({
   proxy: {
@@ -55,6 +61,7 @@ export const defaultTools = (): ToolsConfig => ({
     preview: false,
     engine: 'Google',
     receiveEngine: 'Google',
+    voiceLanguage: 'pt-BR',
     receiveSource: 'auto',
     source: 'auto',
     sendTarget: 'en',

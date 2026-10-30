@@ -982,4 +982,93 @@ describe('privileged account tools IPC', () => {
         .accounts,
     ).toEqual({});
   });
+  it('requires incoming translation and this account own encrypted speech key, and rejects guest IPC frames', async () => {
+    expect(() => invoke('voice-ready', 'account-1')).toThrow('启用接收翻译');
+    const config = defaultTools();
+    config.translation.incoming = true;
+    await invoke('save', 'account-1', config);
+    expect(() => invoke('voice-ready', 'account-1')).toThrow('Google Cloud');
+    config.providers = {
+      GoogleCloudSpeech: { apiKey: 'synthetic-voice-secret' },
+    };
+    await invoke('save', 'account-1', config);
+    expect(invoke('voice-ready', 'account-1')).toBe(true);
+    expect(() =>
+      handlers['account-tools-voice-ready'](
+        { ...event, senderFrame: {} },
+        'account-1',
+      ),
+    ).toThrow('禁止访问');
+    await expect(
+      handlers['account-tools-transcribe'](
+        { ...event, senderFrame: {} },
+        'account-1',
+        'AA==',
+      ),
+    ).rejects.toThrow('禁止访问');
+    const other = defaultTools();
+    other.translation.incoming = true;
+    await invoke('save', 'account-2', other);
+    expect(() => invoke('voice-ready', 'account-2')).toThrow('Google Cloud');
+    const stored = readFileSync(join(root, 'account-tools.json'), 'utf8');
+    expect(stored).not.toContain('"apiKey":"synthetic-voice-secret"');
+  });
+  it('routes Google Cloud speech recognition through the original account and translates its transcript with the existing text provider', async () => {
+    const config = defaultTools();
+    config.translation.incoming = true;
+    config.providers = {
+      GoogleCloudSpeech: { apiKey: 'synthetic-speech-key' },
+    };
+    const saved = await invoke('save', 'account-1', config);
+    expect(saved.providers.GoogleCloudSpeech.hasApiKey).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain('synthetic-speech-key');
+    const bytes = Buffer.alloc(48);
+    bytes.write('RIFF', 0);
+    bytes.writeUInt32LE(40, 4);
+    bytes.write('WAVEfmt ', 8);
+    bytes.writeUInt32LE(16, 16);
+    bytes.writeUInt16LE(1, 20);
+    bytes.writeUInt16LE(1, 22);
+    bytes.writeUInt32LE(16_000, 24);
+    bytes.writeUInt32LE(32_000, 28);
+    bytes.writeUInt16LE(2, 32);
+    bytes.writeUInt16LE(16, 34);
+    bytes.write('data', 36);
+    bytes.writeUInt32LE(4, 40);
+    const { fetch } = sessions.get('persist:service-account-1');
+    fetch.mockResolvedValue(
+      Response.json({
+        results: [{ alternatives: [{ transcript: 'Bom dia' }] }],
+      }),
+    );
+    const recognized = await invoke(
+      'transcribe',
+      'account-1',
+      bytes.toString('base64'),
+    );
+    expect(recognized).toEqual({ text: 'Bom dia', error: false });
+    expect(fetch).toHaveBeenCalledWith(
+      'https://speech.googleapis.com/v1/speech:recognize',
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': 'synthetic-speech-key',
+        },
+      }),
+    );
+    expect(
+      await invoke('translate', 'account-1', recognized.text, 'incoming'),
+    ).toEqual({ text: 'translated', error: false });
+    expect(
+      require('../src/electron/accountTranslation').translateAccount,
+    ).toHaveBeenCalledWith(
+      expect.any(Function),
+      'Bom dia',
+      'zh-CN',
+      'Google',
+      'auto',
+      '',
+      '',
+    );
+  });
 });

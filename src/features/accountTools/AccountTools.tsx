@@ -480,10 +480,36 @@ const SettingsPanel = observer(
                   value={config.translation.receiveTarget}
                   onChange={receiveTarget => translation({ receiveTarget })}
                 />
+                <label htmlFor="voice-translation-language">
+                  语音识别语言（Google Cloud）
+                  <select
+                    id="voice-translation-language"
+                    value={config.translation.voiceLanguage || 'pt-BR'}
+                    onChange={event =>
+                      translation({ voiceLanguage: event.target.value })
+                    }
+                  >
+                    <option value="pt-BR">葡萄牙语（巴西）</option>
+                    <option value="en-US">英语</option>
+                    <option value="es-ES">西班牙语</option>
+                    <option value="cmn-Hans-CN">普通话</option>
+                    <option value="fr-FR">法语</option>
+                    <option value="de-DE">德语</option>
+                    <option value="ja-JP">日语</option>
+                  </select>
+                </label>
+                <p className="tools-hint">
+                  点击消息下方“语音翻译”时，会将该条音频提交给 Google Cloud
+                  Speech-to-Text（可能产生费用），
+                  再使用当前接收翻译通道。不会自动上传语音。最长 10 分钟、20
+                  MB。 请在 Google Cloud 开通 Speech-to-Text API
+                  和结算，填写下方专用 Key 后应用。
+                </p>
                 {[
                   ...new Set([
                     'OpenAI' as const,
                     'Gemini' as const,
+                    'GoogleCloudSpeech' as const,
                     config.translation.engine,
                     config.translation.receiveEngine,
                   ]),
@@ -501,7 +527,12 @@ const SettingsPanel = observer(
                         config.translation.receiveEngine === engine
                       }
                     >
-                      <summary>{engine} API Key 设置（此账号）</summary>
+                      <summary>
+                        {engine === 'GoogleCloudSpeech'
+                          ? 'Google Cloud 语音识别'
+                          : engine}{' '}
+                        API Key 设置（此账号）
+                      </summary>
                       <fieldset>
                         <legend>{engine} 配置</legend>
                         <label htmlFor={`provider-key-${engine}`}>
