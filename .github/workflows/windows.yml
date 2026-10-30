@@ -1,20 +1,9 @@
 name: ZL-WA Windows
 
 on:
-  # Isolated fallback for this test build while the local GitHub API is unavailable.
   push:
-    branches: ['test/7.3.5-20261029-12']
+    branches: ['release/7.3.6']
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Existing version tag (e.g. v7.2.5); leave empty for artifacts only'
-        required: false
-        type: string
-
-      download_tag:
-        description: 'Standalone test download tag; never updates the stable release'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -32,30 +21,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          ref: ${{ inputs.release_tag || github.ref }}
-      - name: Validate release version
-        if: inputs.release_tag != ''
-        shell: pwsh
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag must match package.json version.' }
-      - name: Validate standalone download
-        if: inputs.download_tag != '' || github.event_name == 'push'
-        shell: pwsh
-        env:
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261029-12' }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          if ($env:RELEASE_TAG) { throw 'Choose either a formal release or a standalone test download.' }
-          if ($env:DOWNLOAD_TAG -notmatch '^test-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$') {
-            throw 'Invalid standalone download tag.'
-          }
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
       - uses: pnpm/action-setup@v4
+      - name: Validate release version
+        run: node -e "if (require('./package.json').version !== '7.3.6') throw Error('Version mismatch')"
       - name: Install dependencies and Electron
         run: |
           pnpm install --frozen-lockfile
@@ -70,14 +41,12 @@ jobs:
         run: |
           pnpm typecheck *> typecheck.log
           if ($LASTEXITCODE -ne 0) {
-            $details = (Get-Content typecheck.log -Tail 100) -join '%0A'
-            Write-Output "::error title=Typecheck failed::$details"
+            Get-Content typecheck.log -Tail 100
             exit 1
           }
           pnpm test --runInBand --coverage=false *> tests.log
           if ($LASTEXITCODE -ne 0) {
-            $details = (Get-Content tests.log -Tail 150) -join '%0A'
-            Write-Output "::error title=Tests failed::$details"
+            Get-Content tests.log -Tail 150
             exit 1
           }
           Get-Content tests.log -Tail 8
@@ -88,43 +57,19 @@ jobs:
           name: ZL-WA-Windows-x64
           path: out/*.exe
           if-no-files-found: error
-      - name: Create checksums
+      - name: Create checksums and publish verification candidate
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $expected = @('ZL-WA-win-AutoSetup-7.3.6-x64.exe', 'ZL-WA-win-Portable-7.3.6-x64.exe') | Sort-Object
+          $actual = @(Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty Name | Sort-Object)
+          if (($actual -join ',') -ne ($expected -join ',')) { throw 'Unexpected package set.' }
           $lines = Get-ChildItem out -Filter *.exe | ForEach-Object {
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
-          Copy-Item docs/ACCOUNT-TOOLS.md out/Windows-testing-guide.md
-      - name: Publish requested release
-        if: inputs.release_tag != ''
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') {
-            throw 'Only a valid existing ZL-WA version tag may be published by this workflow.'
-          }
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release upload $env:RELEASE_TAG @files out/SHA256SUMS.txt out/Windows-testing-guide.md --repo $env:GITHUB_REPOSITORY --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
-          if ($env:RELEASE_TAG.Contains('-')) {
-            gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --prerelease
-          } else {
-            gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
-          }
-          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
-      - name: Publish standalone test download
-        if: inputs.download_tag != '' || github.event_name == 'push'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOWNLOAD_TAG: ${{ inputs.download_tag || 'test-7.3.5-20261029-12' }}
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if (-not $env:DOWNLOAD_TAG.StartsWith("test-$version-")) { throw 'Test download must match the packaged version.' }
-          $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create $env:DOWNLOAD_TAG @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title "ZL-WA $version test-12 客户备注与标志显示测试包" --notes '独立测试包：客户备注及标志显示优先按聊天编号识别，兼容企业认证名称、其他原生展示名及新版标题结构；防止同名联系人或虚拟聊天行复用后显示错误备注，保留原客户资料。支持仅剩Meta服务提示、没有Waiting消息的场景。右侧翻译中的检查并复制发送诊断增加客户显示识别布尔值和计数，不包含聊天编号、备注正文、号码或密钥。保留test-11的ZL-WA更名与此前功能。本包自动化及独立Chromium场景通过，完整桌面基线回归仍有不稳定项，AUVP真实会话效果需实测，不能仅凭认证身份或Waiting提示确定根因。正式版和自动更新不变。请完全退出软件含托盘后覆盖安装，保留原会话和数据测试。'
-          if ($LASTEXITCODE -ne 0) { throw 'Test download upload failed.' }
+          gh release create candidate-7.3.6-20261029 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 verification candidate' --notes 'Based on test-12. Awaiting package verification; this candidate does not update the stable channel.'
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }

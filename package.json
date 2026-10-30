@@ -3,7 +3,7 @@
   "productName": "ZL-WA",
   "desktopName": "zl-wa.desktop",
   "appId": "com.zl-wa.desktop",
-  "version": "7.3.5",
+  "version": "7.3.6",
   "description": "ZL-WA desktop messaging client, based on Ferdium 7.2.3.",
   "author": "Ferdium Contributors <hello@ferdium.org> (https://ferdium.org/)",
   "license": "Apache-2.0",
