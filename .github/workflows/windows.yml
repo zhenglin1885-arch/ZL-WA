@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['release/7.3.6']
+    branches: ['test/7.3.6-20261031-1']
   workflow_dispatch:
 
 permissions:
@@ -57,7 +57,7 @@ jobs:
           name: ZL-WA-Windows-x64
           path: out/*.exe
           if-no-files-found: error
-      - name: Create checksums and publish verification candidate
+      - name: Create checksums and publish test package
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,5 +71,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create candidate-7.3.6-20261029 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 verification candidate' --notes 'Based on test-12. Awaiting package verification; this candidate does not update the stable channel.'
+          gh release create test-7.3.6-20261031-1 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 test-1 (2026-10-31)' --notes 'Windows x64 test package: proxy reconnect and unavailable-page diagnostics, customer row notes, idle-window recovery and multi-account performance improvements. This prerelease does not update the stable channel.'
           if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }
