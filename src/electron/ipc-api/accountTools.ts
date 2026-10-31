@@ -169,8 +169,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         if (
           config.proxy.enabled &&
           config.proxy.mode === 'manual' &&
-          config.proxy.protocol === 'socks5' &&
-          (config.proxy.username || config.encryptedPassword)
+          config.proxy.protocol === 'socks5'
         ) {
           bridge = await createSocksBridge(
             config.proxy,
@@ -434,10 +433,37 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       }
     },
   );
+  ipcMain.handle(
+    'account-tools-proxy-diagnostics',
+    async (event, id: string) => {
+      check(event, id);
+      const config = get(id).proxy;
+      let route = 'unavailable';
+      try {
+        const resolved = await session
+          .fromPartition(`persist:service-${id}`)
+          .resolveProxy('https://web.whatsapp.com/');
+        route =
+          /^(PROXY|HTTPS|SOCKS5?|DIRECT)\b/.exec(resolved)?.[1] || 'unknown';
+      } catch {
+        // Diagnostics remain copyable even while the network service is unavailable.
+      }
+      return {
+        enabled: config.enabled,
+        mode: config.mode,
+        protocol: config.protocol,
+        authentication: Boolean(config.username || get(id).encryptedPassword),
+        route,
+        bridge: bridges.get(id)?.diagnostics() || null,
+      };
+    },
+  );
   ipcMain.handle('account-tools-test-proxy', async (event, id: string) => {
     check(event, id);
     attachAuth(id);
-    await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
+    // An explicit repair/test must rebuild a failed bridge and flush pooled
+    // connections even when the saved settings have not changed.
+    await apply(id, get(id));
     const s = session.fromPartition(`persist:service-${id}`);
     const started = Date.now();
     // session.fetch also permits Chromium fallback to DIRECT; resolveProxy must agree first.
@@ -449,13 +475,23 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     )
       throw new Error('当前会话未使用配置的代理');
     const config = get(id);
-    const response = await accountTransport(s, config.proxy, () =>
-      decrypt(config.encryptedPassword),
-    )('https://web.whatsapp.com/', {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(12_000),
-      cache: 'no-store',
-    });
+    let response: Response;
+    try {
+      response = await accountTransport(s, config.proxy, () =>
+        decrypt(config.encryptedPassword),
+      )('https://web.whatsapp.com/', {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(12_000),
+        cache: 'no-store',
+      });
+    } catch {
+      const failure = bridges.get(id)?.diagnostics().lastFailure;
+      throw new Error(
+        failure
+          ? `SOCKS5 连接失败（${failure.stage}/${failure.code}），请复制发送诊断反馈`
+          : '无法通过当前账号网络连接 WhatsApp，请复制发送诊断反馈',
+      );
+    }
     if (!response.ok) throw new Error(`连接失败：HTTP ${response.status}`);
     return { route, milliseconds: Date.now() - started };
   });

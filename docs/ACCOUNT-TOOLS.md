@@ -359,3 +359,31 @@ WhatsApp 的内部网页接口和编辑器可能随官方更新变化。仍需 W
 本地模拟 25 个后台账号：首次维护共 75 次跨页面调用，之后 12 秒不重复维护，第 18 秒共追加 25 次状态读取；没有强制休眠或预加载全部后台 SDK。该结果仅是维护脚本层面的回归验证，不代表真实 25 个 WhatsApp 页面的 CPU/内存降幅；页面自身占用需在用户机器测量。要进一步释放不常用账号的完整页面内存，可使用已有手动休眠，但休眠期间该账号不会实时接收消息。
 
 已关闭本地服务的上游公告功能开关。Windows 通知展示的 ZL-WA 是发送程序名称，也可能对应任意内嵌服务的消息通知，不能仅凭程序名称判断广告来源。没有对未知正文做关键词屏蔽，也没有关闭正常客户消息通知；具体广告仍需标题/正文或完整通知截图确认。
+
+### Proxy reconnect and unavailable-page diagnostics (2026-10-31)
+
+- Explicit “应用并测试连接” rebuilds this account's proxy/bridge, clears its
+  cached authentication and pooled connections, then reloads its view after a
+  successful WhatsApp endpoint test. Unchanged settings no longer skip repair.
+  Cookies, IndexedDB and other accounts are retained; no message is retried.
+- All manually configured SOCKS5 accounts use an isolated loopback CONNECT
+  bridge, including proxies without username/password authentication. Domain
+  resolution stays upstream. A proxy error does not fall back to direct access.
+- Bridge diagnostics record only stage, whitelisted socket/protocol code and
+  time. Authentication rejection and SOCKS destination reply codes are retained;
+  hostnames, ports, usernames, passwords and provider error bodies are omitted.
+- Send diagnostic copying works without a loaded guest. Host and guest reads
+  each have a four-second deadline; failed guest execution cannot prevent
+  copying host proxy metadata and a sanitized Chromium load error code.
+- Validation: 723 tests passed, 2 skipped (67 suites, coverage disabled because
+  injected function fixtures execute their serialized code in an isolated VM).
+  Targeted ESLint, TypeScript and source compilation passed. Socket fixtures
+  cover authenticated/no-auth SOCKS, upstream DNS and rejection codes 2/4/5;
+  IPC fixtures cover unchanged-setting repair and per-account isolation.
+- Actual failing Windows account/provider connection has not been reproduced.
+  This change adds recovery and evidence; it does not establish that the user's
+  proxy endpoint is reachable from that computer. No stable release is changed.
+- Additional offline native check passed using Electron 43.3.0: actual Chromium
+  Session HTTPS traffic traversed both authenticated and unauthenticated SOCKS
+  bridges to a local TLS fixture; an unavailable-page diagnostic round-tripped
+  through the native clipboard. No real proxy provider/account was contacted.

@@ -834,6 +834,57 @@ describe('privileged account tools IPC', () => {
       readFileSync(join(root, 'account-tools.json'), 'utf8'),
     ).not.toContain('replacement-secret');
   });
+  it('rebuilds unchanged proxy settings on explicit test without touching another account or stored chat data', async () => {
+    await invoke('prepare', 'account-1');
+    await invoke('prepare', 'account-2');
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'localhost',
+      port: '8888',
+    };
+    await invoke('save', 'account-1', config);
+    const first = sessions.get('persist:service-account-1');
+    const second = sessions.get('persist:service-account-2');
+    first.resolveProxy.mockResolvedValue('PROXY localhost:8888');
+    first.setProxy.mockClear();
+    first.closeAllConnections.mockClear();
+    await invoke('test-proxy', 'account-1');
+    expect(first.setProxy).toHaveBeenCalledTimes(1);
+    expect(first.closeAllConnections).toHaveBeenCalledTimes(1);
+    expect(second.setProxy).toHaveBeenCalledTimes(1);
+  });
+  it('uses an isolated bridge for SOCKS without credentials and exports only redacted route metadata', async () => {
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      protocol: 'socks5',
+      host: 'private-provider',
+      port: '2340',
+    };
+    await invoke('save', 'account-1', config);
+    const first = sessions.get('persist:service-account-1');
+    expect(first.setProxy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        proxyRules: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/),
+      }),
+    );
+    first.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:54321');
+    const result = await invoke('proxy-diagnostics', 'account-1');
+    expect(result).toMatchObject({
+      protocol: 'socks5',
+      route: 'PROXY',
+      authentication: false,
+      bridge: { lastFailure: null },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/private-provider|54321|2340/);
+    first.resolveProxy.mockRejectedValue(new Error('secret'));
+    expect(await invoke('proxy-diagnostics', 'account-1')).toMatchObject({
+      route: 'unavailable',
+    });
+  });
   it('stores only encrypted passwords, redacts read results and matches proxy authentication to the account Session', async () => {
     const config = defaultTools();
     config.proxy = {

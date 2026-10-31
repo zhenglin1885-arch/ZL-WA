@@ -95,3 +95,65 @@ it('rejects unusable SOCKS credentials before starting a listener', async () => 
     ),
   ).rejects.toThrow('255');
 });
+
+it.each([0, 2, 4, 5])(
+  'handles unauthenticated SOCKS reply %i without using direct networking',
+  async code => {
+    const sockets = new Set<Socket>();
+    const packets: Buffer[] = [];
+    const upstream = createServer(socket => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+      let phase = 0;
+      socket.on('data', data => {
+        packets.push(data);
+        const current = phase;
+        phase += 1;
+        if (current === 0) socket.write(Buffer.from([5, 0]));
+        else socket.write(Buffer.from([5, code, 0, 1, 127, 0, 0, 1, 0, 80]));
+      });
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (!address || typeof address === 'string') throw new Error('No address');
+    const bridge = await createSocksBridge(
+      {
+        ...defaultTools().proxy,
+        host: '127.0.0.1',
+        port: String(address.port),
+      },
+      '',
+    );
+    const client = connect(bridge.port, '127.0.0.1');
+    try {
+      await once(client, 'connect');
+      client.write(
+        'CONNECT web.whatsapp.com:443 HTTP/1.1\r\nHost: web.whatsapp.com:443\r\n\r\n',
+      );
+      const [reply] = await once(client, 'data');
+      expect(packets[0]).toEqual(Buffer.from([5, 1, 0]));
+      expect(packets[1].subarray(5, -2).toString()).toBe('web.whatsapp.com');
+      expect(reply.toString()).toContain(
+        code === 0 ? '200 Connection Established' : '502 Bad Gateway',
+      );
+      expect(bridge.diagnostics()).toEqual({
+        lastFailure:
+          code === 0
+            ? null
+            : {
+                stage: 'destination',
+                code: `REPLY_${code}`,
+                at: expect.any(Number),
+              },
+      });
+    } finally {
+      client.destroy();
+      bridge.close();
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => {
+        upstream.close(() => resolve());
+      });
+    }
+  },
+);

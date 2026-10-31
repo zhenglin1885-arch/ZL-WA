@@ -41,6 +41,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     (authenticated && username.length === 0)
   )
     throw new Error('SOCKS5 用户名和密码最多为 255 字节，认证时用户名不能为空');
+  let lastFailure: { stage: string; code: string; at: number } | null = null;
   const sockets = new Set<Socket>();
   const track = (socket: Socket) => {
     sockets.add(socket);
@@ -67,8 +68,32 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     };
     client.once('close', () => upstream.destroy());
     upstream.once('close', () => client.destroy());
-    upstream.setTimeout(12_000, abort);
-    client.setTimeout(12_000, abort);
+    let stage = 'connect';
+    let failedTunnel = false;
+    const failure = (code: string) => {
+      failedTunnel = true;
+      lastFailure = { stage, code, at: Date.now() };
+    };
+    upstream.once('error', (error: NodeJS.ErrnoException) => {
+      failure(
+        [
+          'ECONNREFUSED',
+          'ECONNRESET',
+          'ETIMEDOUT',
+          'ENOTFOUND',
+          'EHOSTUNREACH',
+          'ENETUNREACH',
+        ].includes(error.code || '')
+          ? error.code!
+          : 'SOCKET_ERROR',
+      );
+    });
+    const timeout = () => {
+      failure('TIMEOUT');
+      abort();
+    };
+    upstream.setTimeout(12_000, timeout);
+    client.setTimeout(12_000, timeout);
     // All failures terminate this tunnel; there is no direct-network fallback.
     const tunnel = async () => {
       const destination = new URL(`https://${request.url}`);
@@ -84,11 +109,32 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
         destination.pathname !== '/'
       )
         throw new Error('无效 CONNECT 地址');
+      // Wait for TCP establishment so connect time and protocol failures remain distinct.
+      await new Promise<void>((resolve, reject) => {
+        const connected = () => {
+          upstream.off('error', failed);
+          upstream.off('close', closed);
+          resolve();
+        };
+        const failed = (error: Error) => {
+          upstream.off('connect', connected);
+          upstream.off('close', closed);
+          reject(error);
+        };
+        const closed = () => failed(new Error('SOCKS5 连接已关闭'));
+        upstream.once('connect', connected);
+        upstream.once('error', failed);
+        upstream.once('close', closed);
+      });
+      stage = 'method';
       upstream.write(Buffer.from([5, 1, authenticated ? 2 : 0]));
       const method = await read(upstream, 2);
-      if (method[0] !== 5 || method[1] !== (authenticated ? 2 : 0))
+      if (method[0] !== 5 || method[1] !== (authenticated ? 2 : 0)) {
+        failure('METHOD_REJECTED');
         throw new Error('SOCKS5 认证方式被拒绝');
+      }
       if (authenticated) {
+        stage = 'authentication';
         upstream.write(
           Buffer.concat([
             Buffer.from([1, username.length]),
@@ -98,9 +144,12 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
           ]),
         );
         const auth = await read(upstream, 2);
-        if (auth[0] !== 1 || auth[1] !== 0)
+        if (auth[0] !== 1 || auth[1] !== 0) {
+          failure('AUTH_REJECTED');
           throw new Error('SOCKS5 用户名或密码错误');
+        }
       }
+      stage = 'destination';
       // Domain names are resolved by the upstream proxy, never by local DNS.
       let address: Buffer;
       if (isIP(host) === 4)
@@ -114,8 +163,14 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
       end.writeUInt16BE(port);
       upstream.write(Buffer.concat([Buffer.from([5, 1, 0]), address, end]));
       const reply = await read(upstream, 4);
-      if (reply[0] !== 5 || reply[1] !== 0)
+      if (reply[0] !== 5 || reply[1] !== 0) {
+        failure(
+          reply[0] === 5 && reply[1] <= 8
+            ? `REPLY_${reply[1]}`
+            : 'INVALID_REPLY',
+        );
         throw new Error('SOCKS5 无法连接目标地址');
+      }
       switch (reply[3]) {
         case 1: {
           await read(upstream, 6);
@@ -135,6 +190,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
           throw new Error('无效 SOCKS5 响应');
         }
       }
+      stage = 'tunnel';
       upstream.setTimeout(0);
       client.setTimeout(0);
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
@@ -144,6 +200,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     };
     // No credential or provider error bodies are logged or returned to a webview.
     void tunnel().catch(() => {
+      if (!failedTunnel) failure('CONNECTION_CLOSED');
       client.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
       upstream.destroy();
     });
@@ -160,6 +217,9 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     throw new Error('无法启动 SOCKS5 桥接');
   return {
     port: address.port,
+    diagnostics: () => ({
+      lastFailure: lastFailure ? { ...lastFailure } : null,
+    }),
     close: () => {
       server.close();
       for (const socket of sockets) socket.destroy();
