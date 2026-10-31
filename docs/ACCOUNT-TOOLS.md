@@ -387,3 +387,33 @@ WhatsApp 的内部网页接口和编辑器可能随官方更新变化。仍需 W
   Session HTTPS traffic traversed both authenticated and unauthenticated SOCKS
   bridges to a local TLS fixture; an unavailable-page diagnostic round-tripped
   through the native clipboard. No real proxy provider/account was contacted.
+
+### Proxy test success while the page times out (2026-10-31)
+
+A reported test-1 diagnostic had an established SOCKS tunnel followed by an
+ECONNRESET, while the main page reported ERR_TIMED_OUT. The old single
+`lastFailure` could describe an unrelated Chromium background request, and the
+explicit proxy test used HEAD only. Neither established that the full WhatsApp
+page body/resources/chat session were usable.
+
+- Explicit testing now makes GET and reads the document stream to completion,
+  with a 12-second total deadline, bounded memory and a 5 MB validation limit.
+  Empty/non-HTML/truncated/erroring/stalled bodies do not pass the probe.
+  The UI describes document accessibility and explicitly leaves subsequent
+  resources and chat readiness to the actual page state.
+- Bridge diagnostics include bounded recent failures and counters categorized
+  as WhatsApp web, WhatsApp resources, or other requests. Separate latest
+  WhatsApp failure evidence cannot be overwritten by unrelated traffic.
+  Categories disclose no requested hostname, URL, credentials or page content.
+- A recovered page no longer copies its old load error as a current failure.
+- Validation: 730 tests passed, 2 skipped, 68 suites. TypeScript, targeted ESLint
+  and source compilation passed. An offline Electron/Chromium TLS fixture
+  confirmed complete GET-body probing through authenticated and no-auth SOCKS.
+  A backpressured 8 MB transfer test passed the existing bridge implementation;
+  response truncation was not reproduced and no speculative transport rewrite
+  was applied.
+- This does not establish the source of the user's real Windows disconnect.
+  Compare the same computer/browser with the exact same proxy, and inspect
+  target-scoped diagnostics if document or downstream resource loading fails.
+  No automatic message retry, account-storage cleanup, or direct fallback is
+  introduced. This source change has not been packaged or released.

@@ -850,7 +850,17 @@ describe('privileged account tools IPC', () => {
     first.resolveProxy.mockResolvedValue('PROXY localhost:8888');
     first.setProxy.mockClear();
     first.closeAllConnections.mockClear();
-    await invoke('test-proxy', 'account-1');
+    first.fetch.mockResolvedValue(
+      new Response('<!doctype html><html></html>', {
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    const result = await invoke('test-proxy', 'account-1');
+    expect(result.documentChecked).toBe(true);
+    expect(first.fetch).toHaveBeenCalledWith(
+      'https://web.whatsapp.com/',
+      expect.objectContaining({ method: 'GET' }),
+    );
     expect(first.setProxy).toHaveBeenCalledTimes(1);
     expect(first.closeAllConnections).toHaveBeenCalledTimes(1);
     expect(second.setProxy).toHaveBeenCalledTimes(1);

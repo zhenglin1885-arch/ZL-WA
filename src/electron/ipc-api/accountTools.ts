@@ -19,6 +19,7 @@ import {
 import { translateAccount } from '../accountTranslation';
 import { translateMyMemory } from '../myMemoryTranslation';
 import { createSocksBridge } from '../socksProxy';
+import { probeProxyDocument } from '../proxyProbe';
 import { accountTransport } from '../accountTransport';
 import TranslationQueue from '../../features/accountTools/TranslationQueue';
 import initBulkMedia from './bulkMedia';
@@ -475,25 +476,23 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     )
       throw new Error('当前会话未使用配置的代理');
     const config = get(id);
-    let response: Response;
+    const startedProbe = Date.now();
     try {
-      response = await accountTransport(s, config.proxy, () =>
-        decrypt(config.encryptedPassword),
-      )('https://web.whatsapp.com/', {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(12_000),
-        cache: 'no-store',
-      });
+      const document = await probeProxyDocument(
+        accountTransport(s, config.proxy, () =>
+          decrypt(config.encryptedPassword),
+        ),
+      );
+      return { route, milliseconds: Date.now() - started, ...document };
     } catch {
-      const failure = bridges.get(id)?.diagnostics().lastFailure;
+      const diagnostics = bridges.get(id)?.diagnostics();
+      const failure = diagnostics?.lastWhatsAppFailure;
       throw new Error(
-        failure
-          ? `SOCKS5 连接失败（${failure.stage}/${failure.code}），请复制发送诊断反馈`
-          : '无法通过当前账号网络连接 WhatsApp，请复制发送诊断反馈',
+        failure && failure.at >= startedProbe
+          ? `WhatsApp 页面读取失败（${failure.stage}/${failure.code}），请复制发送诊断反馈`
+          : '未能完整读取 WhatsApp 页面正文，请复制发送诊断反馈',
       );
     }
-    if (!response.ok) throw new Error(`连接失败：HTTP ${response.status}`);
-    return { route, milliseconds: Date.now() - started };
   });
   ipcMain.handle(
     'account-tools-translate',

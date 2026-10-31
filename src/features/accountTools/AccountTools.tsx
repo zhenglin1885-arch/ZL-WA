@@ -218,7 +218,9 @@ const SettingsPanel = observer(
             service.id,
           );
           service.webview?.reload();
-          setNotice(`连接成功 · ${result.milliseconds}ms · 已重新载入会话`);
+          setNotice(
+            `页面正文可访问 · ${result.milliseconds}ms · 已重新载入；后续资源及聊天连接仍以页面状态为准`,
+          );
         } else
           setNotice(
             panel === 'translation'

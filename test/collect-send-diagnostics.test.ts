@@ -76,3 +76,16 @@ it('does not attribute a replaced page snapshot to the current session', async (
     reason: 'page-changed',
   });
 });
+
+it('does not report an old load error as the current page failure after recovery', async () => {
+  const result = await collectSendDiagnostics(
+    {
+      isError: false,
+      errorMessage: 'ERR_TIMED_OUT',
+      webview: { executeJavaScript: async () => ({ sdkReady: true }) },
+    },
+    async () => ({}),
+  );
+  expect(result.page).toMatchObject({ loadFailed: false, errorCode: null });
+  expect(result.connection).toEqual({ sdkReady: true });
+});

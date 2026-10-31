@@ -44,8 +44,9 @@ export async function collectSendDiagnostics(
     page: {
       present: Boolean(view),
       loadFailed: service.isError,
-      errorCode:
-        /\bERR_[A-Z_]+\b/.exec(service.errorMessage || '')?.[0] || null,
+      errorCode: service.isError
+        ? /\bERR_[A-Z_]+\b/.exec(service.errorMessage || '')?.[0] || null
+        : null,
       changedDuringRead: service.webview !== view,
     },
     connection:

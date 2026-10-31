@@ -31,6 +31,13 @@ function read(socket: Socket, count: number): Promise<Buffer> {
     consume();
   });
 }
+type Target = 'whatsapp-web' | 'whatsapp-resource' | 'other';
+interface TunnelFailure {
+  stage: string;
+  code: string;
+  at: number;
+  target: Target;
+}
 export async function createSocksBridge(config: ProxyConfig, password: string) {
   const username = Buffer.from(config.username);
   const secret = Buffer.from(password);
@@ -41,7 +48,10 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     (authenticated && username.length === 0)
   )
     throw new Error('SOCKS5 用户名和密码最多为 255 字节，认证时用户名不能为空');
-  let lastFailure: { stage: string; code: string; at: number } | null = null;
+  let lastFailure: TunnelFailure | null = null;
+  let lastWhatsAppFailure: TunnelFailure | null = null;
+  const recentFailures: TunnelFailure[] = [];
+  const established = { 'whatsapp-web': 0, 'whatsapp-resource': 0, other: 0 };
   const sockets = new Set<Socket>();
   const track = (socket: Socket) => {
     sockets.add(socket);
@@ -69,10 +79,14 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     client.once('close', () => upstream.destroy());
     upstream.once('close', () => client.destroy());
     let stage = 'connect';
+    let target: Target = 'other';
     let failedTunnel = false;
     const failure = (code: string) => {
       failedTunnel = true;
-      lastFailure = { stage, code, at: Date.now() };
+      lastFailure = { stage, code, at: Date.now(), target };
+      if (target !== 'other') lastWhatsAppFailure = lastFailure;
+      recentFailures.push(lastFailure);
+      if (recentFailures.length > 12) recentFailures.shift();
     };
     upstream.once('error', (error: NodeJS.ErrnoException) => {
       failure(
@@ -97,7 +111,13 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     // All failures terminate this tunnel; there is no direct-network fallback.
     const tunnel = async () => {
       const destination = new URL(`https://${request.url}`);
-      const host = destination.hostname.replaceAll(/^\[|]$/g, '');
+      const host = destination.hostname.replaceAll(/^\[|]$/g, '').toLowerCase();
+      target =
+        host === 'web.whatsapp.com'
+          ? 'whatsapp-web'
+          : /(?:^|\.)whatsapp\.(?:com|net)$/.test(host)
+            ? 'whatsapp-resource'
+            : 'other';
       const port = Number(destination.port || 443);
       if (
         !host ||
@@ -190,6 +210,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
           throw new Error('无效 SOCKS5 响应');
         }
       }
+      established[target] += 1;
       stage = 'tunnel';
       upstream.setTimeout(0);
       client.setTimeout(0);
@@ -219,6 +240,11 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     port: address.port,
     diagnostics: () => ({
       lastFailure: lastFailure ? { ...lastFailure } : null,
+      lastWhatsAppFailure: lastWhatsAppFailure
+        ? { ...lastWhatsAppFailure }
+        : null,
+      recentFailures: recentFailures.map(failure => ({ ...failure })),
+      established: { ...established },
     }),
     close: () => {
       server.close();
