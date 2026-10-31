@@ -38,6 +38,7 @@ export interface CustomerSummary {
 }
 export interface CustomerBundle {
   owner: string;
+  ownerAliases?: string[];
   revision: number;
   summaries: Record<string, CustomerSummary>;
   aliases: Record<string, string>;

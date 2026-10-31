@@ -895,6 +895,33 @@ describe('privileged account tools IPC', () => {
       route: 'unavailable',
     });
   });
+
+  it('retains customer records when deleting a service and restores them for the same account', async () => {
+    const CustomerStore = require('../src/electron/CustomerStore').default;
+    const customerPath = join(root, 'customers.json');
+    const customers = new CustomerStore(customerPath);
+    const owner = '8613800000001@c.us';
+    customers.bind([owner, '123456@lid']);
+    customers.patch(owner, '10002@c.us', {
+      remarkName: 'saved customer',
+      notes: 'saved long note',
+      flags: ['priority'],
+    });
+    const before = readFileSync(customerPath, 'utf8');
+    await invoke('remove', 'old-window');
+    expect(readFileSync(customerPath, 'utf8')).toBe(before);
+    const restored = new CustomerStore(customerPath);
+    const bundle = restored.bind(['123456@lid']);
+    expect(bundle.owner).toBe(owner);
+    expect(bundle.ownerAliases).toEqual(
+      expect.arrayContaining([owner, '123456@lid']),
+    );
+    expect(restored.profile(bundle.owner, '10002@c.us')).toMatchObject({
+      remarkName: 'saved customer',
+      notes: 'saved long note',
+      flags: ['priority'],
+    });
+  });
   it('stores only encrypted passwords, redacts read results and matches proxy authentication to the account Session', async () => {
     const config = defaultTools();
     config.proxy = {

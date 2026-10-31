@@ -66,9 +66,16 @@ try {
         try{for(let i=0;i<9;i++){name.style.display='inline-block';name.style.width=(190+i)+'px';now+=400;tick(data,id);}}finally{Date.now=realNow;}
         check(valid(),'Changing title dimensions starved note insertion beyond the bounded wait');
         check(Math.abs(row.getBoundingClientRect().height-originalHeight)<1,'Native virtual row height changed');
+        const prefs=window.require('WAWebUserPrefsMeUser'), getPn=prefs.getMaybeMePnUser, getLid=prefs.getMaybeMeLidUser;
+        const lid=read().owners.find(id=>id.endsWith('@lid'));data.ownerAliases=[owner,lid];
+        prefs.getMaybeMePnUser=()=>undefined;
+        await render();check(valid()&&window.__zlCustomers.pinOwnerMatches(),'Saved phone-owner notes did not survive a verified LID-only login');
+        prefs.getMaybeMePnUser=()=>({server:'c.us',user:'8613800000002'});prefs.getMaybeMeLidUser=()=>undefined;
+        await render();check(!row.querySelector('.zl-chat-note'),'Saved annotations leaked into another live owner');
+        prefs.getMaybeMePnUser=getPn;prefs.getMaybeMeLidUser=getLid;await render();check(valid(),'Notes did not reappear after restoring the verified owner');
         const note=row.querySelector('.zl-chat-note');note.focus();note.value='edited inline note';note.dispatchEvent(new Event('input',{bubbles:true}));note.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
         const actions=tick(undefined,id);check(actions.some(a=>a.action==='saveRemark'&&a.chatId===id&&a.owner===owner&&a.value==='edited inline note'),'Inline edit lost original owner/chat');
-        return {fiberChatId:true,stringAlias:true,displayContentsTitle:true,hiddenTitle:true,parentListProtected:true,conflictsRejected:true,compositeId:true,boundedLayoutWait:true,nativeHeightPreserved:true,originalOwnerSave:true};
+        return {fiberChatId:true,stringAlias:true,displayContentsTitle:true,hiddenTitle:true,parentListProtected:true,conflictsRejected:true,compositeId:true,boundedLayoutWait:true,nativeHeightPreserved:true,originalOwnerSave:true,lidOnlyOwnerRestored:true,otherOwnerIsolated:true,returningOwnerRestored:true};
       })()`);
       return proof;
     } finally {

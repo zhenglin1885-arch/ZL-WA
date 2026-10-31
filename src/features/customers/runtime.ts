@@ -27,7 +27,11 @@ export class CustomerRuntime {
 
   private timer?: ReturnType<typeof setInterval>;
 
-  private busy = false;
+  private busyViews = new WeakSet<Electron.WebviewTag>();
+
+  private generation = 0;
+
+  private bindingKey = '';
 
   private stopped = false;
 
@@ -49,6 +53,23 @@ export class CustomerRuntime {
   private profileSaves = new Map<string, Promise<unknown>>();
 
   constructor(private stores: RealStores) {}
+
+  private async bounded<T>(work: Promise<T>, limit = 8000): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('客户功能响应超时，正在自动恢复，请稍候')),
+            limit,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
 
   get current() {
     return this.serviceId === this.stores.services.active?.id
@@ -243,20 +264,22 @@ export class CustomerRuntime {
       service.recipe.id !== 'whatsapp' ||
       !view ||
       service.isHibernating ||
-      this.busy
+      this.busyViews.has(view)
     )
       return;
-    this.busy = true;
+    const { busyViews } = this;
+    busyViews.add(view);
+    const { generation } = this;
+    const current = () =>
+      !this.stopped &&
+      generation === this.generation &&
+      this.stores.services.active === service &&
+      service.webview === view;
     try {
-      let context: CustomerContext = await view.executeJavaScript(
-        `(${readCustomerContext.toString()})()`,
+      let context: CustomerContext = await this.bounded(
+        view.executeJavaScript(`(${readCustomerContext.toString()})()`),
       );
-      if (
-        this.stopped ||
-        this.stores.services.active !== service ||
-        service.webview !== view
-      )
-        return;
+      if (!current()) return;
       const attempt = this.libraryAttempts.get(view);
       if (
         context.needsLibrary &&
@@ -270,20 +293,17 @@ export class CustomerRuntime {
           at: Date.now(),
         });
         try {
-          await ensureBulkLibrary(view);
-          context = await view.executeJavaScript(
-            `(${readCustomerContext.toString()})()`,
+          await this.bounded(ensureBulkLibrary(view), 20_000);
+          if (!current()) return;
+          context = await this.bounded(
+            view.executeJavaScript(`(${readCustomerContext.toString()})()`),
           );
         } catch {
+          if (!current()) return;
           this.error = '客户功能接口尚未就绪，正在自动重试；请保持账号在线';
           this.notify();
         }
-        if (
-          this.stopped ||
-          this.stores.services.active !== service ||
-          service.webview !== view
-        )
-          return;
+        if (!current()) return;
       }
       const key = JSON.stringify([
         service.id,
@@ -303,31 +323,42 @@ export class CustomerRuntime {
         return;
       }
       if (this.contextKey !== key) {
+        const bindingKey = JSON.stringify([
+          service.id,
+          context.token,
+          context.owners,
+        ]);
         const identity =
           context.owners.find(id => id.endsWith('@c.us')) || context.owners[0];
         let bundle = this.bundles.get(identity);
-        if (!bundle)
-          bundle = await ipcRenderer.invoke('customers-bind', context.owners);
-        if (
-          this.stopped ||
-          this.stores.services.active !== service ||
-          service.webview !== view
-        )
-          return;
+        if (!bundle || this.bindingKey !== bindingKey)
+          bundle = await this.bounded(
+            ipcRenderer.invoke('customers-bind', context.owners),
+          );
+        if (!current()) return;
         this.bundles.set(identity, bundle!);
         this.bundles.set(bundle!.owner, bundle!);
         if (context.chat?.aliases.length)
-          bundle = await ipcRenderer.invoke(
-            'customers-link',
-            bundle!.owner,
-            context.chat.aliases,
+          bundle = await this.bounded(
+            ipcRenderer.invoke(
+              'customers-link',
+              bundle!.owner,
+              context.chat.aliases,
+            ),
           );
-        if (
-          this.stopped ||
-          this.stores.services.active !== service ||
-          service.webview !== view
-        )
-          return;
+        if (!current()) return;
+        if (this.bindingKey !== bindingKey) {
+          const live: CustomerContext = await this.bounded(
+            view.executeJavaScript(`(${readCustomerContext.toString()})()`),
+          );
+          if (
+            !current() ||
+            JSON.stringify([service.id, live.token, live.owners, live.chat]) !==
+              key
+          )
+            return;
+        }
+        this.bindingKey = bindingKey;
         this.context = context;
         this.bundle = bundle;
         this.contextKey = key;
@@ -343,29 +374,29 @@ export class CustomerRuntime {
         this.injected.get(view) === version &&
         installed?.owner === bundle.owner &&
         installed?.revision === bundle.revision;
-      const actions: CustomerAction[] = await view.executeJavaScript(
-        `(${customerTick.toString()})(${synchronized ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)})`,
+      const actions: CustomerAction[] = await this.bounded(
+        view.executeJavaScript(
+          `(${customerTick.toString()})(${synchronized ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)})`,
+        ),
       );
+      if (!current()) return;
       this.injected.set(view, version);
       if (this.error) {
         this.error = '';
         this.notify();
       }
       for (const action of actions) {
-        if (
-          this.stopped ||
-          this.stores.services.active !== service ||
-          service.webview !== view
-        )
-          break;
+        if (!current()) break;
         // eslint-disable-next-line no-await-in-loop
         await this.handle(action, view, bundle.owner);
       }
     } catch (error) {
-      this.error = String(error);
-      this.notify();
+      if (current()) {
+        this.error = String(error);
+        this.notify();
+      }
     } finally {
-      this.busy = false;
+      busyViews.delete(view);
     }
   }
 
@@ -375,10 +406,13 @@ export class CustomerRuntime {
     this.timer = setInterval(() => {
       void this.tick();
     }, 600);
+    void this.tick();
   }
 
   dispose() {
     this.stopped = true;
+    this.generation += 1;
+    this.busyViews = new WeakSet();
     clearInterval(this.timer);
     this.timer = undefined;
   }

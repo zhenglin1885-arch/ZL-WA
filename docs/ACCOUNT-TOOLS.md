@@ -438,3 +438,39 @@ There was no explicit reapplication after the window was shown/restored/focused.
   the user's taskbar/system settings have not been verified. This is a source
   fix for a refresh gap, not proof that the screenshot's root cause was found.
   No new package or stable release has been published.
+
+### Customer startup/relogin recovery (2026-10-31)
+
+Reproduced two failures in the previous runtime: a phone owner with an empty
+cached bundle skipped rebinding when its verified LID arrived later; replacing
+its service/window reused the same stale bundle without reloading stored data.
+Both regression tests failed before the fix and pass afterward.
+
+- Bind once for each service/document/live-owner identity set, including late
+  PN/LID additions, and reread the live context before adopting a fresh binding.
+  Existing verified identity sources remain authoritative; do not infer owner
+  identity from a card name, a contact title, or saved login metadata.
+- Startup ticks immediately. Reads/host binding/render evaluation have bounded
+  deadlines; helper startup also has a global bounded initialization, retries
+  after failed embedded-source reads, and blocks late work after expiry.
+  In-flight work is tracked per webview, so a hung old account does not block
+  the selected healthy one. Disposed/old-generation results cannot be adopted.
+- Store bundles include verified owner aliases, allowing the same saved phone
+  owner's notes/pins to work when a new login currently exposes only its LID.
+  Unknown/different live owners remove annotations and restore native layout;
+  annotation geometry is rebuilt when the verified owner returns.
+- CustomerStore is shared under userData/customers.json and keyed by WhatsApp
+  owner, not service UUID. Service deletion does not remove this store. An IPC
+  regression deletes a service, verifies the customer file is unchanged, then
+  reopens it and restores the same owner's saved name, long notes and flags
+  through a verified LID alias. This is local recovery, not cloud sync; different
+  userData directories/computers do not automatically share records. Window
+  names/groups/proxy preferences are separate service settings.
+- Validation: 739 tests passed, 2 skipped (69 suites), TypeScript, targeted
+  ESLint, source build and isolated compiled guest check passed. Offline native
+  Chromium fixtures passed verified business contacts, exact row identities,
+  LID-only owner restoration, different-owner isolation, returning-owner
+  restoration, original-owner inline saves and native row-height preservation.
+  These fixtures do not simulate a real WhatsApp server login or guarantee
+  compatibility with every future WhatsApp DOM/API change.
+- Source fix only; no new package or stable update has been published.

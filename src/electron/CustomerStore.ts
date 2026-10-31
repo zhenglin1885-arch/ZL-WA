@@ -115,8 +115,17 @@ export default class CustomerStore {
 
   bundle(owner: string): CustomerBundle {
     const account = this.account(owner);
+    const canonicalOwner = this.data.owners[owner] || owner;
     return {
-      owner: this.data.owners[owner] || owner,
+      owner: canonicalOwner,
+      ownerAliases: [
+        ...new Set([
+          canonicalOwner,
+          ...Object.entries(this.data.owners)
+            .filter(([, target]) => target === canonicalOwner)
+            .map(([id]) => id),
+        ]),
+      ],
       revision: account.revision,
       pins: [...account.pins],
       pinsInitialized: Boolean(account.pinsInitialized),

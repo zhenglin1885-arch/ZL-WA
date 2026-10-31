@@ -339,7 +339,15 @@ export function customerTick(
     // All entry points use one local transaction. Never invoke the native
     // server action for desktop pins, including UI commands bypassing the DOM.
     state.pinOwnerMatches = () =>
-      Boolean(page.__zlCustomerAdapter?.owners().includes(state.data?.owner));
+      Boolean(
+        page.__zlCustomerAdapter
+          ?.owners()
+          .some(
+            (id: string) =>
+              id === state.data?.owner ||
+              state.data?.ownerAliases?.includes(id),
+          ),
+      );
     state.changePin = (id: string, remove: boolean) => {
       if (
         !state.data ||
@@ -733,6 +741,19 @@ export function customerTick(
     delete dataset.zlCustomerRendered;
     state.rowGeometry.delete(row);
   };
+  if (!state.pinOwnerMatches()) {
+    for (const row of document.querySelectorAll<HTMLElement>(
+      '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
+    ))
+      clearRow(row);
+    document
+      .querySelectorAll('[data-zl-customers]:not(style)')
+      .forEach(node => node.remove());
+    state.initialGeometry = new WeakMap();
+    state.queue.splice(0);
+    state.dirty = true;
+    return [];
+  }
   const modelIds = new Set(models.map(model => idOf(model)));
   const byCanonical = new Map<string, Set<string>>();
   for (const id of modelIds) {

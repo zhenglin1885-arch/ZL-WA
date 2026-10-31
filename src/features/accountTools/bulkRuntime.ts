@@ -22,14 +22,27 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
     await pending;
     return;
   }
-  const initialization = (async () => {
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const checkDeadline = () => {
+    if (expired) throw new Error('WhatsApp 接口初始化已超时，请稍后重试');
+  };
+  let source = library;
+  const work = (async () => {
     if (
       await view.executeJavaScript("location.hostname !== 'web.whatsapp.com'")
     )
       throw new Error('当前会话不是 WhatsApp');
-    if (!(await view.executeJavaScript('Boolean(window.WPP)'))) {
+    checkDeadline();
+    const exists = await view.executeJavaScript('Boolean(window.WPP)');
+    checkDeadline();
+    if (!exists) {
       library ??= ipcRenderer.invoke('account-tools-library');
-      await view.executeJavaScript(await library!);
+      source = library;
+      const script = await library!;
+      checkDeadline();
+      await view.executeJavaScript(script);
+      checkDeadline();
     }
     if (
       !(await view.executeJavaScript(
@@ -38,10 +51,24 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
     )
       throw new Error('WhatsApp 接口未就绪，请刷新账号再试');
   })();
+  const initialization = Promise.race([
+    work,
+    new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        expired = true;
+        if (library === source) library = undefined;
+        reject(new Error('WhatsApp 接口初始化超时，请稍后重试'));
+      }, 25_000);
+    }),
+  ]);
   libraryInitializations.set(view, initialization);
   try {
     await initialization;
+  } catch (error) {
+    if (library === source) library = undefined;
+    throw error;
   } finally {
+    if (timer) clearTimeout(timer);
     if (libraryInitializations.get(view) === initialization)
       libraryInitializations.delete(view);
   }
