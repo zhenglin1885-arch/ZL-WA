@@ -417,3 +417,24 @@ page body/resources/chat session were usable.
   target-scoped diagnostics if document or downstream resource loading fails.
   No automatic message retry, account-storage cleanup, or direct fallback is
   introduced. This source change has not been packaged or released.
+
+### Windows taskbar overlay refresh (2026-10-31)
+
+For a report with account-card unread counts but no taskbar badge, the code
+only delivered a Windows overlay when the renderer's unread indicator changed.
+There was no explicit reapplication after the window was shown/restored/focused.
+
+- Keep the latest supplied indicator and reapply it after these window events
+  and after indicator delivery, coalesced into one 250 ms timer. Clearing unread
+  state supersedes pending refreshes, so an old badge cannot reappear afterward.
+- Cache the bounded set of overlay images. Reapplication does not recalculate
+  account unread totals, flash the taskbar, change the base application icon,
+  override notification preferences, or issue a new message notification.
+- Window close removes its IPC/window listeners, tray settings observer and
+  pending timer; no polling is added.
+- Two targeted tests, TypeScript, targeted ESLint and source compilation passed.
+  Tests cover exact badge assets, latest-state restoration, clearing, cached
+  images, coalescing and close cleanup. Actual Windows taskbar presentation and
+  the user's taskbar/system settings have not been verified. This is a source
+  fix for a refresh gap, not proof that the screenshot's root cause was found.
+  No new package or stable release has been published.
