@@ -224,6 +224,37 @@ try {
                   );
                 win.setSize(1000, 800);
               }
+              if (variant === 'chat' && gesture === 'mouse') {
+                await execute('new Promise(resolve=>setTimeout(resolve,3000))');
+                await submit();
+                await execute('new Promise(resolve=>setTimeout(resolve,2200))');
+                if (
+                  !(await execute(
+                    `document.querySelector('#zl-translation-status').style.display!=='none'`,
+                  ))
+                )
+                  throw new Error(
+                    'Repeated Chinese warning did not restart its five-second deadline',
+                  );
+                await execute('new Promise(resolve=>setTimeout(resolve,3000))');
+                if (
+                  !(await execute(
+                    `document.querySelector('#zl-translation-status').style.display==='none'&&sent.length===0&&document.querySelector('#editor').innerText==='mixed 中文 𠮷'`,
+                  ))
+                )
+                  throw new Error(
+                    'Chinese warning did not hide after five seconds or changed the unsent draft',
+                  );
+                await submit();
+                if (
+                  !(await execute(
+                    `document.querySelector('#zl-translation-status').style.display!=='none'&&sent.length===0`,
+                  ))
+                )
+                  throw new Error(
+                    'Expired warning was not shown again for a new blocked submission',
+                  );
+              }
               await execute('config.outgoing=true;tick(config);true');
               await submit();
               const policyJobs = await execute('tick(config)');

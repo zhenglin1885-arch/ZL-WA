@@ -530,3 +530,19 @@ and independent serialized-guest checks passed. The existing 24 offline native
 Chromium send-surface/gesture cases passed, with additional ordinary-chat and
 quoted-reply checks asserting placement above the composer before/after resize.
 This placement change has not been packaged; test-3 retains the previous position.
+
+### Chinese-send warning expiry (2026-11-01)
+
+The composer-anchored “禁止发送中文” warning now hides five seconds after its
+latest blocked submission. A repeated attempt replaces the existing timer and
+restarts the deadline. Hiding the notice does not enable sending or edit the
+draft. Other/new translation notices cancel that timer and are not hidden by it.
+Guest revision 12 clears retired-state timers as well as listeners/observers.
+
+The offline native Chromium suite passed all 24 surface/gesture cases, including
+an actual-clock check that retriggers after three seconds, remains visible beyond
+the original deadline, then expires after the restarted deadline with the draft
+retained and zero sends; a new blocked attempt shows it again. TypeScript,
+targeted ESLint, source build and independent guest serialization checks passed.
+This change and the composer positioning change remain unbundled; test-3 still
+uses the previous warning placement/lifetime.

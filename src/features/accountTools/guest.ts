@@ -21,7 +21,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 11;
+  const revision = 12;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -37,6 +37,7 @@ export function translationTick(
     previous.queue = [];
     previous.observer?.disconnect();
     previous.noticeResizeObserver?.disconnect();
+    clearTimeout(previous.noticeTimer);
     for (const listener of previous.listeners || [])
       listener.target.removeEventListener(
         listener.type,
@@ -474,6 +475,8 @@ export function translationTick(
     listen(window, 'resize', positionNotice);
     listen(document, 'scroll', positionNotice, true);
     const notice = (text: string, input?: HTMLElement) => {
+      clearTimeout(state.noticeTimer);
+      state.noticeTimer = undefined;
       let n = document.querySelector<HTMLElement>('#zl-translation-status');
       if (!n) {
         n = document.createElement('div');
@@ -498,6 +501,16 @@ export function translationTick(
         n.style.bottom = '86px';
         n.style.left = '25%';
         n.style.maxWidth = '65%';
+      }
+      if (text === '禁止发送中文') {
+        state.noticeTimer = setTimeout(() => {
+          state.noticeTimer = undefined;
+          if (
+            page.__zlTranslation === state &&
+            n.textContent === '禁止发送中文'
+          )
+            notice('');
+        }, 5000);
       }
     };
     state.normalizeText = (text: string) =>
