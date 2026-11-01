@@ -21,7 +21,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 10;
+  const revision = 11;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -36,6 +36,7 @@ export function translationTick(
     previous.pending?.clear();
     previous.queue = [];
     previous.observer?.disconnect();
+    previous.noticeResizeObserver?.disconnect();
     for (const listener of previous.listeners || [])
       listener.target.removeEventListener(
         listener.type,
@@ -446,7 +447,33 @@ export function translationTick(
         ''
       );
     };
-    const notice = (text: string) => {
+    const positionNotice = () => {
+      const n = document.querySelector<HTMLElement>('#zl-translation-status');
+      const input = state.noticeAnchor as HTMLElement | undefined;
+      if (!n || !input || n.style.display === 'none') return;
+      const anchor = input.closest('footer') || input;
+      const bounds = anchor.getBoundingClientRect();
+      if (!input.isConnected || !bounds.width || !bounds.height) {
+        n.style.display = 'none';
+        state.noticeAnchor = undefined;
+        state.noticeResizeObserver?.disconnect();
+        return;
+      }
+      const width = Math.max(1, Math.min(bounds.width, window.innerWidth - 16));
+      n.style.boxSizing = 'border-box';
+      n.style.maxWidth = `${width}px`;
+      n.style.whiteSpace = 'normal';
+      n.style.overflowWrap = 'anywhere';
+      n.style.bottom = 'auto';
+      n.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - n.offsetWidth - 8))}px`;
+      n.style.top = `${Math.max(8, bounds.top - n.offsetHeight - 8)}px`;
+    };
+    state.positionNotice = positionNotice;
+    if (typeof ResizeObserver !== 'undefined')
+      state.noticeResizeObserver = new ResizeObserver(positionNotice);
+    listen(window, 'resize', positionNotice);
+    listen(document, 'scroll', positionNotice, true);
+    const notice = (text: string, input?: HTMLElement) => {
       let n = document.querySelector<HTMLElement>('#zl-translation-status');
       if (!n) {
         n = document.createElement('div');
@@ -457,6 +484,21 @@ export function translationTick(
       }
       n.textContent = text;
       n.style.display = text ? 'block' : 'none';
+      state.noticeResizeObserver?.disconnect();
+      state.noticeAnchor =
+        text === '禁止发送中文' ? input || composer() : undefined;
+      if (state.noticeAnchor) {
+        positionNotice();
+        state.noticeResizeObserver?.observe(
+          state.noticeAnchor.closest('footer') || state.noticeAnchor,
+        );
+        state.noticeResizeObserver?.observe(n);
+      } else {
+        n.style.top = 'auto';
+        n.style.bottom = '86px';
+        n.style.left = '25%';
+        n.style.maxWidth = '65%';
+      }
     };
     state.normalizeText = (text: string) =>
       text
@@ -666,7 +708,7 @@ export function translationTick(
         event.stopImmediatePropagation();
         if (event.type === 'pointerdown')
           blockedSubmission = submissionControl || null;
-        notice('禁止发送中文');
+        notice('禁止发送中文', input);
         return;
       }
       if (!state.config.outgoing) {
@@ -891,6 +933,7 @@ export function translationTick(
     state.notice('');
   }
   state.config = config;
+  state.positionNotice?.();
   const textColor =
     config.textColor && CSS.supports('color', config.textColor)
       ? config.textColor

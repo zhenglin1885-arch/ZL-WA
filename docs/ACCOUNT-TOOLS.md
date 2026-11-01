@@ -514,3 +514,19 @@ and multiple-item drawers, each with mouse and Enter. It verified translate-firs
 Chinese provider output blocked, foreign text allowed, draft preservation and
 switch-off recovery. No real WhatsApp messages or translation-provider requests
 were sent. This source change has not been packaged or published as an update.
+
+### Chinese-send warning placement (2026-11-01)
+
+The “禁止发送中文” notice is now anchored immediately above the active composer
+(above its footer when present), rather than the shared fixed 25% screen offset.
+It is clamped to the viewport and follows window resize, composer/notice resize
+and captured scroll events. A detached/hidden composer hides the warning. Empty
+or unrelated translation notices clear the anchor and retain their previous
+positioning. No send checks, drafts or account settings are changed.
+
+Guest revision 11 retires earlier listeners and disconnects the notice resize
+observer. No new polling loop is added. Source build, TypeScript, targeted ESLint
+and independent serialized-guest checks passed. The existing 24 offline native
+Chromium send-surface/gesture cases passed, with additional ordinary-chat and
+quoted-reply checks asserting placement above the composer before/after resize.
+This placement change has not been packaged; test-3 retains the previous position.

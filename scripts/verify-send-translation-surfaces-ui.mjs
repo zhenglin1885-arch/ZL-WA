@@ -74,7 +74,7 @@ try {
                     : '<div><span data-icon="wds-ic-document-text"></span><span title="report.pdf">report.pdf</span></div>';
               html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#main{position:fixed;inset:20px;background:#fff;padding:20px}#editor{padding:15px;min-height:40px;border:1px solid #ddd}button{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="app"><div id="background"><div contenteditable="true">保留后台草稿</div></div><div id="main" ${variant === 'edit-plaintext' ? 'role="dialog"' : ''}>${edit ? '<div><button aria-label="Dismiss"><svg></svg></button><div>Edit message</div></div><div data-id="true_chat_A">Are you OK</div>' : media}<div>${'<div>'.repeat(14)}<div id="editor" role="textbox" contenteditable="${variant === 'edit-plaintext' ? 'plaintext-only' : 'true'}" aria-label="Type a message">你好吗</div>${'</div>'.repeat(14)}</div><div><button id="confirm"><span data-icon="${edit ? 'wds-ic-checkmark-large' : 'wds-ic-send-filled'}">${edit ? '✓' : '➤'}</span></button></div></div></div>`;
               if (variant === 'chat' || variant === 'reply') {
-                html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#editor{padding:15px;min-height:40px;border:1px solid #ddd}#confirm{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="main"><header><span data-id="chat-A" title="Contact">Contact</span></header>${variant === 'reply' ? '<div data-testid="quoted-message">中文引用原文，不是待发送的正文</div>' : ''}<footer><div id="editor" role="textbox" contenteditable="true" data-testid="conversation-compose-box-input">你好吗</div><button id="confirm" aria-label="Send"><span data-icon="send">Send</span></button></footer></div><div id="background"><div contenteditable="true">保留后台草稿</div></div>`;
+                html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}footer{margin-top:160px}#editor{padding:15px;min-height:40px;border:1px solid #ddd}#confirm{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="main"><header><span data-id="chat-A" title="Contact">Contact</span></header>${variant === 'reply' ? '<div data-testid="quoted-message">中文引用原文，不是待发送的正文</div>' : ''}<footer><div id="editor" role="textbox" contenteditable="true" data-testid="conversation-compose-box-input">你好吗</div><button id="confirm" aria-label="Send"><span data-icon="send">Send</span></button></footer></div><div id="background"><div contenteditable="true">保留后台草稿</div></div>`;
               }
               if (variant === 'edit-live-modal') {
                 // Captured user structure: modal before the chat, a visible
@@ -203,6 +203,27 @@ try {
                     blocked,
                   )}`,
                 );
+              if (variant === 'chat' || variant === 'reply') {
+                const positioned = await execute(
+                  `(()=>{const n=document.querySelector('#zl-translation-status').getBoundingClientRect(),b=document.querySelector('#editor').closest('footer').getBoundingClientRect();return n.bottom<=b.top-7&&n.left>=b.left-1&&n.right<=innerWidth-7})()`,
+                );
+                if (!positioned)
+                  throw new Error(
+                    'Chinese warning was not placed above the active composer',
+                  );
+                win.setSize(760, 640);
+                await execute(
+                  'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))',
+                );
+                const resized = await execute(
+                  `(()=>{const n=document.querySelector('#zl-translation-status').getBoundingClientRect(),b=document.querySelector('#editor').closest('footer').getBoundingClientRect();return n.bottom<=b.top-7&&n.left>=7&&n.right<=innerWidth-7})()`,
+                );
+                if (!resized)
+                  throw new Error(
+                    'Chinese warning lost its composer anchor after resize',
+                  );
+                win.setSize(1000, 800);
+              }
               await execute('config.outgoing=true;tick(config);true');
               await submit();
               const policyJobs = await execute('tick(config)');
@@ -249,6 +270,8 @@ try {
                 translated: sent[0],
                 failureProtected: true,
                 blockChinese: true,
+                composerNoticePosition:
+                  variant === 'chat' || variant === 'reply',
                 translatedChineseBlocked: true,
                 disabledRestored: true,
                 trustedInputs: preview.trustedInputs,
