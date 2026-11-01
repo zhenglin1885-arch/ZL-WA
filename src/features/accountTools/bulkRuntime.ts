@@ -103,6 +103,13 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         remove: ids => ipcRenderer.invoke('account-tools-history-delete', ids),
         send: async (target, spec) => {
           const view = viewFor(target);
+          const config = await ipcRenderer.invoke(
+            'account-tools-get',
+            target.accountId,
+          );
+          const blockChinese = config?.translation?.blockChinese === true;
+          if (blockChinese && /\p{Script=Han}/u.test(spec.text))
+            throw new Error('禁止发送中文');
           // Ordinary text also needs the current sender/addressing/session
           // preparation. Never fall back to constructing a raw MsgModel.
           await ensureBulkLibrary(view);
@@ -115,7 +122,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           if (viewFor(target) !== view)
             throw new Error('账号窗口已变化，请重新检查');
           const outcome = await view.executeJavaScript(
-            `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)})`,
+            `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)},undefined,${JSON.stringify(blockChinese)})`,
           );
           if (!outcome.confirmed && outcome.messageId) {
             try {
@@ -158,11 +165,17 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         },
         edit: async (target, messageId, text) => {
           const view = viewFor(target);
+          const config = await ipcRenderer.invoke(
+            'account-tools-get',
+            target.accountId,
+          );
+          if (config?.translation?.blockChinese && /\p{Script=Han}/u.test(text))
+            throw new Error('禁止发送中文');
           await ensureBulkLibrary(view);
           if (viewFor(target) !== view)
             throw new Error('账号窗口已变化，请重新检查');
           await view.executeJavaScript(
-            `(${editBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify(messageId)},${JSON.stringify(text)})`,
+            `(${editBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify(messageId)},${JSON.stringify(text)},${JSON.stringify(config?.translation?.blockChinese === true)})`,
           );
         },
         revoke: async (target, messageId) => {

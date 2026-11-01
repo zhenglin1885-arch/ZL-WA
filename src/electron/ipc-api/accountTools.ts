@@ -358,6 +358,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           username: input.proxy.username,
         },
         translation: {
+          blockChinese: input.translation.blockChinese === true,
           outgoing: Boolean(input.translation.outgoing),
           incoming: Boolean(input.translation.incoming),
           preview: Boolean(input.translation.preview),

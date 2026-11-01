@@ -922,6 +922,22 @@ describe('privileged account tools IPC', () => {
       flags: ['priority'],
     });
   });
+
+  it('persists the Chinese-send guard independently for each account and defaults it off', async () => {
+    const initial = await invoke('get', 'account-1');
+    expect(initial.translation.blockChinese).toBe(false);
+    const config = defaultTools();
+    config.translation.blockChinese = true;
+    await invoke('save', 'account-1', config);
+    const enabled = await invoke('get', 'account-1');
+    expect(enabled.translation.blockChinese).toBe(true);
+    const other = await invoke('get', 'account-2');
+    expect(other.translation.blockChinese).toBe(false);
+    expect(
+      JSON.parse(readFileSync(join(root, 'account-tools.json'), 'utf8'))
+        .accounts['account-1'].translation.blockChinese,
+    ).toBe(true);
+  });
   it('stores only encrypted passwords, redacts read results and matches proxy authentication to the account Session', async () => {
     const config = defaultTools();
     config.proxy = {

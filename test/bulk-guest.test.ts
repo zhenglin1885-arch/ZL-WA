@@ -921,4 +921,13 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(wpp.chat.get).not.toHaveBeenCalled();
     expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
   });
+  it('blocks mixed and supplementary Han before any send when the account guard is enabled', async () => {
+    const input = replySpec();
+    input.text = 'hello 中文 𠮷';
+    await expect(
+      sendBulkMessage('10001@g.us', input, undefined, undefined, true),
+    ).rejects.toThrow('禁止发送中文');
+    expect(wpp.chat.sendTextMessage).not.toHaveBeenCalled();
+    expect(wpp.chat.sendFileMessage).not.toHaveBeenCalled();
+  });
 });

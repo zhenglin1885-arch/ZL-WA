@@ -474,3 +474,43 @@ Both regression tests failed before the fix and pass afterward.
   These fixtures do not simulate a real WhatsApp server login or guarantee
   compatibility with every future WhatsApp DOM/API change.
 - Source fix only; no new package or stable update has been published.
+
+### Per-account Chinese-text send guard (2026-11-01)
+
+Translation settings include a default-off “禁止发送中文” switch, saved and
+applied immediately through the existing per-service/account settings path.
+It applies across chats in that account window, independently of other accounts.
+The setting is retained on application restart with that service configuration.
+
+- Detect Unicode Han characters, including supplementary-plane characters and
+  mixed foreign/Chinese text, in outgoing composer text and media captions.
+  Preserve the draft and show exactly “禁止发送中文” when an actual send is blocked.
+  Emoji, numerals, punctuation and non-Han foreign text are allowed by this guard.
+- With outgoing translation enabled, Chinese drafts may enter the existing
+  translation/preview flow. Provider output still containing Han cannot pass
+  the subsequent send confirmation, even if translation approval was recorded.
+  With outgoing translation disabled, Chinese submissions are blocked directly.
+- Use capture-phase mouse/pointer/Enter handling for chat, quote replies,
+  edit-message dialogs and supported attachment caption editors. Do not scan
+  incoming/quoted message bodies or locally saved customer notes as outgoing
+  text. Disabling the switch restores normal sending/translation behavior.
+- Background bulk/reply sends and edits check each target account's saved policy
+  before helper initialization or submission. Serialized send/edit helpers also
+  check the live page policy near dispatch, including after async media setup.
+  A blocked target follows the queue's configured failure behavior; it does not
+  silently send Chinese or impose another account's policy on subsequent targets.
+- Initialize translation/send protection on webview DOM readiness, and retain
+  the existing polling refresh. Retired guest listeners have their policy disabled
+  as well as being removed, to avoid stale protections after adapter replacement.
+- This is a text guard: it does not OCR image contents or recognize spoken audio.
+  The per-service setting is not a cloud/account-server policy or a setting on
+  separately linked devices. Deleting a service removes its service preferences.
+
+Validation: 742 tests passed, 2 skipped, 69 suites; TypeScript, targeted ESLint,
+source compilation and isolated guest serialization checks passed. An offline
+native Chromium fixture exercised 24 surface/gesture combinations: normal chat,
+quote reply, three edit variants, image/video/document captions, live attachment
+and multiple-item drawers, each with mouse and Enter. It verified translate-first,
+Chinese provider output blocked, foreign text allowed, draft preservation and
+switch-off recovery. No real WhatsApp messages or translation-provider requests
+were sent. This source change has not been packaged or published as an update.

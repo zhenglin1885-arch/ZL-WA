@@ -184,9 +184,18 @@ export async function sendBulkMessage(
   spec: BulkSpec,
   dataUrl?: string,
   compose?: { ownerId: string; quotedMessageId?: string },
+  blockChinese = false,
 ): Promise<BulkSendOutcome> {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     throw new Error('当前会话不是 WhatsApp');
+  const assertTextAllowed = () => {
+    if (
+      (blockChinese || (window as any).__zlTranslation?.config?.blockChinese) &&
+      /\p{Script=Han}/u.test(spec.text)
+    )
+      throw new Error('禁止发送中文');
+  };
+  assertTextAllowed();
   const wpp = (window as any).WPP;
   if (!wpp?.isReady)
     throw new Error('WhatsApp 消息接口尚未就绪，请刷新账号后重试');
@@ -543,6 +552,7 @@ export async function sendBulkMessage(
       throw new Error('未能读取群成员，无法 @所有人');
   }
   let result: any;
+  assertTextAllowed();
   if (spec.type === 'text') {
     try {
       result = await wpp.chat.sendTextMessage(chatId, content, options);
@@ -669,6 +679,7 @@ export async function sendBulkMessage(
         addEvenWhilePreparing: false,
       };
       assertCompose();
+      assertTextAllowed();
       const sent = await (prep.sendToChat.length === 1
         ? prep.sendToChat({ chat, options: sendOptions })
         : prep.sendToChat(chat, sendOptions));
@@ -694,7 +705,8 @@ export async function sendBulkMessage(
         // Unknown readback stays null rather than claiming waveform success.
       }
       result = { id, sendMsgResult: sent };
-    } else
+    } else {
+      assertTextAllowed();
       result = await wpp.chat.sendFileMessage(chatId, dataUrl, {
         ...options,
         type: spec.type === 'caption' ? 'image' : spec.type,
@@ -703,6 +715,7 @@ export async function sendBulkMessage(
         caption: spec.type === 'image' ? undefined : content,
         isPtt: false,
       });
+    }
   }
   const key = result?.id;
   const messageId =
@@ -860,11 +873,20 @@ export async function editBulkMessage(
   chatId: string,
   messageId: string,
   text: string,
+  blockChinese = false,
 ): Promise<void> {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     throw new Error('当前会话不是 WhatsApp');
   if (!text.trim() || text.length > 12_000)
     throw new Error('请输入 1–12000 字符的新文字');
+  const assertTextAllowed = () => {
+    if (
+      (blockChinese || (window as any).__zlTranslation?.config?.blockChinese) &&
+      /\p{Script=Han}/u.test(text)
+    )
+      throw new Error('禁止发送中文');
+  };
+  assertTextAllowed();
   const wpp = (window as any).WPP;
   if (!wpp?.isReady) throw new Error('WhatsApp 消息接口尚未就绪');
   const message = await wpp.chat.getMessageById(messageId);
@@ -889,6 +911,7 @@ export async function editBulkMessage(
   const mentionedList = (message.mentionedJidList || [])
     .map((id: any) => (typeof id === 'string' ? id : id?._serialized))
     .filter(Boolean);
+  assertTextAllowed();
   const result = await wpp.chat.editMessage(messageId, text, {
     waitForAck: true,
     ...(mentionedList.length > 0

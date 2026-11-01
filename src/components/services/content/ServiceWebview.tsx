@@ -379,6 +379,17 @@ class ServiceWebview extends Component<IProps> {
     debug('Service logged a message:', e.message);
   };
 
+  handleAccountDomReady = (): void => {
+    const { service, stores } = this.props;
+    if (service.recipe?.id !== 'whatsapp' || !service.webview) return;
+    configureTranslation(
+      service,
+      stores?.settings.app.translationTextColor,
+    ).catch(error =>
+      debug('Could not initialize account send protection', error),
+    );
+  };
+
   @action handleDidNavigate = (): void => {
     if (this.props.service._webview) {
       this.props.service.pageTitle = this.props.service._webview.getTitle();
@@ -456,6 +467,7 @@ class ServiceWebview extends Component<IProps> {
     this.lastAccountPollAt = 0;
     this.lastAppliedZoom = null;
 
+    webview.addEventListener('dom-ready', this.handleAccountDomReady);
     webview.addEventListener('did-stop-loading', this.startupStopped);
     webview.addEventListener('did-fail-load', this.startupFailed);
     webview.addEventListener('console-message', this.handleConsoleMessage);
@@ -488,6 +500,7 @@ class ServiceWebview extends Component<IProps> {
       return;
     }
 
+    webview.removeEventListener('dom-ready', this.handleAccountDomReady);
     webview.removeEventListener('did-stop-loading', this.startupStopped);
     webview.removeEventListener('did-fail-load', this.startupFailed);
     webview.removeEventListener('console-message', this.handleConsoleMessage);

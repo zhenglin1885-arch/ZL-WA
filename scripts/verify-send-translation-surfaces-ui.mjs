@@ -30,8 +30,15 @@ try {
           webPreferences: { partition },
         });
         const execute = code => win.webContents.executeJavaScript(code);
+        const replaceDraft = async text => {
+          await execute(
+            `(()=>{const e=document.querySelector('#editor');e.focus();const r=document.createRange();r.selectNodeContents(e);const s=window.getSelection();s.removeAllRanges();s.addRange(r);})()`,
+          );
+          await win.webContents.insertText(text);
+        };
         const reports = [];
         const config = {
+          blockChinese: true,
           outgoing: true,
           incoming: false,
           preview: false,
@@ -44,6 +51,8 @@ try {
         };
         try {
           for (const variant of [
+            'chat',
+            'reply',
             'edit-main',
             'edit-plaintext',
             'edit-live-modal',
@@ -64,6 +73,9 @@ try {
                     ? '<video src="blob:https://web.whatsapp.com/A" style="width:250px;height:250px"></video>'
                     : '<div><span data-icon="wds-ic-document-text"></span><span title="report.pdf">report.pdf</span></div>';
               html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#main{position:fixed;inset:20px;background:#fff;padding:20px}#editor{padding:15px;min-height:40px;border:1px solid #ddd}button{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="app"><div id="background"><div contenteditable="true">保留后台草稿</div></div><div id="main" ${variant === 'edit-plaintext' ? 'role="dialog"' : ''}>${edit ? '<div><button aria-label="Dismiss"><svg></svg></button><div>Edit message</div></div><div data-id="true_chat_A">Are you OK</div>' : media}<div>${'<div>'.repeat(14)}<div id="editor" role="textbox" contenteditable="${variant === 'edit-plaintext' ? 'plaintext-only' : 'true'}" aria-label="Type a message">你好吗</div>${'</div>'.repeat(14)}</div><div><button id="confirm"><span data-icon="${edit ? 'wds-ic-checkmark-large' : 'wds-ic-send-filled'}">${edit ? '✓' : '➤'}</span></button></div></div></div>`;
+              if (variant === 'chat' || variant === 'reply') {
+                html = `<!doctype html><meta charset="utf-8"><style>body{font:16px sans-serif}#editor{padding:15px;min-height:40px;border:1px solid #ddd}#confirm{padding:20px}#background{position:fixed;left:0;bottom:0}</style><div id="main"><header><span data-id="chat-A" title="Contact">Contact</span></header>${variant === 'reply' ? '<div data-testid="quoted-message">中文引用原文，不是待发送的正文</div>' : ''}<footer><div id="editor" role="textbox" contenteditable="true" data-testid="conversation-compose-box-input">你好吗</div><button id="confirm" aria-label="Send"><span data-icon="send">Send</span></button></footer></div><div id="background"><div contenteditable="true">保留后台草稿</div></div>`;
+              }
               if (variant === 'edit-live-modal') {
                 // Captured user structure: modal before the chat, a visible
                 // background composer, bare SVGs and only an accessible label
@@ -173,11 +185,72 @@ try {
                     sent,
                   )}`,
                 );
+              await execute(
+                'sent=[];config.outgoing=false;config.blockChinese=true;tick(config);true',
+              );
+              await replaceDraft('mixed 中文 𠮷');
+              await submit();
+              const blocked = await execute(
+                `({sent:sent.slice(),notice:document.querySelector('#zl-translation-status')?.textContent,text:document.querySelector('#editor').innerText})`,
+              );
+              if (
+                blocked.sent.length > 0 ||
+                blocked.notice !== '禁止发送中文' ||
+                blocked.text !== 'mixed 中文 𠮷'
+              )
+                throw new Error(
+                  `Chinese text was sent or draft was lost ${JSON.stringify(
+                    blocked,
+                  )}`,
+                );
+              await execute('config.outgoing=true;tick(config);true');
+              await submit();
+              const policyJobs = await execute('tick(config)');
+              const policyJob = policyJobs.find(
+                candidate => candidate.direction === 'outgoing',
+              );
+              if (!policyJob)
+                throw new Error(
+                  'Chinese draft was blocked before allowed translation',
+                );
+              const policyArgs = `${policyJob.id},${JSON.stringify(policyJob.token)},{text:'译文仍含中文',error:false}`;
+              if (
+                !(await execute(`deliver(${policyArgs},'prepare')`)) ||
+                !(await execute(`deliver(${policyArgs},'selected')`))
+              )
+                throw new Error('Could not prepare Chinese provider output');
+              await win.webContents.insertText('译文仍含中文');
+              await execute(`deliver(${policyArgs},'complete');true`);
+              await submit();
+              if (
+                (await execute('sent.length')) !== 0 ||
+                (await execute(
+                  `document.querySelector('#zl-translation-status')?.textContent`,
+                )) !== '禁止发送中文'
+              )
+                throw new Error(
+                  'Approved provider output containing Chinese bypassed the guard',
+                );
+              await execute('config.outgoing=false;tick(config);true');
+              await replaceDraft('Allowed English');
+              await submit();
+              if ((await execute('sent[0]')) !== 'Allowed English')
+                throw new Error('Foreign text was incorrectly blocked');
+              await execute(
+                'sent=[];config.outgoing=false;config.blockChinese=false;tick(config);true',
+              );
+              await replaceDraft('关闭后允许中文');
+              await submit();
+              if ((await execute('sent[0]')) !== '关闭后允许中文')
+                throw new Error('Disabled guard still blocked Chinese');
               reports.push({
                 variant,
                 gesture,
                 translated: sent[0],
                 failureProtected: true,
+                blockChinese: true,
+                translatedChineseBlocked: true,
+                disabledRestored: true,
                 trustedInputs: preview.trustedInputs,
               });
             }

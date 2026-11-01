@@ -21,12 +21,17 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 9;
+  const revision = 10;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
     // before installing new ones, while retaining successful page translations.
-    previous.config = { ...previous.config, incoming: false, outgoing: false };
+    previous.config = {
+      ...previous.config,
+      incoming: false,
+      outgoing: false,
+      blockChinese: false,
+    };
     previous.approved = null;
     previous.pending?.clear();
     previous.queue = [];
@@ -574,7 +579,7 @@ export function translationTick(
     ];
     let blockedSubmission: Element | null = null;
     const intercept = (event: Event) => {
-      if (!state.config.outgoing) return;
+      if (!state.config.outgoing && !state.config.blockChinese) return;
       const pointer = submissionEvents.includes(event.type);
       if (pointer && (event as MouseEvent).button !== 0) return;
       if (event.type === 'pointerdown') blockedSubmission = null;
@@ -645,6 +650,29 @@ export function translationTick(
       }
       const text = state.readText(input);
       if (!text.trim()) return;
+      const approvedHere =
+        state.approved?.input === input &&
+        state.approved.chat === chatKey() &&
+        state.approved.context === context.key &&
+        !state.busy;
+      if (
+        state.config.blockChinese &&
+        /\p{Script=Han}/u.test(text) &&
+        (!state.config.outgoing ||
+          !state.needsTranslation(text) ||
+          approvedHere)
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.type === 'pointerdown')
+          blockedSubmission = submissionControl || null;
+        notice('禁止发送中文');
+        return;
+      }
+      if (!state.config.outgoing) {
+        notice('');
+        return;
+      }
       if (!state.needsTranslation(text)) {
         state.approved = null;
         state.failedReplacement = null;
@@ -1435,6 +1463,7 @@ export function translationSurfaceDiagnostics() {
     format: 1,
     injectedRevision: state?.revision ?? null,
     outgoing: state?.config?.outgoing ?? null,
+    blockChinese: state?.config?.blockChinese === true,
     incoming: state?.config?.incoming ?? null,
     source: state?.config?.source ?? null,
     target: state?.config?.sendTarget ?? null,
@@ -1677,6 +1706,11 @@ export async function sendTextToChat(
   if (!text.trim() || text.length > 12_000)
     throw new Error('请输入 1–12000 字符的文字内容');
   const page = window as any;
+  if (
+    page.__zlTranslation?.config?.blockChinese &&
+    /\p{Script=Han}/u.test(text)
+  )
+    throw new Error('禁止发送中文');
   const req = (name: string) => page.require(name);
   const chat = req('WAWebCollections').Chat.get(chatId);
   if (

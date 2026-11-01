@@ -182,7 +182,7 @@ const SettingsPanel = observer(
       const editor = composer?.recognized
         ? `已匹配${composer.kind === 'edit' ? '编辑消息' : composer.kind === 'media' ? '附件说明' : '聊天'}输入框`
         : '未匹配发送输入框';
-      return `${send} · ${editor} · ${status.enabled ? `接收翻译开启，检测到 ${count} 条消息` : '接收翻译未开启'} · 已显示 ${status.translated} 条译文 · 待处理 ${status.pending}`;
+      return `${saved.translation.blockChinese ? '禁止发送中文已开启 · ' : ''}${send} · ${editor} · ${status.enabled ? `接收翻译开启，检测到 ${count} 条消息` : '接收翻译未开启'} · 已显示 ${status.translated} 条译文 · 待处理 ${status.pending}`;
     };
     const apply = async (
       test: boolean | 'incoming' | 'outgoing' = false,
@@ -392,6 +392,14 @@ const SettingsPanel = observer(
               </>
             ) : (
               <>
+                <Switch
+                  label="禁止发送中文"
+                  value={config.translation.blockChinese === true}
+                  onChange={blockChinese => toggleTranslation({ blockChinese })}
+                />
+                <p className="tools-muted">
+                  此账号所有聊天生效；允许先翻译，最终文字或附件说明仍含汉字时禁止发送。
+                </p>
                 <Switch
                   label="发送自动翻译"
                   value={config.translation.outgoing}

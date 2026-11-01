@@ -23,6 +23,7 @@ export interface ProviderCredential {
   model?: string;
 }
 export interface TranslationConfig {
+  blockChinese?: boolean;
   textColor?: string;
   cacheRevision?: string;
   outgoing: boolean;
@@ -50,6 +51,7 @@ export const defaultTools = (): ToolsConfig => ({
     username: '',
   },
   translation: {
+    blockChinese: false,
     outgoing: false,
     incoming: false,
     preview: false,
