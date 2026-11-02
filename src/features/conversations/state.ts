@@ -1,4 +1,8 @@
-import type { AggregateConversation, ConversationGroups } from './types';
+import type {
+  AggregateConversation,
+  ConversationGroups,
+  ConversationItem,
+} from './types';
 
 export const DEFAULT_CONVERSATION_GROUP = 'default';
 export function normalizeConversationGroups(
@@ -79,4 +83,19 @@ export function searchConversation(row: AggregateConversation, query: string) {
       row.accountRemark,
     ].join(' '),
   ).includes(normalize(query.trim()));
+}
+
+// Archived conversations are exclusive to the archive tab, including in “所有”.
+export function matchesConversationKind(row: ConversationItem, kind: string) {
+  if (kind === 'archived') return row.archived;
+  return !row.archived && (kind === 'all' || row.group === (kind === 'group'));
+}
+export function expandedConversations(
+  config: ConversationGroups,
+  rows: AggregateConversation[],
+) {
+  const expanded = new Set(
+    config.groups.filter(group => !group.collapsed).map(group => group.id),
+  );
+  return rows.filter(row => expanded.has(conversationGroup(config, row)));
 }

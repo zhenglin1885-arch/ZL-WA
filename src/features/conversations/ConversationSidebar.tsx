@@ -19,6 +19,8 @@ import {
   conversationGroup,
   moveConversations,
   searchConversation,
+  matchesConversationKind,
+  expandedConversations,
 } from './state';
 import type { AggregateConversation, ConversationGroups } from './types';
 
@@ -96,19 +98,26 @@ const ConversationSidebar = observer(
       .filter(
         row =>
           (account === 'all' || row.accountId === account) &&
-          (kind === 'all' ||
-            (kind === 'archived'
-              ? row.archived
-              : row.group === (kind === 'group'))) &&
+          matchesConversationKind(row, kind) &&
           searchConversation(row, search),
       )
       .sort(
         (a, b) =>
           b.timestamp - a.timestamp ||
-          (a.remark || a.name).localeCompare(b.remark || b.name) ||
+          a.name.localeCompare(b.name) ||
           a.key.localeCompare(b.key),
       );
-    const chosen = visible.filter(row => selected.has(row.key));
+    const selectable = expandedConversations(config, visible);
+    const chosen = selectable.filter(row => selected.has(row.key));
+    const selectionScope = JSON.stringify(selectable.map(row => row.key));
+    useEffect(() => {
+      setSelected(current => {
+        if (current.size === 0) return current;
+        const allowed = new Set<string>(JSON.parse(selectionScope));
+        const next = new Set([...current].filter(key => allowed.has(key)));
+        return next.size === current.size ? current : next;
+      });
+    }, [selectionScope]);
     let totalHeight = 0;
     const entries: Entry[] = [];
     for (const group of config.groups) {
@@ -361,7 +370,7 @@ const ConversationSidebar = observer(
                 >
                   <input
                     type="checkbox"
-                    aria-label={`选择 ${row.remark || row.name} · ${row.accountRemark || row.accountName}`}
+                    aria-label={`选择 ${row.name} · ${row.accountRemark || row.accountName}`}
                     checked={selected.has(row.key)}
                     onChange={() =>
                       setSelected(current => {
@@ -375,14 +384,14 @@ const ConversationSidebar = observer(
                   <button
                     type="button"
                     className="conversation-row__open"
-                    aria-label={`打开 ${row.remark || row.name} · ${row.accountRemark || row.accountName}`}
+                    aria-label={`打开 ${row.name} · ${row.accountRemark || row.accountName}`}
                     onClick={() => void open(row)}
                   >
                     <span className="conversation-row__avatar">
                       {avatar ? (
                         <img src={avatar} alt="" />
                       ) : (
-                        (row.remark || row.name).slice(0, 2)
+                        row.name.slice(0, 2)
                       )}
                       {row.unread > 0 && (
                         <b>{row.unread > 99 ? '99+' : row.unread}</b>
@@ -390,7 +399,7 @@ const ConversationSidebar = observer(
                     </span>
                     <span className="conversation-row__content">
                       <span className="conversation-row__title">
-                        {row.remark || row.name}
+                        {row.name}
                         <time>{formatTime(row.timestamp)}</time>
                       </span>
                       <span className="conversation-row__preview">
@@ -422,12 +431,16 @@ const ConversationSidebar = observer(
               type="checkbox"
               id={selectAllId}
               aria-label="全选当前结果"
-              checked={visible.length > 0 && chosen.length === visible.length}
+              checked={
+                selectable.length > 0 && chosen.length === selectable.length
+              }
+              disabled={selectable.length === 0}
+              title="全选已展开分组中的当前筛选结果"
               onChange={() =>
                 setSelected(
-                  chosen.length === visible.length
+                  chosen.length === selectable.length
                     ? new Set()
-                    : new Set(visible.map(row => row.key)),
+                    : new Set(selectable.map(row => row.key)),
                 )
               }
             />
@@ -556,7 +569,7 @@ const ConversationSidebar = observer(
                   );
                 }) || row.owner,
 
-              name: row.remark || row.name,
+              name: row.name,
               group: row.group,
               archived: row.archived,
               contactOnly: row.contactOnly,

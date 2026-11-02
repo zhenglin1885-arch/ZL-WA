@@ -51,7 +51,15 @@ try {
     const models=window.require('WAWebCollections').Chat.getModelsArray();
     models[0].lastMessage={id:{fromMe:false},body:'recent incoming',t:1700000000};models[0].unreadCount=7;models[0].archive=true;
     window.require('WAWebCollections').Contact={getModelsArray:()=>[{id:{_serialized:'50005@c.us'},name:'Saved contact',isMyContact:true}]};
+    models[0].formattedTitle='Native group name';
+    models[1].contact={id:models[1].id,isMyContact:false,pushname:'Unstored nickname',name:'Unstored business name'};
     const context=read(),result=index();
+    if(result.rows.find(row=>row.id==='10002@c.us')?.name!=='10002')throw Error('Unsaved contact title is not the phone number');
+    if(result.rows.find(row=>row.id==='10001@g.us')?.name!=='Native group name')throw Error('Native group title was replaced');
+    models[1].contact.isMyContact=()=>true;models[1].contact.name='Native saved name';
+    if(index().rows.find(row=>row.id==='10002@c.us')?.name!=='Native saved name')throw Error('Saved native contact name was lost');
+    models.push({id:{_serialized:'90001@lid'},name:'Unstored LID name',contact:{id:{_serialized:'90001@lid'},phoneNumber:{_serialized:'551234567@c.us'},isMyContact:false,pushname:'Not the phone'}});
+    if(index().rows.find(row=>row.id==='90001@lid')?.name!=='551234567')throw Error('Unsaved LID title did not use its phone alias');
     if(!result.contactsReady||!result.rows.some(row=>row.id==='50005@c.us'&&row.contactOnly)||!result.rows.some(row=>row.archived&&row.unread===7&&row.lastFromMe===false&&row.preview==='recent incoming'))throw Error('Native conversation index fields missing');
     const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;canvas.getContext('2d').fillRect(0,0,8,8);
     window.require('WAWebCollections').ProfilePicThumb={get:()=>({img:canvas.toDataURL()})};
@@ -59,7 +67,7 @@ try {
     if(Object.keys(await avatars([result.rows[0].id],['999999999@c.us'])).length)throw Error('Wrong owner read profile picture');
     window.require('WAWebSocketModel').Socket.state='UNPAIRED';read();if(index().rows.length)throw Error('Logged-out account retained accessible index');
     if(fixture.bulk.length)throw Error('Indexing submitted a message');
-    return {nativeChatsAndSavedContacts:true,archivedUnreadAndDirection:true,accountLocalAvatars:true,ownerIsolation:true,noMessagesSent:true};
+    return {nativeTitlesAndUnsavedNumbers:true,nativeChatsAndSavedContacts:true,archivedUnreadAndDirection:true,accountLocalAvatars:true,ownerIsolation:true,noMessagesSent:true};
    })().catch(error=>({error:String(error.stack||error)}))`);
           if (index.error) throw new Error(index.error);
           const modes = [];

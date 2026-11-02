@@ -37,20 +37,48 @@ export function readConversationIndex(): {
   };
   const collection = get('WAWebCollections');
   const messages = collection?.Msg || get('WAWebMsgCollection')?.Msg;
+  const contacts =
+    collection?.Contact ||
+    get('WAWebContactCollection')?.Contact ||
+    safe(() =>
+      page.WPP?.isReady ? page.WPP.whatsapp?.ContactStore : undefined,
+    );
+  const isSaved = (contact: any) =>
+    Boolean(
+      safe(() =>
+        typeof contact?.isMyContact === 'function'
+          ? contact.isMyContact()
+          : contact?.isMyContact,
+      ),
+    );
+  const contactPhone = (contact: any, aliases: string[]) => {
+    const pn = aliases.find(alias => alias.endsWith('@c.us'))?.split('@')[0];
+    if (pn) return pn;
+    const formatted = String(
+      safe(() => contact?.formattedPhone) ||
+        safe(() => contact?.phoneNumber) ||
+        '',
+    );
+    return /^\+?[\d\s()-]+$/.test(formatted) ? formatted : '';
+  };
   const rows: ConversationItem[] = [];
   const seen = new Set<string>();
   for (const model of adapter.models()) {
     const id = idOf(model.id);
     if (!valid(id) || seen.has(id) || model.isPSA) continue;
     seen.add(id);
-    const { contact } = model;
+    const contact =
+      safe(() => model.contact) ||
+      safe(() => contacts?.get?.(model.id)) ||
+      safe(() => contacts?.get?.(id));
     const aliases = [
       ...new Set(
         [id, idOf(contact?.id), idOf(contact?.phoneNumber)].filter(value =>
           valid(value),
         ),
       ),
-    ].slice(0, 2);
+    ];
+    const phone = contactPhone(contact, aliases);
     const candidates = [
       safe(() => model.lastMessage),
       safe(() => model.msgs?.last?.()),
@@ -85,12 +113,19 @@ export function readConversationIndex(): {
       id,
       aliases,
       name: String(
-        safe(() => model.formattedTitle) ||
-          safe(() => model.name) ||
-          safe(() => contact?.pushname) ||
-          id.split('@')[0],
+        id.endsWith('@g.us')
+          ? safe(() => model.formattedTitle) ||
+              safe(() => model.name) ||
+              id.split('@')[0]
+          : isSaved(contact)
+            ? safe(() => contact.name) ||
+              safe(() => model.formattedTitle) ||
+              safe(() => contact.pushname) ||
+              phone ||
+              '号码待同步'
+            : phone || '号码待同步',
       ).slice(0, 160),
-      phone: aliases.find(x => x.endsWith('@c.us'))?.split('@')[0] || '',
+      phone,
       group: id.endsWith('@g.us'),
       archived: Boolean(model.archive),
       unread: Math.max(0, Number(model.unreadCount) || 0),
@@ -100,12 +135,6 @@ export function readConversationIndex(): {
     });
   }
   const seenAliases = new Set(rows.flatMap(row => row.aliases));
-  const contacts =
-    collection?.Contact ||
-    get('WAWebContactCollection')?.Contact ||
-    safe(() =>
-      page.WPP?.isReady ? page.WPP.whatsapp?.ContactStore : undefined,
-    );
   const all = safe(
     () => contacts?.getModelsArray?.() ?? contacts?.models ?? contacts?._models,
   );
@@ -119,11 +148,7 @@ export function readConversationIndex(): {
       !valid(id) ||
       (!id.endsWith('@c.us') && !id.endsWith('@lid')) ||
       seen.has(id) ||
-      !safe(() =>
-        typeof contact.isMyContact === 'function'
-          ? contact.isMyContact()
-          : contact.isMyContact,
-      )
+      !isSaved(contact)
     )
       continue;
     const aliases = [
@@ -139,7 +164,7 @@ export function readConversationIndex(): {
         0,
         160,
       ),
-      phone: aliases.find(x => x.endsWith('@c.us'))?.split('@')[0] || '',
+      phone: contactPhone(contact, aliases),
       group: false,
       archived: false,
       unread: 0,

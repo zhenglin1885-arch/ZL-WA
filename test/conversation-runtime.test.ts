@@ -73,6 +73,32 @@ describe('aggregate account isolation and lifecycle', () => {
       stores.services.all[2].webview.executeJavaScript,
     ).not.toHaveBeenCalled();
   });
+  it('uses a verified phone alias when an unsaved LID contact has no native phone yet', async () => {
+    stores.services.all = [service('A')];
+    stores.services.all[0].webview.executeJavaScript.mockResolvedValue({
+      context: { owners: ['A@c.us'] },
+      index: {
+        rows: [
+          {
+            ...item,
+            id: '90001@lid',
+            aliases: ['90001@lid'],
+            name: '号码待同步',
+          },
+        ],
+        contactsReady: true,
+      },
+    });
+    ipcRenderer.invoke.mockResolvedValue({
+      owner: 'A@c.us',
+      ownerAliases: ['A@c.us'],
+      aliases: { '90001@lid': '551234567@c.us' },
+      summaries: {},
+    });
+    await runtime.refresh();
+    expect(runtime.rows[0].name).toBe('551234567');
+    expect(runtime.rows[0].phone).toBe('551234567');
+  });
   it('clears a logged-out account instead of retaining its previous contacts', async () => {
     await runtime.refresh();
     stores.services.all[0].webview.executeJavaScript.mockResolvedValue({

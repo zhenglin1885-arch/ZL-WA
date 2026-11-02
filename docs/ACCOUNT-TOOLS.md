@@ -619,3 +619,34 @@ move, narrow-window/light-theme placement, filtered selection, bulk composer and
 604-row virtualization. Source typechecking, targeted lint and the eight aggregate
 state/runtime tests passed. This fixes source behavior; the previously published
 test-4 package is unchanged. Real Windows user testing remains necessary.
+
+### Aggregate selection scope, archive isolation and native titles (2026-11-02)
+
+“全选” now covers only the current account/type/search results in expanded local
+folders, including offscreen virtual rows. Selection totals and bulk/move targets
+use the same scope. Collapsing a folder removes its rows from the selection;
+reopening does not silently restore those selections. With no eligible rows the
+select-all control is disabled. Folder storage and customer records are unchanged.
+
+Archived conversations now appear exclusively under “已归档”; “所有”, “私聊” and
+“群聊” exclude them. The archive tab includes archived private and group chats
+and still respects account/search filters.
+
+Row headings, avatar initials, accessibility labels and seeded bulk target names
+use WhatsApp's native name rather than the local customer remark. Group titles
+use the native group name; saved contacts use their native contact name. Unsaved
+contacts show their phone number even when a push/business name is available.
+Native LID-to-phone aliases are used when present; a verified customer identity
+alias can fill a not-yet-synchronized native phone. An unresolved LID is shown as
+“号码待同步” instead of presenting the opaque LID as a phone number. Customer remarks
+remain saved and searchable, and the originating account remark remains below
+each row.
+
+Validation: TypeScript, targeted ESLint, source build and 12 aggregate state/runtime
+tests passed. Offline native Chromium fixtures checked archive exclusivity, native
+saved/group names, unsaved PN/LID number display and local remarks not overriding
+headings. A 604-row fixture checked that collapsing a 600-row folder reduces the
+selection to the other four rows, full selection stays within the open folder,
+and reopening does not resurrect hidden selections. Existing popover, account
+opening, search and bulk-composer fixture checks also passed. This source change
+has not been packaged; published test-5 retains the previous behavior.

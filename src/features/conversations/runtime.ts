@@ -116,6 +116,9 @@ export class ConversationRuntime {
         const summary = bundle.summaries[canonical] || bundle.summaries[row.id];
         return {
           ...row,
+          ...(row.name === '号码待同步' && canonical.endsWith('@c.us')
+            ? { name: canonical.split('@')[0], phone: canonical.split('@')[0] }
+            : {}),
           key: `${service.id}:${bundle.owner}:${row.id}`,
           membershipKey: `${bundle.owner}:${canonical}`,
           accountId: service.id,

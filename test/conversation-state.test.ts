@@ -4,6 +4,8 @@ import {
   removeConversationGroup,
   conversationGroup,
   searchConversation,
+  matchesConversationKind,
+  expandedConversations,
 } from '../src/features/conversations/state';
 import type { AggregateConversation } from '../src/features/conversations/types';
 
@@ -62,4 +64,30 @@ describe('aggregate conversation folders', () => {
       expect(searchConversation(row('A'), query)).toBe(true);
     expect(searchConversation(row('A'), 'missing')).toBe(false);
   });
+  it('selects only expanded folders and moves no contacts from collapsed folders', () => {
+    const a = row('A');
+    const b = row('B');
+    const folders = moveConversations(config(), [a], 'vip');
+    folders.groups[0].collapsed = true;
+    const open = expandedConversations(folders, [a, b]);
+    expect(open).toEqual([a]);
+    const moved = moveConversations(folders, open, 'default');
+    expect(moved.members).toEqual({ 'A:10001': 'default' });
+    expect(expandedConversations(moved, [a, b])).toEqual([]);
+  });
+  it.each([false, true])(
+    'shows archived private/group rows only in archive (group=%s)',
+    group => {
+      const archived = { ...row('A'), group, archived: true };
+      for (const kind of ['all', 'private', 'group'])
+        expect(matchesConversationKind(archived, kind)).toBe(false);
+      expect(matchesConversationKind(archived, 'archived')).toBe(true);
+      const ordinary = { ...archived, archived: false };
+      expect(matchesConversationKind(ordinary, 'all')).toBe(true);
+      expect(
+        matchesConversationKind(ordinary, group ? 'group' : 'private'),
+      ).toBe(true);
+      expect(matchesConversationKind(ordinary, 'archived')).toBe(false);
+    },
+  );
 });
