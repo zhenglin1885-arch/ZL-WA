@@ -30,13 +30,18 @@ try {
     const {ipcRenderer}=require('electron');
     ipcRenderer.invoke=async(channel,owners)=>{if(channel==='customers-bind')return {owner:owners[0],ownerAliases:owners,revision:1,summaries:{'10001@c.us':{remarkName:'重点 Alice',flags:[]}},aliases:{},pins:[],pinsInitialized:true};if(channel==='account-tools-history')return [];return {};};
     const Component=require(${JSON.stringify(`${process.cwd()}/build/features/conversations/ConversationSidebar.js`)}).default;
-    const rows=[{id:'10001@c.us',aliases:['10001@c.us'],name:'Alice',phone:'10001',group:false,archived:false,unread:3,preview:'Hello there',timestamp:1700000000,lastFromMe:false},{id:'12345@g.us',aliases:['12345@g.us'],name:'Investment group',phone:'',group:true,archived:false,unread:0,preview:'Group update',timestamp:1700000001,lastFromMe:true}];
-    window.opened=[];
+    const rows=[{id:'10001@c.us',aliases:['10001@c.us'],name:'Alice',phone:'10001',group:false,archived:false,unread:123,preview:'Hello there',timestamp:1700000000,lastFromMe:false},{id:'12345@g.us',aliases:['12345@g.us'],name:'Investment group',phone:'',group:true,archived:false,unread:0,preview:'Group update',timestamp:1700000001,lastFromMe:true}];
+    window.opened=[];const readKeys=new Set();window.markedRead=[];
     const services=['A','B'].map((id,index)=>({id,name:'Account '+id,recipe:{id:'whatsapp'},isEnabled:true,isLoading:false,accountSnapshot:{status:'online',nickname:id,ownerId:'861380000000'+(index+1)+'@c.us'},webview:{executeJavaScript:async code=>{
+      if(code.includes('WAWebUpdateUnreadChatAction')){
+        const start=code.lastIndexOf('})([')+3,end=code.lastIndexOf(');})()'),[targets]=JSON.parse('['+code.slice(start,end)+']');let count=0;
+        for(const target of targets){const row=rows.find(row=>row.id===target);if(row?.unread>0&&!readKeys.has(id+':'+target))count++;readKeys.add(id+':'+target);markedRead.push(id+':'+target);}
+        return {read:count,failed:0,halted:false};
+      }
       if(code.includes('openChatBottom')){opened.push(id);return true;}
       if(code.startsWith('location.hostname'))return false;
       if(code==='Boolean(window.WPP)'||code.startsWith('new Promise'))return true;
-      if(code.includes('index:'))return {context:{token:'document-'+id,owners:['861380000000'+(index+1)+'@c.us']},index:{rows,contactsReady:true}};
+      if(code.includes('index:'))return {context:{token:'document-'+id,owners:['861380000000'+(index+1)+'@c.us']},index:{rows:rows.map(row=>({...row,unread:readKeys.has(id+':'+row.id)?0:row.unread})),contactsReady:true}};
       if(code.includes('image/jpeg'))return {};
       return true;
     }}}));
@@ -53,13 +58,21 @@ try {
     const first=document.querySelector('.conversation-row__open');first.click();await wait(()=>opened.length===1);
     document.querySelector('[aria-label="全选当前结果"]').click();
     await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 4'));
-    const nativeClick=async(element)=>{
+    const nativeClick=async(element,button='left')=>{
+      await wait(()=>{const r=element.getBoundingClientRect();return r.width>0&&r.height>0&&element.contains(document.elementFromPoint(Math.round(r.x+r.width/2),Math.round(r.y+r.height/2)));});
       const r=element.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);
       check(r.width>0&&r.height>0&&element.contains(document.elementFromPoint(x,y)),'Native click target is covered or offscreen');
       const contents=require(${JSON.stringify(`${process.cwd()}/node_modules/@electron/remote`)}).getCurrentWebContents();
-      contents.sendInputEvent({type:'mouseMove',x,y});contents.sendInputEvent({type:'mouseDown',x,y,button:'left',clickCount:1});contents.sendInputEvent({type:'mouseUp',x,y,button:'left',clickCount:1});
+      contents.sendInputEvent({type:'mouseMove',x,y});contents.sendInputEvent({type:'mouseDown',x,y,button,clickCount:1});contents.sendInputEvent({type:'mouseUp',x,y,button,clickCount:1});
       await new Promise(r=>setTimeout(r,80));
     };
+    const groupToggle=name=>[...document.querySelectorAll('.conversation-group button[aria-expanded]')].find(button=>button.textContent.includes(name));
+    const menuItem=label=>[...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent===label);
+    const badge=document.querySelector('.conversation-row__avatar b');check(badge.textContent==='99+'&&getComputedStyle(badge).backgroundColor==='rgb(229, 57, 53)'&&getComputedStyle(badge).fontSize==='10px','Unread badge cap, size or red color is wrong');
+    await nativeClick(groupToggle('默认分组'),'right');await wait(()=>document.querySelector('[role="menu"]'));
+    check(document.querySelectorAll('[role="menuitem"]').length===1&&menuItem('全部已读'),'Default group exposed edit/delete actions');
+    require(${JSON.stringify(`${process.cwd()}/node_modules/@electron/remote`)}).getCurrentWebContents().sendInputEvent({type:'keyDown',keyCode:'Escape'});
+    await wait(()=>!document.querySelector('[role="menu"]'));
     check(!document.querySelector('[aria-label="会话状态"]'),'Removed status filters are still shown');
     check(![...document.querySelectorAll('button')].some(button=>button.getAttribute('aria-label')?.endsWith('分组菜单')),'Group ellipsis menu is still shown');
     const plus=document.querySelector('[aria-label="新增会话分组"]');check(plus.getBoundingClientRect().width>=36&&parseFloat(getComputedStyle(plus).fontSize)>=24,'Group plus is too small');
@@ -86,6 +99,10 @@ try {
     await nativeClick([...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent==='确认'));
     await wait(()=>Object.keys(stores.settings.app.aggregateConversations.members).length===4&&!document.querySelector('[role="dialog"]')&&document.querySelector('.conversation-toolbar').textContent.includes('已选 0'));
     check(document.querySelectorAll('.conversation-row').length===4,'Move removed conversation records');
+    await nativeClick(groupToggle('重点客户'),'right');await wait(()=>document.querySelectorAll('[role="menuitem"]').length===3);
+    await nativeClick(menuItem('编辑'));await wait(()=>document.querySelector('[role="dialog"] input'));await wait(popupVisible);
+    const rename=document.querySelector('[role="dialog"] input');check(rename.value==='重点客户','Rename popup lost original group name');setter.call(rename,'待跟进客户');rename.dispatchEvent(new Event('input',{bubbles:true}));
+    await nativeClick([...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent==='确认'));await wait(()=>!document.querySelector('[role="dialog"]')&&groupToggle('待跟进客户'));
     const allCheckbox=document.querySelector('[aria-label="全选当前结果"]');allCheckbox.click();await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 4'));
     [...document.querySelectorAll('.conversation-toolbar button')].find(button=>button.textContent==='群发').click();await wait(()=>document.querySelector('.account-tools-dialog'));
     check(document.querySelector('.account-tools-dialog').textContent.includes('选择账号'),'Bulk composer did not open');
@@ -116,8 +133,19 @@ try {
     await nativeClick(defaultToggle());await wait(()=>document.querySelectorAll('.conversation-row').length===4&&document.querySelector('.conversation-toolbar').textContent.includes('已选 4'));
     document.querySelector('[aria-label="全选当前结果"]').click();await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 0'));
     document.querySelector('[aria-label="全选当前结果"]').click();await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 4'));
+    await nativeClick(groupToggle('待跟进客户'),'right');await wait(()=>menuItem('全部已读'));await nativeClick(menuItem('全部已读'));
+    await wait(()=>!document.querySelector('.conversation-row__avatar b')&&document.querySelector('.account-sidebar__notice')?.textContent.includes('已标记 2'));
+    check(markedRead.length===4&&!markedRead.some(key=>key.includes('20000@c.us')),'Group read action marked another folder');
     await nativeClick(defaultToggle());await wait(()=>document.querySelector('.conversation-summary').textContent==='604 个会话');
+    await wait(()=>document.querySelector('.conversation-row__avatar b'));
     check(document.querySelector('.conversation-toolbar').textContent.includes('已选 4'),'Reopening a folder restored hidden selections');
+    document.querySelector('[aria-label="全选当前结果"]').click();await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 604'));
+    await nativeClick(defaultToggle());await wait(()=>document.querySelectorAll('.conversation-row').length===4);
+    await nativeClick(groupToggle('待跟进客户'),'right');await wait(()=>menuItem('删除'));await nativeClick(menuItem('删除'));
+    await wait(()=>stores.settings.app.aggregateConversations.groups.length===1&&Object.keys(stores.settings.app.aggregateConversations.members).length===0&&document.querySelector('.conversation-toolbar').textContent.includes('已选 0'));
+    await nativeClick(defaultToggle());await wait(()=>document.querySelector('.conversation-summary').textContent==='604 个会话');
+    await nativeClick(defaultToggle(),'right');await wait(()=>menuItem('全部已读'));check(document.querySelectorAll('[role="menuitem"]').length===1,'Default group gained destructive actions after deleting a custom folder');await nativeClick(menuItem('全部已读'));
+    await wait(()=>!document.querySelector('.conversation-row__avatar b')&&document.querySelector('.account-sidebar__notice')?.textContent.includes('已标记 602'));
     document.querySelector('[aria-label="全选当前结果"]').click();await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 604'));
     await nativeClick(moveButton());await wait(()=>document.querySelector('[aria-label="目标会话分组"]'));await wait(popupVisible);
     const controller=require(${JSON.stringify(`${process.cwd()}/node_modules/@electron/remote`)}).getCurrentWindow();
@@ -125,7 +153,7 @@ try {
     document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,200));check(popupVisible(),'Light theme displaced the move popup');
     controller.setSize(1100,850);document.body.classList.add('theme__dark');await wait(()=>innerWidth>1000&&popupVisible());
     await new Promise(r=>setTimeout(r,200));
-    return {expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,nativeTitlesIgnoreCustomerRemarks:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndMenusRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
+    return {groupContextMenuAndRename:true,deleteReturnsMembersToDefault:true,defaultGroupProtected:true,scopedAllReadAndBadgeRemoval:true,redUnreadBadge99Plus:true,expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,nativeTitlesIgnoreCustomerRemarks:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndEllipsisRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
    })().catch(error=>({fixtureError:String(error.stack||error)}))`;
           fs.writeFileSync('/tmp/zl-aggregate-renderer.cjs', program);
           const output = await win.webContents.executeJavaScript(program);

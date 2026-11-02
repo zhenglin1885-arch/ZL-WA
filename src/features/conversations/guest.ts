@@ -279,3 +279,62 @@ export async function readConversationAvatars(
     return {};
   return result;
 }
+
+// Scope read receipts to explicitly selected chats in the verified account.
+export async function markConversationsRead(
+  ids: string[],
+  owners: string[],
+): Promise<{ read: number; failed: number; halted: boolean }> {
+  const page = window as any;
+  const ownerMatches = () =>
+    page.__zlCustomerAdapter
+      ?.owners()
+      .some((id: string) => owners.includes(id));
+  if (globalThis.location.hostname !== 'web.whatsapp.com' || !ownerMatches())
+    throw new Error('账号身份已改变，请刷新聚合会话');
+  const sendSeen = page.require?.('WAWebUpdateUnreadChatAction')?.sendSeen;
+  const models = page.__zlCustomerAdapter.models();
+  if (typeof sendSeen !== 'function' || !Array.isArray(models))
+    throw new Error('当前账号尚不支持标记已读，请检查 WhatsApp 页面');
+  const targets = [...new Set(ids)].filter(id =>
+    /^\d{1,40}(?:-\d{1,30})?@(c\.us|lid|g\.us)$/.test(id),
+  );
+  const byId = new Map(
+    models.map((model: any) => [
+      model.id?._serialized || String(model.id),
+      model,
+    ]),
+  );
+  let read = 0;
+  let failed = 0;
+  const until = Date.now() + 8000;
+  for (let index = 0; index < targets.length; index += 1) {
+    if (!ownerMatches() || Date.now() >= until)
+      return { read, failed: failed + targets.length - index, halted: true };
+    const chat: any = byId.get(targets[index]);
+    if (!chat || !(chat.unreadCount > 0 || chat.unreadCount === -1)) continue;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    try {
+      // Sequential requests avoid a burst of read receipts for a large folder.
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.race([
+        sendSeen({ chat, threadId: undefined }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            reject(new Error('标记已读超时'));
+          }, 2000);
+        }),
+      ]);
+      read += 1;
+    } catch {
+      if (timedOut)
+        return { read, failed: failed + targets.length - index, halted: true };
+      failed += 1;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+  return { read, failed, halted: false };
+}

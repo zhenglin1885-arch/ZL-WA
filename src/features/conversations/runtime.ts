@@ -10,6 +10,7 @@ import {
   readConversationIndex,
   setAggregateChatMode,
   readConversationAvatars,
+  markConversationsRead,
 } from './guest';
 import type { AggregateConversation, ConversationItem } from './types';
 
@@ -260,6 +261,71 @@ export class ConversationRuntime {
     } finally {
       this.avatarBusy = false;
     }
+  }
+
+  async markRead(rows: AggregateConversation[]) {
+    const { generation } = this;
+    let read = 0;
+    let failed = 0;
+    let cursor = 0;
+    const accounts = [
+      ...new Set(
+        rows.filter(row => !row.contactOnly).map(row => row.accountId),
+      ),
+    ];
+    const worker = async () => {
+      while (
+        cursor < accounts.length &&
+        this.active &&
+        generation === this.generation
+      ) {
+        const id = accounts[cursor];
+        cursor += 1;
+        const targets = rows.filter(
+          row => row.accountId === id && !row.contactOnly,
+        );
+        const service = this.stores.services.all.find(item => item.id === id);
+        const view = service?.webview;
+        let offset = 0;
+        try {
+          if (!service?.isEnabled || service.isHibernating || !view)
+            throw new Error('账号尚未就绪');
+          while (
+            offset < targets.length &&
+            this.active &&
+            generation === this.generation
+          ) {
+            if (service.webview !== view) throw new Error('账号页面已改变');
+            const batch = targets.slice(offset, offset + 50);
+            const result: Awaited<ReturnType<typeof markConversationsRead>> =
+              await this.bounded(
+                view.executeJavaScript(
+                  `(()=>{(${readCustomerContext.toString()})();return (${markConversationsRead.toString()})(${JSON.stringify(batch.map(row => row.id))},${JSON.stringify(batch[0].ownerAliases)});})()`,
+                ),
+                12_000,
+              );
+            read += result.read;
+            failed += result.failed;
+            offset += batch.length;
+            if (result.halted) {
+              failed += targets.length - offset;
+              break;
+            }
+          }
+        } catch {
+          failed += targets.length - offset;
+        } finally {
+          if (service && this.active && generation === this.generation) {
+            await this.read(service, generation);
+            this.notify();
+          }
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(2, accounts.length) }, worker),
+    );
+    return { read, failed };
   }
 
   async syncLayout() {

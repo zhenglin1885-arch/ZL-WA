@@ -8,8 +8,13 @@ import {
   useCallback,
 } from 'react';
 import { observer } from 'mobx-react';
-import { mdiAccountOutline } from '@mdi/js';
-import { Popover } from '@mui/material';
+import {
+  mdiAccountOutline,
+  mdiEmailOpenOutline,
+  mdiPencilOutline,
+  mdiDeleteOutline,
+} from '@mdi/js';
+import { Popover, Menu, MenuItem } from '@mui/material';
 import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import BulkSend from '../accountTools/BulkSend';
@@ -21,6 +26,7 @@ import {
   searchConversation,
   matchesConversationKind,
   expandedConversations,
+  removeConversationGroup,
 } from './state';
 import type { AggregateConversation, ConversationGroups } from './types';
 
@@ -60,8 +66,15 @@ const ConversationSidebar = observer(
     const [notice, setNotice] = useState('');
     const [busy, setBusy] = useState(false);
     const [opening, setOpening] = useState('');
+    const [menu, setMenu] = useState<{
+      id: string;
+      anchor: HTMLElement;
+      left: number;
+      top: number;
+    }>();
     const [dialog, setDialog] = useState<{
-      kind: 'create' | 'move';
+      kind: 'create' | 'move' | 'rename';
+      id?: string;
       anchor: HTMLElement;
       value: string;
     }>();
@@ -174,20 +187,47 @@ const ConversationSidebar = observer(
           await save(moveConversations(config, chosen, dialog.value));
           setSelected(new Set());
         } else {
+          if (
+            dialog.kind === 'rename' &&
+            (dialog.id === 'default' ||
+              !config.groups.some(group => group.id === dialog.id))
+          )
+            throw new Error('该分组不能编辑');
           const value = dialog.value.trim();
           if (!value) throw new Error('请输入分组名称');
-          if (config.groups.some(g => g.name === value))
+          if (config.groups.some(g => g.name === value && g.id !== dialog.id))
             throw new Error('分组名称已存在');
           await save({
             ...config,
-            groups: [
-              ...config.groups,
-              { id: crypto.randomUUID(), name: value, collapsed: false },
-            ],
+            groups:
+              dialog.kind === 'rename'
+                ? config.groups.map(group =>
+                    group.id === dialog.id ? { ...group, name: value } : group,
+                  )
+                : [
+                    ...config.groups,
+                    { id: crypto.randomUUID(), name: value, collapsed: false },
+                  ],
           });
         }
         setDialog(undefined);
       });
+    const markGroupRead = (id: string) => {
+      setMenu(undefined);
+      void perform(async () => {
+        setNotice('正在标记该分组中的会话为已读…');
+        const result = await runtime.markRead(
+          all.filter(row => conversationGroup(config, row) === id),
+        );
+        setNotice(
+          result.failed > 0
+            ? `已标记 ${result.read} 个会话为已读，${result.failed} 个未完成，请检查账号连接`
+            : result.read > 0
+              ? `已标记 ${result.read} 个会话为已读`
+              : '该分组暂无未读消息',
+        );
+      });
+    };
     const open = async (row: AggregateConversation) => {
       setOpening(row.key);
       setNotice('');
@@ -320,6 +360,17 @@ const ConversationSidebar = observer(
                     <button
                       type="button"
                       aria-expanded={!group.collapsed}
+                      disabled={busy}
+                      onContextMenu={event => {
+                        event.preventDefault();
+                        if (!busy)
+                          setMenu({
+                            id: group.id,
+                            anchor: event.currentTarget,
+                            left: event.clientX,
+                            top: event.clientY,
+                          });
+                      }}
                       onClick={() =>
                         void perform(() =>
                           save({
@@ -394,7 +445,9 @@ const ConversationSidebar = observer(
                         row.name.slice(0, 2)
                       )}
                       {row.unread > 0 && (
-                        <b>{row.unread > 99 ? '99+' : row.unread}</b>
+                        <b aria-label={`未读消息 ${row.unread} 条`}>
+                          {row.unread > 99 ? '99+' : row.unread}
+                        </b>
                       )}
                     </span>
                     <span className="conversation-row__content">
@@ -469,6 +522,55 @@ const ConversationSidebar = observer(
             群发
           </button>
         </footer>
+        <Menu
+          className="account-context-menu conversation-group-menu"
+          open={Boolean(menu)}
+          anchorReference="anchorPosition"
+          anchorPosition={menu ? { left: menu.left, top: menu.top } : undefined}
+          onClose={() => setMenu(undefined)}
+        >
+          <MenuItem
+            disabled={busy}
+            onClick={() => menu && markGroupRead(menu.id)}
+          >
+            <Icon icon={mdiEmailOpenOutline} size={0.8} />
+            全部已读
+          </MenuItem>
+          {menu && menu.id !== 'default' && (
+            <MenuItem
+              disabled={busy}
+              onClick={() => {
+                const group = config.groups.find(item => item.id === menu.id);
+                if (group) {
+                  setNotice('');
+                  setDialog({
+                    kind: 'rename',
+                    id: group.id,
+                    value: group.name,
+                    anchor: menu.anchor,
+                  });
+                }
+                setMenu(undefined);
+              }}
+            >
+              <Icon icon={mdiPencilOutline} size={0.8} />
+              编辑
+            </MenuItem>
+          )}
+          {menu && menu.id !== 'default' && (
+            <MenuItem
+              disabled={busy}
+              onClick={() => {
+                const { id } = menu;
+                setMenu(undefined);
+                void perform(() => save(removeConversationGroup(config, id)));
+              }}
+            >
+              <Icon icon={mdiDeleteOutline} size={0.8} />
+              删除
+            </MenuItem>
+          )}
+        </Menu>
         <Popover
           className="account-dialog conversation-popup"
           open={Boolean(dialog)}
@@ -482,7 +584,12 @@ const ConversationSidebar = observer(
           slotProps={{
             paper: {
               role: 'dialog',
-              'aria-label': dialog?.kind === 'move' ? '移动分组' : '新增分组',
+              'aria-label':
+                dialog?.kind === 'move'
+                  ? '移动分组'
+                  : dialog?.kind === 'rename'
+                    ? '编辑分组'
+                    : '新增分组',
             },
           }}
         >
@@ -494,7 +601,11 @@ const ConversationSidebar = observer(
               }}
             >
               <label htmlFor={`${selectAllId}-folder`}>
-                {dialog.kind === 'move' ? '移动到分组' : '新增分组'}
+                {dialog.kind === 'move'
+                  ? '移动到分组'
+                  : dialog.kind === 'rename'
+                    ? '编辑分组名称'
+                    : '新增分组'}
               </label>
               {dialog.kind === 'move' ? (
                 <select

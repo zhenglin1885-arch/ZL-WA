@@ -650,3 +650,34 @@ selection to the other four rows, full selection stays within the open folder,
 and reopening does not resurrect hidden selections. Existing popover, account
 opening, search and bulk-composer fixture checks also passed. This source change
 has not been packaged; published test-5 retains the previous behavior.
+
+### Aggregate folder context menu and unread indicators (2026-11-02)
+
+Right-clicking a custom folder name opens “全部已读 / 编辑 / 删除”. Editing uses the
+existing compact anchored form with duplicate/empty-name validation. Deleting a
+folder immediately removes its local membership references, returning conversations
+to the default folder without deleting contacts, history or native WhatsApp groups.
+The default folder exposes only “全部已读”; rename/delete remain protected.
+
+“全部已读” targets that folder's currently indexed conversations across their own
+accounts, including collapsed/archived rows and irrespective of selection/search.
+It does not call the account-wide mark-all helper. Each native action checks live
+account identity and processes explicit chat IDs sequentially. Account workers are
+limited to two, requests are sent in batches of 50, and guest/action deadlines stop
+stalled work. It neither initializes every SDK nor wakes sleeping accounts. Actual
+native unread state is reread afterward; failed actions do not optimistically erase
+badges. Partial completion is reported in the panel.
+
+Aggregate conversation badges now use red #e53935, preserve the existing 10-pixel
+font, display at most “99+”, and are absent when the native unread count is zero.
+The full count is retained in an accessibility label.
+
+Validation: 15 aggregate state/runtime/guest tests passed, including stalled action
+and account-switch isolation. Offline native Chromium fixtures verified default
+folder protection, rename via a visible popup, deletion returning memberships,
+folder-scoped read actions leaving other folders unread, failed native actions
+retaining counts, red/99+ badge rendering, and disappearance after a confirmed
+native read. Existing search, archive isolation, expanded-folder selection and
+604-row virtualization checks passed. These are synthetic-account fixtures, not
+real WhatsApp/Windows tests. This feature and the previous selection/archive/title
+changes are not yet packaged; test-5 is unchanged.

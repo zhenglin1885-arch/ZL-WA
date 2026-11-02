@@ -47,7 +47,7 @@ try {
         try {
           await win.loadURL('https://web.whatsapp.com/');
           const index = await win.webContents.executeJavaScript(`(async()=>{
-    const read=${customer.readCustomerContext.toString()},index=${guest.readConversationIndex.toString()},avatars=${guest.readConversationAvatars.toString()};
+    const read=${customer.readCustomerContext.toString()},index=${guest.readConversationIndex.toString()},avatars=${guest.readConversationAvatars.toString()},markRead=${guest.markConversationsRead.toString()};
     const models=window.require('WAWebCollections').Chat.getModelsArray();
     models[0].lastMessage={id:{fromMe:false},body:'recent incoming',t:1700000000};models[0].unreadCount=7;models[0].archive=true;
     window.require('WAWebCollections').Contact={getModelsArray:()=>[{id:{_serialized:'50005@c.us'},name:'Saved contact',isMyContact:true}]};
@@ -61,13 +61,19 @@ try {
     models.push({id:{_serialized:'90001@lid'},name:'Unstored LID name',contact:{id:{_serialized:'90001@lid'},phoneNumber:{_serialized:'551234567@c.us'},isMyContact:false,pushname:'Not the phone'}});
     if(index().rows.find(row=>row.id==='90001@lid')?.name!=='551234567')throw Error('Unsaved LID title did not use its phone alias');
     if(!result.contactsReady||!result.rows.some(row=>row.id==='50005@c.us'&&row.contactOnly)||!result.rows.some(row=>row.archived&&row.unread===7&&row.lastFromMe===false&&row.preview==='recent incoming'))throw Error('Native conversation index fields missing');
+    const originalRequire=window.require, seen=[];models[1].unreadCount=9;
+    window.require=name=>name==='WAWebUpdateUnreadChatAction'?{sendSeen:async({chat})=>{if(chat.id._serialized==='10002@c.us')throw Error('synthetic read failure');seen.push(chat.id._serialized);chat.unreadCount=0;}}:originalRequire(name);
+    const marked=await markRead(['10001@g.us'],context.owners);
+    if(marked.read!==1||models[0].unreadCount!==0||models[1].unreadCount!==9||seen.length!==1)throw Error('Read receipts escaped their explicit chat scope');
+    const failed=await markRead(['10002@c.us'],context.owners);if(failed.failed!==1||models[1].unreadCount!==9)throw Error('Failed read action cleared unread state');
+    let rejected=false;try{await markRead(['10002@c.us'],['999999999@c.us']);}catch{rejected=true;}if(!rejected||seen.length!==1)throw Error('Wrong account submitted a read receipt');
     const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;canvas.getContext('2d').fillRect(0,0,8,8);
     window.require('WAWebCollections').ProfilePicThumb={get:()=>({img:canvas.toDataURL()})};
     const images=await avatars([result.rows[0].id],context.owners);if(!images[result.rows[0].id]?.startsWith('data:image/jpeg;base64,'))throw Error('Visible avatar did not use account-local conversion');
     if(Object.keys(await avatars([result.rows[0].id],['999999999@c.us'])).length)throw Error('Wrong owner read profile picture');
     window.require('WAWebSocketModel').Socket.state='UNPAIRED';read();if(index().rows.length)throw Error('Logged-out account retained accessible index');
     if(fixture.bulk.length)throw Error('Indexing submitted a message');
-    return {nativeTitlesAndUnsavedNumbers:true,nativeChatsAndSavedContacts:true,archivedUnreadAndDirection:true,accountLocalAvatars:true,ownerIsolation:true,noMessagesSent:true};
+    return {scopedReadReceiptsAndFailureState:true,nativeTitlesAndUnsavedNumbers:true,nativeChatsAndSavedContacts:true,archivedUnreadAndDirection:true,accountLocalAvatars:true,ownerIsolation:true,noMessagesSent:true};
    })().catch(error=>({error:String(error.stack||error)}))`);
           if (index.error) throw new Error(index.error);
           const modes = [];

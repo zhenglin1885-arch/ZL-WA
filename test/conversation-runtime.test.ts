@@ -73,6 +73,34 @@ describe('aggregate account isolation and lifecycle', () => {
       stores.services.all[2].webview.executeJavaScript,
     ).not.toHaveBeenCalled();
   });
+  it('marks only supplied conversations on their own account without loading SDKs', async () => {
+    await runtime.refresh();
+    stores.services.all[0].webview.executeJavaScript.mockImplementation(
+      async (code: string) =>
+        code.includes('WAWebUpdateUnreadChatAction')
+          ? { read: 1, failed: 0, halted: false }
+          : {
+              context: { owners: ['A@c.us'] },
+              index: { rows: [item], contactsReady: true },
+            },
+    );
+    const result = await runtime.markRead(
+      runtime.rows.filter(row => row.accountId === 'A'),
+    );
+    expect(result).toEqual({ read: 1, failed: 0 });
+    const callsA = stores.services.all[0].webview.executeJavaScript.mock.calls
+      .map((args: string[]) => args[0])
+      .filter((code: string) => code.includes('WAWebUpdateUnreadChatAction'));
+    expect(callsA).toHaveLength(1);
+    expect(callsA[0]).toContain('["10001@c.us"],["A@c.us"]');
+    expect(
+      stores.services.all[1].webview.executeJavaScript.mock.calls.some(
+        (args: string[]) => args[0].includes('WAWebUpdateUnreadChatAction'),
+      ),
+    ).toBe(false);
+    expect(ensureBulkLibrary).not.toHaveBeenCalled();
+    expect(stores.services._awake).not.toHaveBeenCalled();
+  });
   it('uses a verified phone alias when an unsaved LID contact has no native phone yet', async () => {
     stores.services.all = [service('A')];
     stores.services.all[0].webview.executeJavaScript.mockResolvedValue({
