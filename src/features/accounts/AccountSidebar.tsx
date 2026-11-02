@@ -29,6 +29,7 @@ import {
   mdiPlus,
   mdiReload,
   mdiWeatherNight,
+  mdiWhatsapp,
 } from '@mdi/js';
 import { observer } from 'mobx-react';
 import { runInAction } from 'mobx';
@@ -726,13 +727,18 @@ export default class AccountSidebar extends Component<StoresProps, State> {
         className={`account-sidebar ${config.collapsed ? 'is-collapsed' : ''}`}
         aria-label="账号分组"
       >
-        <button
-          type="button"
-          className="account-sidebar__aggregate"
-          onClick={() => this.setState({ aggregate: true })}
-        >
-          <Icon icon={mdiForumOutline} /> 聚合会话
-        </button>
+        <div className="account-sidebar__brand-row">
+          <span className="account-sidebar__brand">
+            <Icon icon={mdiWhatsapp} size={0.85} /> WhatsApp
+          </span>
+          <button
+            type="button"
+            className="account-sidebar__aggregate"
+            onClick={() => this.setState({ aggregate: true })}
+          >
+            <Icon icon={mdiForumOutline} /> 聚合会话
+          </button>
+        </div>
         <div className="account-sidebar__header">
           <button
             type="button"

@@ -593,3 +593,29 @@ prefill and a 604-conversation virtualized list. Native flex/grid fixtures verif
 chat-list hiding and restoring the original width, cached avatars, native contacts,
 logout/owner isolation and zero sends. These fixtures use synthetic accounts;
 real WhatsApp/Windows validation is still required. This feature is not packaged.
+
+### Aggregate folder popup visibility and sidebar cleanup (2026-11-02)
+
+The unscoped MUI dialogs used for aggregate folder creation/moves inherited the
+upstream global `div { height: 100% }` reset. Their focus-trap sentinels displaced
+the dialog paper outside the viewport, leaving only the dimming overlay visible.
+The earlier fixture asserted that dialog controls existed, but did not check their
+visible position; adding a viewport assertion reproduced this failure in test-4.
+
+Both operations now use compact popovers anchored to their own buttons, with the
+existing `account-dialog` height/sentinel reset and scoped form styles. Moving
+starts with “请选择分组”, requires a destination before confirmation, and cancellation
+leaves membership/selection intact. Creation/move errors display inside the popup.
+Fields receive focus when attached and forms also support keyboard submission.
+The status-filter row (所有/未读/未回/已读未回) and aggregate group ellipsis menus were
+removed as requested; type/account/search filters remain. The group plus button
+now has a 36-pixel target with a 27-pixel symbol. A green WhatsApp mark and wordmark
+were added to the account header beside the aggregate entry.
+
+The offline native Chromium fixture now checks popup viewport bounds and actual
+hit targets before sending native mouse events for creation and moves. It verifies
+blank-name validation, destination-required confirmation, cancellation, a successful
+move, narrow-window/light-theme placement, filtered selection, bulk composer and
+604-row virtualization. Source typechecking, targeted lint and the eight aggregate
+state/runtime tests passed. This fixes source behavior; the previously published
+test-4 package is unchanged. Real Windows user testing remains necessary.

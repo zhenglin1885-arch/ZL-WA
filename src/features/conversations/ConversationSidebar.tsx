@@ -1,17 +1,15 @@
 /* eslint-disable no-void, no-continue -- UI operations report failures in the panel notice. */
-import { useEffect, useMemo, useRef, useState, useId } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+  useCallback,
+} from 'react';
 import { observer } from 'mobx-react';
 import { mdiAccountOutline } from '@mdi/js';
-import {
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Menu,
-  MenuItem,
-} from '@mui/material';
+import { Popover } from '@mui/material';
 import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import BulkSend from '../accountTools/BulkSend';
@@ -20,7 +18,6 @@ import {
   normalizeConversationGroups,
   conversationGroup,
   moveConversations,
-  removeConversationGroup,
   searchConversation,
 } from './state';
 import type { AggregateConversation, ConversationGroups } from './types';
@@ -56,20 +53,23 @@ const ConversationSidebar = observer(
     const [, render] = useState(0);
     const [search, setSearch] = useState('');
     const [kind, setKind] = useState('all');
-    const [status, setStatus] = useState('all');
     const [account, setAccount] = useState('all');
     const [selected, setSelected] = useState<Set<string>>(() => new Set());
     const [notice, setNotice] = useState('');
     const [busy, setBusy] = useState(false);
     const [opening, setOpening] = useState('');
-    const [menu, setMenu] = useState<{ id: string; anchor: HTMLElement }>();
     const [dialog, setDialog] = useState<{
-      kind: 'create' | 'rename' | 'delete' | 'move';
-      id: string;
+      kind: 'create' | 'move';
+      anchor: HTMLElement;
       value: string;
     }>();
     const [bulk, setBulk] = useState(false);
     const selectAllId = useId();
+    const focusFolderField = useCallback(
+      (element: HTMLInputElement | HTMLSelectElement | null) =>
+        element?.focus(),
+      [],
+    );
     const list = useRef<HTMLDivElement>(null);
     const [scroll, setScroll] = useState(0);
     const [height, setHeight] = useState(600);
@@ -100,12 +100,6 @@ const ConversationSidebar = observer(
             (kind === 'archived'
               ? row.archived
               : row.group === (kind === 'group'))) &&
-          (status === 'all' ||
-            (status === 'unread'
-              ? row.unread > 0
-              : status === 'unreplied'
-                ? row.lastFromMe === false
-                : row.lastFromMe === false && row.unread === 0)) &&
           searchConversation(row, search),
       )
       .sort(
@@ -165,27 +159,22 @@ const ConversationSidebar = observer(
     const submitDialog = () =>
       void perform(async () => {
         if (!dialog) return;
-        if (dialog.kind === 'delete')
-          await save(removeConversationGroup(config, dialog.id));
-        else if (dialog.kind === 'move') {
+        if (dialog.kind === 'move') {
+          if (chosen.length === 0) throw new Error('请先选择会话');
+          if (!dialog.value) throw new Error('请选择分组');
           await save(moveConversations(config, chosen, dialog.value));
           setSelected(new Set());
         } else {
           const value = dialog.value.trim();
           if (!value) throw new Error('请输入分组名称');
-          if (config.groups.some(g => g.name === value && g.id !== dialog.id))
+          if (config.groups.some(g => g.name === value))
             throw new Error('分组名称已存在');
           await save({
             ...config,
-            groups:
-              dialog.kind === 'create'
-                ? [
-                    ...config.groups,
-                    { id: crypto.randomUUID(), name: value, collapsed: false },
-                  ]
-                : config.groups.map(g =>
-                    g.id === dialog.id ? { ...g, name: value } : g,
-                  ),
+            groups: [
+              ...config.groups,
+              { id: crypto.randomUUID(), name: value, collapsed: false },
+            ],
           });
         }
         setDialog(undefined);
@@ -242,30 +231,6 @@ const ConversationSidebar = observer(
             </button>
           ))}
         </div>
-        <div
-          className="conversation-filters"
-          aria-label="会话状态"
-          title="未回：最后一条消息来自对方；已读未回：未回且没有未读消息"
-        >
-          {[
-            ['all', '所有'],
-            ['unread', '未读'],
-            ['unreplied', '未回'],
-            ['read-unreplied', '已读未回'],
-          ].map(([id, label]) => (
-            <button
-              type="button"
-              key={id}
-              aria-pressed={status === id}
-              onClick={() => {
-                setStatus(id);
-                reset();
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         <div className="conversation-accounts">
           <select
             aria-label="筛选所属账号"
@@ -311,7 +276,7 @@ const ConversationSidebar = observer(
             </details>
           )}
         </div>
-        {notice && (
+        {notice && !dialog && (
           <div className="account-sidebar__notice" role="alert">
             {notice}
             <button
@@ -369,22 +334,19 @@ const ConversationSidebar = observer(
                     </button>
                     <button
                       type="button"
+                      className="conversation-group__add"
                       aria-label="新增会话分组"
                       disabled={busy}
-                      onClick={() =>
-                        setDialog({ kind: 'create', id: '', value: '' })
-                      }
+                      onClick={event => {
+                        setNotice('');
+                        setDialog({
+                          kind: 'create',
+                          anchor: event.currentTarget,
+                          value: '',
+                        });
+                      }}
                     >
                       ＋
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${group.name}分组菜单`}
-                      onClick={event =>
-                        setMenu({ id: group.id, anchor: event.currentTarget })
-                      }
-                    >
-                      ⋮
                     </button>
                   </div>
                 );
@@ -475,9 +437,14 @@ const ConversationSidebar = observer(
           <button
             type="button"
             disabled={chosen.length === 0 || busy}
-            onClick={() =>
-              setDialog({ kind: 'move', id: '', value: 'default' })
-            }
+            onClick={event => {
+              setNotice('');
+              setDialog({
+                kind: 'move',
+                anchor: event.currentTarget,
+                value: '',
+              });
+            }}
           >
             移动分组
           </button>
@@ -489,95 +456,90 @@ const ConversationSidebar = observer(
             群发
           </button>
         </footer>
-        <Menu
-          open={Boolean(menu)}
-          anchorEl={menu?.anchor}
-          onClose={() => setMenu(undefined)}
-        >
-          <MenuItem
-            disabled={menu?.id === 'default'}
-            onClick={() => {
-              if (menu)
-                setDialog({
-                  kind: 'rename',
-                  id: menu.id,
-                  value: config.groups.find(g => g.id === menu.id)?.name || '',
-                });
-              setMenu(undefined);
-            }}
-          >
-            重命名分组
-          </MenuItem>
-          <MenuItem
-            disabled={menu?.id === 'default'}
-            onClick={() => {
-              if (menu) setDialog({ kind: 'delete', id: menu.id, value: '' });
-              setMenu(undefined);
-            }}
-          >
-            删除分组
-          </MenuItem>
-        </Menu>
-        <Dialog
+        <Popover
+          className="account-dialog conversation-popup"
           open={Boolean(dialog)}
+          anchorEl={dialog?.anchor}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          marginThreshold={8}
           onClose={() => {
             if (!busy) setDialog(undefined);
           }}
-          maxWidth="xs"
-          fullWidth
+          slotProps={{
+            paper: {
+              role: 'dialog',
+              'aria-label': dialog?.kind === 'move' ? '移动分组' : '新增分组',
+            },
+          }}
         >
-          <DialogTitle>
-            {dialog?.kind === 'move'
-              ? '移动到分组'
-              : dialog?.kind === 'delete'
-                ? '删除分组'
-                : dialog?.kind === 'rename'
-                  ? '重命名分组'
-                  : '新增分组'}
-          </DialogTitle>
-          <DialogContent>
-            {dialog?.kind === 'delete' ? (
-              <p>
-                只删除本软件的分组，其中会话将回到默认分组，不删除联系人或聊天。
-              </p>
-            ) : dialog?.kind === 'move' ? (
-              <select
-                aria-label="目标会话分组"
-                value={dialog.value}
-                onChange={event =>
-                  setDialog({ ...dialog, value: event.target.value })
-                }
-              >
-                {config.groups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              dialog && (
-                <TextField
-                  autoFocus
-                  fullWidth
-                  label="分组名称"
+          {dialog && (
+            <form
+              onSubmit={event => {
+                event.preventDefault();
+                submitDialog();
+              }}
+            >
+              <label htmlFor={`${selectAllId}-folder`}>
+                {dialog.kind === 'move' ? '移动到分组' : '新增分组'}
+              </label>
+              {dialog.kind === 'move' ? (
+                <select
+                  id={`${selectAllId}-folder`}
+                  aria-label="目标会话分组"
                   value={dialog.value}
-                  inputProps={{ maxLength: 60 }}
+                  ref={focusFolderField}
+                  disabled={busy}
+                  onChange={event =>
+                    setDialog({ ...dialog, value: event.target.value })
+                  }
+                >
+                  <option value="" disabled>
+                    请选择分组
+                  </option>
+                  {config.groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={`${selectAllId}-folder`}
+                  aria-label="分组名称"
+                  placeholder="请输入分组名称"
+                  ref={focusFolderField}
+                  maxLength={60}
+                  disabled={busy}
+                  value={dialog.value}
                   onChange={event =>
                     setDialog({ ...dialog, value: event.target.value })
                   }
                 />
-              )
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button disabled={busy} onClick={() => setDialog(undefined)}>
-              取消
-            </Button>
-            <Button disabled={busy} onClick={submitDialog}>
-              确定
-            </Button>
-          </DialogActions>
-        </Dialog>
+              )}
+              {notice && <p role="alert">{notice}</p>}
+              <div className="conversation-popup__actions">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setDialog(undefined)}
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    busy ||
+                    (dialog.kind === 'move' &&
+                      (!dialog.value || chosen.length === 0))
+                  }
+                >
+                  确认
+                </button>
+              </div>
+            </form>
+          )}
+        </Popover>
         {bulk && (
           <BulkSend
             stores={stores}

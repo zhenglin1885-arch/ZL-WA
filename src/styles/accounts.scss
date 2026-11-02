@@ -823,3 +823,113 @@ body:not(.theme__dark) .conversation-sidebar {
     background: rgba(0, 0, 0, 0.15);
   }
 }
+
+.account-sidebar__brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+  .account-sidebar__aggregate {
+    margin-bottom: 0;
+  }
+}
+.account-sidebar__brand {
+  color: #25d366;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 19px;
+  white-space: nowrap;
+}
+.account-sidebar.is-collapsed {
+  .account-sidebar__brand {
+    display: none;
+  }
+  .account-sidebar__brand-row {
+    justify-content: center;
+  }
+}
+.conversation-sidebar .conversation-group .conversation-group__add {
+  font-size: 27px;
+  line-height: 32px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 5px;
+  &:hover {
+    background: rgba(117, 170, 255, 0.16);
+  }
+}
+// Scoped reset also repairs the full-height focus-trap sentinel inherited from
+// the upstream global div rule. Keep all folder controls in a compact popover.
+.conversation-popup {
+  .MuiPopover-paper {
+    box-sizing: border-box;
+    width: 240px;
+    max-width: calc(100vw - 16px);
+    padding: 14px;
+    border: 1px solid #444b59;
+    border-radius: 10px;
+    background: #20242c;
+    color: #f3f4f6;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    font:
+      14px 'Segoe UI',
+      'Microsoft YaHei',
+      sans-serif;
+  }
+  label {
+    display: block;
+    margin-bottom: 8px;
+  }
+  input,
+  select {
+    box-sizing: border-box;
+    width: 100%;
+    height: 38px;
+    padding: 7px;
+    border: 1px solid #66758c;
+    border-radius: 5px;
+    background: #13171d;
+    color: #f3f4f6;
+    font: inherit;
+    &:focus {
+      outline: 2px solid #75aaff;
+      outline-offset: 1px;
+    }
+  }
+  p {
+    color: #ffaaaa;
+    margin: 8px 0 0;
+    font-size: 12px;
+  }
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+    button {
+      padding: 5px 12px;
+      border: 1px solid #66758c;
+      border-radius: 5px;
+      color: #f3f4f6;
+      background: transparent;
+      cursor: pointer;
+      font: inherit;
+      &:last-child {
+        background: #0754da;
+        border-color: #0754da;
+      }
+      &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      &:focus-visible {
+        outline: 2px solid #75aaff;
+        outline-offset: 2px;
+      }
+    }
+  }
+}
