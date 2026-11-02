@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['test/7.3.6-20261102-4']
+    branches: ['test/7.3.6-20261102-5']
   workflow_dispatch:
 
 permissions:
@@ -71,5 +71,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create test-7.3.6-20261102-4 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 test-4 (2026-11-02)' --notes 'Windows x64 test-4: aggregate conversations across accounts with search, account remarks, local folders, filtered multi-selection and the existing bulk composer. Includes the composer-positioned Chinese-send warning with five-second dismissal. This prerelease does not update the stable channel.'
+          gh release create test-7.3.6-20261102-5 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 test-5 (2026-11-02)' --notes 'Windows x64 test-5: visible compact popups for aggregate conversation folder creation and moves, a larger plus button, removal of status filters and folder ellipsis menus, and the green WhatsApp header mark. Includes test-4 aggregate conversations and previous fixes. This prerelease does not update the stable channel.'
           if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }
