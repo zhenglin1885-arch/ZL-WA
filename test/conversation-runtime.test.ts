@@ -8,7 +8,7 @@ const { ipcRenderer } = jest.requireMock('electron');
 const { ensureBulkLibrary } = jest.requireMock(
   '../src/features/accountTools/bulkRuntime',
 );
-const { ConversationRuntime } = jest.requireActual<
+const { ConversationRuntime, getConversationRuntime } = jest.requireActual<
   typeof import('../src/features/conversations/runtime')
 >('../src/features/conversations/runtime');
 describe('aggregate account isolation and lifecycle', () => {
@@ -20,6 +20,10 @@ describe('aggregate account isolation and lifecycle', () => {
     name: 'Alice',
     group: false,
   };
+  const indexedWithUnread = (value: number) => ({
+    context: { owners: ['A@c.us'] },
+    index: { rows: [{ ...item, unread: value }], contactsReady: true },
+  });
   const service = (id: string) => ({
     id,
     name: id,
@@ -57,6 +61,143 @@ describe('aggregate account isolation and lifecycle', () => {
     (runtime as any).active = true;
   });
   afterEach(() => runtime.dispose());
+  it('warms before opening, reuses the same store cache and throttles background reads', async () => {
+    jest.useFakeTimers();
+    try {
+      runtime.dispose();
+      runtime = getConversationRuntime(stores);
+      for (const account of stores.services.all) {
+        Object.assign(account.accountSnapshot, { status: 'online' });
+        account.accountSnapshot.ownerId = `${account.id}@c.us`;
+        runtime.warm(account);
+      }
+      await jest.advanceTimersByTimeAsync(300);
+      expect(runtime.rows).toHaveLength(2);
+      expect(getConversationRuntime(stores)).toBe(runtime);
+      const metadataCalls = () =>
+        stores.services.all
+          .flatMap(
+            (account: any) => account.webview.executeJavaScript.mock.calls,
+          )
+          .filter((args: string[]) => args[0].includes('index:')).length;
+      const before = metadataCalls();
+      for (const account of stores.services.all) runtime.warm(account);
+      await jest.advanceTimersByTimeAsync(300);
+      expect(metadataCalls()).toBe(before);
+      runtime.start();
+      expect(runtime.rows).toHaveLength(2);
+      runtime.pause();
+      expect(runtime.rows).toHaveLength(2);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(ensureBulkLibrary).not.toHaveBeenCalled();
+      expect(stores.services._awake).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('preserves loaded photos across panel pauses and processes a new visible batch during an existing fetch', async () => {
+    await runtime.refresh();
+    const [a, b] = runtime.rows;
+    let complete!: (value: any) => void;
+    stores.services.all[0].webview.executeJavaScript.mockReturnValue(
+      new Promise(resolve => {
+        complete = resolve;
+      }),
+    );
+    stores.services.all[1].webview.executeJavaScript.mockResolvedValue({
+      [b.id]: 'data:image/jpeg;base64,AA==',
+    });
+    const first = runtime.loadAvatars([a]);
+    await runtime.loadAvatars([b]);
+    complete({ [a.id]: 'data:image/jpeg;base64,AA==' });
+    await first;
+    expect(runtime.avatars.size).toBe(2);
+    runtime.pause();
+    expect(runtime.avatars.size).toBe(2);
+    expect(runtime.rows).toHaveLength(2);
+  });
+  it('hides stale account data immediately and rejects photos finishing after invalidation', async () => {
+    await runtime.refresh();
+    const a = runtime.rows[0];
+    let complete!: (value: any) => void;
+    stores.services.all[0].webview.executeJavaScript.mockReturnValue(
+      new Promise(resolve => {
+        complete = resolve;
+      }),
+    );
+    const photos = runtime.loadAvatars([a]);
+    runtime.invalidate('A');
+    complete({ [a.id]: 'data:image/jpeg;base64,AA==' });
+    await photos;
+    expect(runtime.avatars.has(a.key)).toBe(false);
+    expect(runtime.rows.map(row => row.accountId)).toEqual(['B']);
+    stores.services.all[1].accountSnapshot.ownerId = 'another@c.us';
+    expect(runtime.rows).toHaveLength(0);
+  });
+  it('does not attach old-owner photos after the same document is rebound to another account', async () => {
+    await runtime.refresh();
+    const old = runtime.rows[0];
+    let complete!: (value: any) => void;
+    stores.services.all[0].webview.executeJavaScript.mockImplementation(
+      (code: string) =>
+        code.includes('image/jpeg')
+          ? new Promise(resolve => {
+              complete = resolve;
+            })
+          : Promise.resolve({
+              context: { owners: ['new@c.us'] },
+              index: { rows: [item], contactsReady: true },
+            }),
+    );
+    const photo = runtime.loadAvatars([old]);
+    runtime.invalidate('A');
+    stores.services.all[0].accountSnapshot.ownerId = 'new@c.us';
+    await runtime.refresh();
+    complete({ [old.id]: 'data:image/jpeg;base64,AA==' });
+    await photo;
+    expect(runtime.rows.find(row => row.accountId === 'A')?.owner).toBe(
+      'new@c.us',
+    );
+    expect(runtime.avatars.has(old.key)).toBe(false);
+  });
+  it('shares at most three metadata readers when warming overlaps entering the panel', async () => {
+    jest.useFakeTimers();
+    try {
+      runtime.pause();
+      let reading = 0;
+      let maximum = 0;
+      stores.services.all = Array.from({ length: 6 }, (_, i) =>
+        service(String(i)),
+      );
+      stores.services.all.forEach((account: any) => {
+        Object.assign(account.accountSnapshot, { status: 'online' });
+        account.webview.executeJavaScript.mockImplementation(
+          async (code: string) => {
+            if (!code.includes('index:')) return {};
+            reading += 1;
+            maximum = Math.max(maximum, reading);
+            await new Promise(resolve => {
+              setTimeout(resolve, 1000);
+            });
+            reading -= 1;
+            return {
+              context: { owners: [`${account.id}@c.us`] },
+              index: { rows: [item], contactsReady: true },
+            };
+          },
+        );
+        runtime.warm(account);
+      });
+      await jest.advanceTimersByTimeAsync(251);
+      runtime.start();
+      await jest.advanceTimersByTimeAsync(4000);
+      runtime.pause();
+      expect(maximum).toBeLessThanOrEqual(3);
+      expect(runtime.rows).toHaveLength(6);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('indexes accounts separately without initializing SDKs or waking accounts', async () => {
     stores.services.all.push({ ...service('sleeping'), isHibernating: true });
     await runtime.refresh();
@@ -100,6 +241,34 @@ describe('aggregate account isolation and lifecycle', () => {
     ).toBe(false);
     expect(ensureBulkLibrary).not.toHaveBeenCalled();
     expect(stores.services._awake).not.toHaveBeenCalled();
+  });
+  it('rereads unread state after a mark-read action instead of reusing a pre-action scan', async () => {
+    stores.services.all = [service('A')];
+    await runtime.refresh();
+    let release!: (value: any) => void;
+    let scans = 0;
+    let unread = 5;
+    stores.services.all[0].webview.executeJavaScript.mockImplementation(
+      async (code: string) => {
+        if (code.includes('WAWebUpdateUnreadChatAction')) {
+          unread = 0;
+          return { read: 1, failed: 0, halted: false };
+        }
+        scans += 1;
+        if (scans === 1)
+          return new Promise(resolve => {
+            release = resolve;
+          });
+        return indexedWithUnread(unread);
+      },
+    );
+    const refresh = runtime.refresh();
+    const marking = runtime.markRead(runtime.rows);
+    await Promise.resolve();
+    release(indexedWithUnread(5));
+    await Promise.all([refresh, marking]);
+    expect(scans).toBe(2);
+    expect(runtime.rows[0].unread).toBe(0);
   });
   it('uses a verified phone alias when an unsaved LID contact has no native phone yet', async () => {
     stores.services.all = [service('A')];
@@ -151,7 +320,7 @@ describe('aggregate account isolation and lifecycle', () => {
       jest.useRealTimers();
     }
   });
-  it('discards reads finishing after the sidebar is closed', async () => {
+  it('discards reads finishing after cache disposal', async () => {
     let complete!: (value: any) => void;
     stores.services.all = [service('A')];
     stores.services.all[0].webview.executeJavaScript.mockReturnValue(

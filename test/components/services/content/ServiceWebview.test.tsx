@@ -84,6 +84,27 @@ const ServiceWebview = jest.requireActual<
 >('../../../../src/components/services/content/ServiceWebview').default;
 
 describe('ServiceWebview', () => {
+  it('invalidates the aggregate cache when a WhatsApp document starts navigating', () => {
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      accountSnapshot: { status: 'online' },
+    });
+    const stores: any = { services: { all: [props.service] } };
+    const { getConversationRuntime } = jest.requireActual<
+      typeof import('../../../../src/features/conversations/runtime')
+    >('../../../../src/features/conversations/runtime');
+    const runtime = getConversationRuntime(stores);
+    const invalidate = jest.spyOn(runtime, 'invalidate');
+    const component = new ServiceWebview({ ...props, stores } as any);
+    component.accountNavigationStarted();
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith(props.service.id);
+    component.componentWillUnmount();
+    runtime.dispose();
+    invalidate.mockRestore();
+  });
+
   it('keeps an already loaded WhatsApp page alive while history sync exceeds the startup budget', () => {
     jest.useFakeTimers();
     const props = createProps();

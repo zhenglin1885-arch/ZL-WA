@@ -18,7 +18,7 @@ import { Popover, Menu, MenuItem } from '@mui/material';
 import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import BulkSend from '../accountTools/BulkSend';
-import { ConversationRuntime } from './runtime';
+import { getConversationRuntime } from './runtime';
 import {
   normalizeConversationGroups,
   conversationGroup,
@@ -55,7 +55,7 @@ const ConversationSidebar = observer(
     onBack: () => void;
   }) => {
     const runtime = useMemo(
-      () => new ConversationRuntime(stores, activate),
+      () => getConversationRuntime(stores, activate),
       [stores, activate],
     );
     const [, render] = useState(0);
@@ -96,7 +96,7 @@ const ConversationSidebar = observer(
       runtime.start();
       return () => {
         runtime.listeners.delete(changed);
-        runtime.dispose();
+        runtime.pause();
       };
     }, [runtime]);
     useEffect(() => {

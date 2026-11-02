@@ -29,6 +29,7 @@ import { configureWhatsAppAudioUpload } from '../../../features/accounts/audioUp
 import { sendBulkMessage } from '../../../features/accountTools/bulkGuest';
 import { ensureBulkLibrary } from '../../../features/accountTools/bulkRuntime';
 import { configureTranslation } from '../../../features/accountTools/runtime';
+import { getConversationRuntime } from '../../../features/conversations/runtime';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
 
@@ -228,6 +229,12 @@ class ServiceWebview extends Component<IProps> {
           service.unreadIndirectMessageCount = 0;
         }
       });
+      if (stores?.services) {
+        const conversations = getConversationRuntime(stores);
+        if (snapshot.status === 'logged-out')
+          conversations.invalidate(service.id);
+        else if (snapshot.status === 'online') conversations.warm(service);
+      }
       if (snapshot.status === 'online' && snapshot.ownerId) {
         const profile = accountIdentity(service.accountSnapshot);
         const old = this.lastStoredIdentity;
@@ -322,6 +329,13 @@ class ServiceWebview extends Component<IProps> {
   accountNavigationStarted = (): void => {
     this.props.service.accountUnreadLive = false;
     this.lastAppliedZoom = null;
+    if (
+      this.props.stores?.services &&
+      this.props.service.recipe?.id === 'whatsapp'
+    )
+      getConversationRuntime(this.props.stores).invalidate(
+        this.props.service.id,
+      );
     this.accountDocumentEpoch += 1;
     this.uiAdaptersReady = false;
     this.unreadAdapterReady = false;
@@ -365,6 +379,8 @@ class ServiceWebview extends Component<IProps> {
     this.disposed = true;
     this.finishStartup();
     const { service, detachService } = this.props;
+    if (this.props.stores?.services && service.recipe?.id === 'whatsapp')
+      getConversationRuntime(this.props.stores).invalidate(service.id);
     this.webviewReactionDisposer();
     this.activeReactionDisposer();
     this.removeWebviewEventListeners(this.webview?.view ?? null);
@@ -460,6 +476,13 @@ class ServiceWebview extends Component<IProps> {
       return;
     }
 
+    if (
+      this.props.stores?.services &&
+      this.props.service.recipe?.id === 'whatsapp'
+    )
+      getConversationRuntime(this.props.stores).invalidate(
+        this.props.service.id,
+      );
     this.accountDocumentEpoch += 1;
     this.uiAdaptersReady = false;
     this.unreadAdapterReady = false;

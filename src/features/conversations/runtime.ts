@@ -13,6 +13,18 @@ import {
   markConversationsRead,
 } from './guest';
 import type { AggregateConversation, ConversationItem } from './types';
+import {
+  normalizeConversationGroups,
+  expandedConversations,
+  matchesConversationKind,
+} from './state';
+
+type Account = RealStores['services']['all'][number];
+type CacheSource = {
+  view: Electron.WebviewTag;
+  token: string;
+  owners: string[];
+};
 
 export class ConversationRuntime {
   listeners = new Set<() => void>();
@@ -35,6 +47,30 @@ export class ConversationRuntime {
 
   private avatarBusy = false;
 
+  private wantedAvatars: AggregateConversation[] = [];
+
+  private avatarStoredAt = new Map<string, number>();
+
+  private sources = new Map<string, CacheSource>();
+
+  private revisions = new Map<string, number>();
+
+  private readJobs = new Map<string, Promise<void>>();
+
+  private readSlots = 0;
+
+  private readQueue: (() => void)[] = [];
+
+  private warmQueue = new Map<string, Account>();
+
+  private warmTimer?: ReturnType<typeof setTimeout>;
+
+  private warming = false;
+
+  private lastReadAt = new Map<string, number>();
+
+  private lastWarmAttempt = new Map<string, number>();
+
   private timer?: ReturnType<typeof setInterval>;
 
   private generation = 0;
@@ -47,15 +83,138 @@ export class ConversationRuntime {
 
   constructor(
     private stores: RealStores,
-    private activate: (id: string) => void,
+    private activate: (id: string) => void = () => {},
   ) {}
 
   notify() {
     for (const listener of this.listeners) listener();
   }
 
+  setActivate(activate: (id: string) => void) {
+    this.activate = activate;
+  }
+
+  private sourceCurrent(
+    service: Account,
+    source = this.sources.get(service.id),
+  ) {
+    if (
+      service.recipe.id !== 'whatsapp' ||
+      !source ||
+      service.webview !== source.view ||
+      !service.isEnabled ||
+      service.isHibernating ||
+      service.isLoading
+    )
+      return false;
+    const profile = service.accountSnapshot;
+    if (profile?.status === 'logged-out' || profile?.status === 'loading')
+      return false;
+    const owners = [profile?.ownerId, ...(profile?.ownerIds || [])].filter(
+      Boolean,
+    );
+    return (
+      owners.length === 0 || owners.some(id => source.owners.includes(id!))
+    );
+  }
+
   get rows() {
-    return [...this.snapshots.values()].flat();
+    return this.stores.services.all.flatMap(service =>
+      this.sourceCurrent(service) ? this.snapshots.get(service.id) || [] : [],
+    );
+  }
+
+  private clearAccount(id: string) {
+    this.snapshots.delete(id);
+    this.sources.delete(id);
+    this.lastReadAt.delete(id);
+    this.lastWarmAttempt.delete(id);
+    for (const key of this.avatars.keys())
+      if (key.startsWith(`${id}:`)) {
+        this.avatars.delete(key);
+        this.avatarStoredAt.delete(key);
+      }
+    for (const key of this.avatarAttempts.keys())
+      if (key.startsWith(`${id}:`)) this.avatarAttempts.delete(key);
+  }
+
+  invalidate(id: string) {
+    this.revisions.set(id, (this.revisions.get(id) || 0) + 1);
+    this.clearAccount(id);
+    this.readJobs.delete(id);
+    this.warmQueue.delete(id);
+    this.errors.delete(id);
+    this.wantedAvatars = this.wantedAvatars.filter(row => row.accountId !== id);
+    this.notify();
+  }
+
+  // Reuse existing account polls; no extra per-account timer or SDK initialization.
+  warm(service: Account) {
+    if (service.recipe.id !== 'whatsapp') return;
+    if (this.sources.has(service.id) && !this.sourceCurrent(service))
+      this.invalidate(service.id);
+    if (
+      !service.isEnabled ||
+      service.isHibernating ||
+      service.isLoading ||
+      !service.webview ||
+      service.accountSnapshot?.status !== 'online'
+    )
+      return;
+    if (Date.now() - (this.lastReadAt.get(service.id) || 0) < 30_000) return;
+    if (Date.now() - (this.lastWarmAttempt.get(service.id) || 0) < 30_000)
+      return;
+    this.lastWarmAttempt.set(service.id, Date.now());
+    this.warmQueue.set(service.id, service);
+    if (!this.warmTimer && !this.warming)
+      this.warmTimer = setTimeout(() => {
+        this.warmTimer = undefined;
+        void this.flushWarm();
+      }, 250);
+  }
+
+  private async flushWarm() {
+    if (this.warming) return;
+    this.warming = true;
+    const { generation } = this;
+    const worker = async () => {
+      while (generation === this.generation && this.warmQueue.size > 0) {
+        const service = this.warmQueue.values().next().value!;
+        this.warmQueue.delete(service.id);
+        if (
+          service.isEnabled &&
+          !service.isHibernating &&
+          service.webview &&
+          service.accountSnapshot?.status === 'online' &&
+          Date.now() - (this.lastReadAt.get(service.id) || 0) >= 30_000
+        ) {
+          await this.read(service, generation);
+          if (generation === this.generation) {
+            this.notify();
+            this.prefetchAvatars();
+          }
+        }
+      }
+    };
+    try {
+      await Promise.all([worker(), worker()]);
+    } finally {
+      this.warming = false;
+    }
+  }
+
+  private prefetchAvatars() {
+    if (this.active) return;
+    const folders = normalizeConversationGroups(
+      this.stores.settings.app.aggregateConversations,
+    );
+    const rows = expandedConversations(
+      folders,
+      this.rows.filter(row => matchesConversationKind(row, 'all')),
+    )
+      .sort((a, b) => b.timestamp - a.timestamp || a.name.localeCompare(b.name))
+      .slice(0, 24);
+    void this.loadAvatars(rows);
   }
 
   private async bounded<T>(work: Promise<T>, limit = 6000): Promise<T> {
@@ -75,17 +234,45 @@ export class ConversationRuntime {
     }
   }
 
-  private async read(
-    service: RealStores['services']['all'][number],
+  private read(service: Account, generation: number) {
+    const existing = this.readJobs.get(service.id);
+    if (existing) return existing;
+    const revision = this.revisions.get(service.id) || 0;
+    const work = new Promise<void>(resolve => {
+      const run = () => {
+        this.readSlots += 1;
+        void this.readAccount(service, generation, revision)
+          .catch(() => {})
+          .finally(() => {
+            this.readSlots -= 1;
+            resolve();
+            this.readQueue.shift()?.();
+          });
+      };
+      if (this.readSlots < 3) run();
+      else this.readQueue.push(run);
+    });
+    this.readJobs.set(service.id, work);
+    void work.then(() => {
+      if (this.readJobs.get(service.id) === work)
+        this.readJobs.delete(service.id);
+    });
+    return work;
+  }
+
+  private async readAccount(
+    service: Account,
     generation: number,
+    revision: number,
   ) {
     const view = service.webview;
     if (!view) return;
     const valid = () =>
-      this.active &&
       generation === this.generation &&
+      revision === (this.revisions.get(service.id) || 0) &&
       service.webview === view &&
       this.stores.services.all.includes(service);
+    if (!valid()) return;
     try {
       const result: {
         context: CustomerContext;
@@ -97,14 +284,29 @@ export class ConversationRuntime {
       );
       if (!valid()) return;
       if (result.context.owners.length === 0) {
-        this.snapshots.delete(service.id);
+        this.clearAccount(service.id);
         this.errors.set(service.id, '等待登录或账号身份同步');
         return;
+      }
+      const previous = this.sources.get(service.id);
+      if (
+        previous &&
+        (previous.token !== result.context.token ||
+          !previous.owners.some(id => result.context.owners.includes(id)))
+      ) {
+        this.clearAccount(service.id);
+        this.notify();
       }
       const bundle: CustomerBundle = await this.bounded(
         ipcRenderer.invoke('customers-bind', result.context.owners),
       );
       if (!valid()) return;
+      this.sources.set(service.id, {
+        view,
+        token: result.context.token,
+        owners: bundle.ownerAliases || result.context.owners,
+      });
+      this.lastReadAt.set(service.id, Date.now());
       const profiles = normalizeAccountConfig(
         this.stores.settings.app.accountSidebar,
       ).accounts;
@@ -169,7 +371,7 @@ export class ConversationRuntime {
     const all = eligible.filter(s => !s.isHibernating && s.webview);
     const ids = new Set(all.map(s => s.id));
     for (const id of this.snapshots.keys())
-      if (!ids.has(id)) this.snapshots.delete(id);
+      if (!ids.has(id)) this.clearAccount(id);
     this.total = all.length;
     this.notify();
     let cursor = 0;
@@ -202,62 +404,82 @@ export class ConversationRuntime {
   }
 
   async loadAvatars(rows: AggregateConversation[]) {
-    if (!this.active || this.avatarBusy) return;
+    this.wantedAvatars = rows.slice(0, 48);
+    if (this.avatarBusy) return;
     this.avatarBusy = true;
     const { generation } = this;
     try {
-      const pending = rows.filter(
-        row =>
-          !this.avatars.has(row.key) &&
-          Date.now() - (this.avatarAttempts.get(row.key) || 0) > 30_000,
-      );
-      const accounts = [...new Set(pending.map(row => row.accountId))];
-      let cursor = 0;
-      const worker = async () => {
-        while (
-          cursor < accounts.length &&
-          this.active &&
-          this.generation === generation
-        ) {
-          const id = accounts[cursor];
-          cursor += 1;
-          const selected = pending
-            .filter(row => row.accountId === id)
-            .slice(0, 24);
-          selected.forEach(row => this.avatarAttempts.set(row.key, Date.now()));
-          const view = this.stores.services.all.find(
-            service => service.id === id,
-          )?.webview;
-          if (!view) continue;
-          try {
-            const values: Record<string, string> = await this.bounded(
-              view.executeJavaScript(
-                `(${readConversationAvatars.toString()})(${JSON.stringify(selected.map(row => row.id))},${JSON.stringify(selected[0].ownerAliases)})`,
-              ),
+      while (generation === this.generation && this.wantedAvatars.length > 0) {
+        const requested = this.wantedAvatars;
+        this.wantedAvatars = [];
+        const pending = requested.filter(
+          row =>
+            (!this.avatars.has(row.key) ||
+              Date.now() - (this.avatarStoredAt.get(row.key) || 0) > 600_000) &&
+            Date.now() - (this.avatarAttempts.get(row.key) || 0) > 30_000,
+        );
+        const accounts = [...new Set(pending.map(row => row.accountId))];
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < accounts.length && generation === this.generation) {
+            const id = accounts[cursor];
+            cursor += 1;
+            const selected = pending
+              .filter(row => row.accountId === id)
+              .slice(0, 24);
+            const service = this.stores.services.all.find(
+              item => item.id === id,
             );
-            if (!this.active || this.generation !== generation) return;
-            for (const row of selected)
-              if (
-                typeof values[row.id] === 'string' &&
-                values[row.id].length < 80_000 &&
-                values[row.id].startsWith('data:image/jpeg;base64,')
-              )
-                this.avatars.set(row.key, values[row.id]);
-            while (this.avatars.size > 200)
-              this.avatars.delete(this.avatars.keys().next().value!);
-            while (this.avatarAttempts.size > 2000)
-              this.avatarAttempts.delete(
-                this.avatarAttempts.keys().next().value!,
+            const source = this.sources.get(id);
+            if (!service || !source || !this.sourceCurrent(service, source))
+              continue;
+            selected.forEach(row =>
+              this.avatarAttempts.set(row.key, Date.now()),
+            );
+            try {
+              const values: Record<string, string> = await this.bounded(
+                source.view.executeJavaScript(
+                  `(${readConversationAvatars.toString()})(${JSON.stringify(selected.map(row => row.id))},${JSON.stringify(selected[0].ownerAliases)})`,
+                ),
               );
-            this.notify();
-          } catch {
-            /* Keep initials when a cached profile image cannot be read. */
+              if (
+                generation !== this.generation ||
+                !this.sourceCurrent(service) ||
+                this.sources.get(id)?.token !== source.token ||
+                !this.sources
+                  .get(id)
+                  ?.owners.some(owner => source.owners.includes(owner))
+              )
+                continue;
+              for (const row of selected)
+                if (
+                  typeof values[row.id] === 'string' &&
+                  values[row.id].length < 80_000 &&
+                  values[row.id].startsWith('data:image/jpeg;base64,')
+                ) {
+                  this.avatars.delete(row.key);
+                  this.avatars.set(row.key, values[row.id]);
+                  this.avatarStoredAt.set(row.key, Date.now());
+                }
+              while (this.avatars.size > 200) {
+                const key = this.avatars.keys().next().value!;
+                this.avatars.delete(key);
+                this.avatarStoredAt.delete(key);
+              }
+              while (this.avatarAttempts.size > 2000)
+                this.avatarAttempts.delete(
+                  this.avatarAttempts.keys().next().value!,
+                );
+              this.notify();
+            } catch {
+              /* Cached photos/initials remain visible if a thumbnail is unavailable. */
+            }
           }
-        }
-      };
-      await Promise.all(
-        Array.from({ length: Math.min(2, accounts.length) }, worker),
-      );
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(2, accounts.length) }, worker),
+        );
+      }
     } finally {
       this.avatarBusy = false;
     }
@@ -316,6 +538,10 @@ export class ConversationRuntime {
           failed += targets.length - offset;
         } finally {
           if (service && this.active && generation === this.generation) {
+            // A pre-action scan may contain the old unread count. Do not reuse it
+            // for the post-action acknowledgement refresh.
+            const pending = this.readJobs.get(service.id);
+            if (pending) await pending;
             await this.read(service, generation);
             this.notify();
           }
@@ -396,24 +622,53 @@ export class ConversationRuntime {
   start() {
     if (this.active) return;
     this.active = true;
-    this.generation += 1;
+    void this.syncLayout();
     void this.refresh();
     this.timer = setInterval(() => void this.refresh(), 5000);
   }
 
-  dispose() {
+  pause() {
     this.active = false;
-    this.generation += 1;
     this.opening += 1;
-    this.refreshing = false;
     clearInterval(this.timer);
     for (const view of this.layoutViews)
       void view
         .executeJavaScript(`(${setAggregateChatMode.toString()})(false)`)
         .catch(() => {});
     this.layoutViews.clear();
+  }
+
+  dispose() {
+    this.pause();
+    this.generation += 1;
+    this.refreshing = false;
+    clearTimeout(this.warmTimer);
+    this.warmTimer = undefined;
+    this.warmQueue.clear();
+    this.sources.clear();
+    this.lastReadAt.clear();
+    this.lastWarmAttempt.clear();
+    this.errors.clear();
+    this.revisions.clear();
+    this.readJobs.clear();
+    this.wantedAvatars = [];
+    this.avatarStoredAt.clear();
     this.snapshots.clear();
     this.avatars.clear();
     this.avatarAttempts.clear();
   }
+}
+
+const conversationRuntimes = new WeakMap<RealStores, ConversationRuntime>();
+export function getConversationRuntime(
+  stores: RealStores,
+  activate?: (id: string) => void,
+) {
+  let runtime = conversationRuntimes.get(stores);
+  if (!runtime) {
+    runtime = new ConversationRuntime(stores);
+    conversationRuntimes.set(stores, runtime);
+  }
+  if (activate) runtime.setActivate(activate);
+  return runtime;
 }

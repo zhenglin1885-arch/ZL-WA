@@ -31,6 +31,7 @@ try {
     ipcRenderer.invoke=async(channel,owners)=>{if(channel==='customers-bind')return {owner:owners[0],ownerAliases:owners,revision:1,summaries:{'10001@c.us':{remarkName:'重点 Alice',flags:[]}},aliases:{},pins:[],pinsInitialized:true};if(channel==='account-tools-history')return [];return {};};
     const Component=require(${JSON.stringify(`${process.cwd()}/build/features/conversations/ConversationSidebar.js`)}).default;
     const rows=[{id:'10001@c.us',aliases:['10001@c.us'],name:'Alice',phone:'10001',group:false,archived:false,unread:123,preview:'Hello there',timestamp:1700000000,lastFromMe:false},{id:'12345@g.us',aliases:['12345@g.us'],name:'Investment group',phone:'',group:true,archived:false,unread:0,preview:'Group update',timestamp:1700000001,lastFromMe:true}];
+    const heldIndexes=[];let blockIndexes=false;const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;const photo=canvas.toDataURL('image/jpeg');
     window.opened=[];const readKeys=new Set();window.markedRead=[];
     const services=['A','B'].map((id,index)=>({id,name:'Account '+id,recipe:{id:'whatsapp'},isEnabled:true,isLoading:false,accountSnapshot:{status:'online',nickname:id,ownerId:'861380000000'+(index+1)+'@c.us'},webview:{executeJavaScript:async code=>{
       if(code.includes('WAWebUpdateUnreadChatAction')){
@@ -41,17 +42,23 @@ try {
       if(code.includes('openChatBottom')){opened.push(id);return true;}
       if(code.startsWith('location.hostname'))return false;
       if(code==='Boolean(window.WPP)'||code.startsWith('new Promise'))return true;
-      if(code.includes('index:'))return {context:{token:'document-'+id,owners:['861380000000'+(index+1)+'@c.us']},index:{rows:rows.map(row=>({...row,unread:readKeys.has(id+':'+row.id)?0:row.unread})),contactsReady:true}};
-      if(code.includes('image/jpeg'))return {};
+      if(code.includes('return {context,index:')){const value={context:{token:'document-'+id,owners:['861380000000'+(index+1)+'@c.us']},index:{rows:rows.map(row=>({...row,unread:readKeys.has(id+':'+row.id)?0:row.unread})),contactsReady:true}};if(blockIndexes)return new Promise(resolve=>heldIndexes.push(()=>resolve(value)));return value;}
+      if(code.includes('image/jpeg'))return Object.fromEntries(rows.map(row=>[row.id,photo]));
       return true;
     }}}));
     const stores=observable({settings:{app:{aggregateConversations:{groups:[],members:{}},accountSidebar:{groups:[],accounts:{A:{remark:'蓝二号'},B:{remark:'蓝三号'}}}}},services:{all:services,active:services[0]}});
     stores.settings._update=async({data})=>{runInAction(()=>Object.assign(stores.settings.app,data));};
+    const wait=async(test)=>{const until=Date.now()+12000;while(!test()){if(Date.now()>until)throw Error('Fixture UI condition timeout');await new Promise(r=>setTimeout(r,40));}};
+    const runtime=require(${JSON.stringify(`${process.cwd()}/build/features/conversations/runtime.js`)}).getConversationRuntime(stores);
+    for(const service of stores.services.all)runtime.warm(service);
+    await wait(()=>runtime.rows.length===4&&runtime.avatars.size===4);
+    blockIndexes=true;
     const root=createRoot(document.querySelector('#root'));
     root.render(React.createElement('div',{id:'fixture'},React.createElement(Component,{stores,activate:id=>runInAction(()=>{stores.services.active=stores.services.all.find(item=>item.id===id);}),onBack:()=>{window.back=true;}}),React.createElement('main',{className:'fixture-right'},'原账号聊天区域')));
-    const wait=async(test)=>{const until=Date.now()+12000;while(!test()){if(Date.now()>until)throw Error('Fixture UI condition timeout');await new Promise(r=>setTimeout(r,40));}};
     const check=(ok,message)=>{if(!ok)throw Error(message);};
     await wait(()=>document.querySelectorAll('.conversation-row').length===4);
+    check(heldIndexes.length>0&&document.querySelectorAll('.conversation-row__avatar img').length===4,'Warm list/photos waited for fresh metadata');
+    blockIndexes=false;heldIndexes.splice(0).forEach(release=>release());
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝二号')),'Account remark missing');
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝三号')),'Other account remark missing');
     check([...document.querySelectorAll('.conversation-row__title')].some(item=>item.textContent.startsWith('Alice'))&&!document.querySelector('.conversation-list').textContent.includes('重点 Alice'),'Customer remark replaced native row title');
@@ -153,7 +160,17 @@ try {
     document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,200));check(popupVisible(),'Light theme displaced the move popup');
     controller.setSize(1100,850);document.body.classList.add('theme__dark');await wait(()=>innerWidth>1000&&popupVisible());
     await new Promise(r=>setTimeout(r,200));
-    return {groupContextMenuAndRename:true,deleteReturnsMembersToDefault:true,defaultGroupProtected:true,scopedAllReadAndBadgeRemoval:true,redUnreadBadge99Plus:true,expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,nativeTitlesIgnoreCustomerRemarks:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndEllipsisRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
+    await nativeClick([...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent==='取消'));await wait(()=>!document.querySelector('[role="dialog"]'));
+    await wait(()=>!runtime.refreshing&&document.querySelectorAll('.conversation-row__avatar img').length>0);
+    root.render(React.createElement('main',null,'账户列表'));await wait(()=>!document.querySelector('.conversation-sidebar'));
+    check(runtime.rows.length===608&&runtime.avatars.size>0,'Leaving aggregate discarded the cache');
+    blockIndexes=true;
+    root.render(React.createElement('div',{id:'fixture'},React.createElement(Component,{stores,activate:id=>runInAction(()=>{stores.services.active=stores.services.all.find(item=>item.id===id);}),onBack:()=>{window.back=true;}}),React.createElement('main',{className:'fixture-right'},'原账号聊天区域')));
+    await wait(()=>document.querySelector('.conversation-row')&&document.querySelector('.conversation-row__avatar img'));
+    check(heldIndexes.length>0,'Repeat-entry cache check did not hold fresh metadata');
+    blockIndexes=false;heldIndexes.splice(0).forEach(release=>release());
+    await new Promise(r=>setTimeout(r,200));
+    return {instantWarmEntry:true,instantRepeatEntry:true,cachedAvatarReuse:true,groupContextMenuAndRename:true,deleteReturnsMembersToDefault:true,defaultGroupProtected:true,scopedAllReadAndBadgeRemoval:true,redUnreadBadge99Plus:true,expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,nativeTitlesIgnoreCustomerRemarks:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndEllipsisRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
    })().catch(error=>({fixtureError:String(error.stack||error)}))`;
           fs.writeFileSync('/tmp/zl-aggregate-renderer.cjs', program);
           const output = await win.webContents.executeJavaScript(program);

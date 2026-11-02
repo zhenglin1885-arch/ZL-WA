@@ -681,3 +681,39 @@ native read. Existing search, archive isolation, expanded-folder selection and
 604-row virtualization checks passed. These are synthetic-account fixtures, not
 real WhatsApp/Windows tests. This feature and the previous selection/archive/title
 changes are not yet packaged; test-5 is unchanged.
+
+### Warm aggregate metadata and thumbnail reuse (2026-11-02)
+
+The aggregate controller is now shared per renderer store instead of recreated on
+every sidebar entry. Leaving the panel pauses its five-second refresh and restores
+the native layout while retaining verified metadata and thumbnails in memory.
+Returning renders that cache immediately and refreshes it in the background.
+No contact/previews/photo cache is written to disk.
+
+Existing WhatsApp account polls provide warm hints after a loaded account becomes
+online. A single short debounce and two background workers prepare available native
+metadata, throttled to roughly thirty seconds per stable account; no new account
+polling interval, history download, SDK initialization or automatic wake is added.
+Foreground and background metadata reads share three slots and deduplicate work
+for the same account. Warm snapshots also prepare at most the first 24 eligible
+rows' cached native thumbnails. The coalesced avatar queue retains the latest
+visible request when another batch is busy, rather than dropping that request.
+Thumbnail conversion still uses each account's own session, capped at 200 small
+images/80 KB each, with ten-minute revalidation and no emptying between entries.
+
+Rows are associated with their webview/document and verified owner aliases. Reload,
+webview replacement, logout and service teardown invalidate the associated cache;
+changed host identity hides old rows immediately. Invalidated or old-owner async
+photo results cannot refill the cache. Sleeping/unloaded accounts remain excluded.
+A first login, unsynchronized native contacts, or unavailable native thumbnails
+still need their initial WhatsApp synchronization/download; warm reuse cannot
+invent information WhatsApp has not supplied.
+
+Validation: 764 tests passed with two existing skips across 72 suites. Cache tests
+cover warm/throttled reads, repeated entry, retained photos, a pending visible-photo
+batch, three-reader concurrency, stale results and owner changes; a service-webview
+test verifies navigation invalidation. The offline native UI fixture holds fresh
+metadata requests pending and confirms both first warm entry and re-entry already
+render cached rows/photos. Existing grouping, scoped read, archive, title, popup,
+search/bulk and 604-row virtualization checks also passed. This uses synthetic
+accounts, not Windows/real WhatsApp performance measurements. Not yet packaged.
