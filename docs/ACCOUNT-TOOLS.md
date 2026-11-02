@@ -546,3 +546,50 @@ retained and zero sends; a new blocked attempt shows it again. TypeScript,
 targeted ESLint, source build and independent guest serialization checks passed.
 This change and the composer positioning change remain unbundled; test-3 still
 uses the previous warning placement/lifetime.
+
+### Aggregate conversations (2026-11-02)
+
+“聚合会话” appears above “新增分组” in the account sidebar. It replaces the
+account cards with a searchable conversation index; returning restores the account
+list and the native WhatsApp list width. Selecting a conversation activates its
+original account and opens that account's native WhatsApp chat. The same contact
+on different accounts remains separate. Each row displays the originating account
+card's remark (falling back to account name), and searches also include customer
+remarks, contact names and phone numbers.
+
+Conversation folders are local ZL-WA settings, independent of WhatsApp groups and
+account folders. Creating, renaming, moving or deleting a folder never changes
+WhatsApp contacts/groups or sends a message. Deleting a custom folder returns its
+members to “默认分组”. Membership is namespaced by verified WhatsApp owner and
+contact identity. “全选” selects every conversation in the current search/account/
+type/status result, including rows outside the visible scroll area. Changing a
+filter clears the selection. “群发” opens the existing composer with those targets;
+it does not send immediately or bypass account/send-policy checks.
+
+Type filters include private chats, groups and archived chats. “未回” means the
+latest available ordinary message is incoming; “已读未回” additionally requires
+zero unread messages. Missing message direction is not inferred as unreplied.
+These filters describe the currently synchronized native metadata, not a full
+server history audit. Saved contacts without chat history are included when the
+native contact collection is available. Notification rows and unsupported IDs
+are excluded.
+
+Only while the panel is open, metadata is refreshed every five seconds with at
+most three account readers and six-second per-operation deadlines. It never
+fetches message history or initializes every account SDK. Sleeping/unloaded
+accounts are listed as pending synchronization and are not silently awakened.
+Opening one conversation can initialize that account's existing SDK; live owner
+identity is checked before opening. The UI virtualizes rows. Avatar conversion
+runs only for visible/nearby rows, uses cached native thumbnails through the
+account's own network session, and caps the memory cache at 200 small JPEGs.
+Conversation previews remain in memory; only local folder names and membership
+are persisted, and aggregate settings are omitted from diagnostic exports.
+
+Validation: 750 tests passed (two existing skips), TypeScript and targeted ESLint
+passed, source build and serialized guest checks passed. Offline native Chromium
+fixtures verified separate account rows, account remark search, original-account
+opening, filtered selection, folder creation/moves, existing bulk composer
+prefill and a 604-conversation virtualized list. Native flex/grid fixtures verified
+chat-list hiding and restoring the original width, cached avatars, native contacts,
+logout/owner isolation and zero sends. These fixtures use synthetic accounts;
+real WhatsApp/Windows validation is still required. This feature is not packaged.

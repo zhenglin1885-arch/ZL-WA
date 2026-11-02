@@ -406,6 +406,12 @@ export function configureWhatsAppLayout(): boolean {
     }
   }
   const state = page.__zlChatListLayout;
+  if (
+    document.documentElement?.hasAttribute?.('data-zl-aggregate-view') &&
+    state.column?.isConnected &&
+    state.pane?.isConnected
+  )
+    return true;
   // Find the two real WhatsApp panes geometrically, including the welcome
   // screen (which has no #main) and wrappers with padding or fixed tracks.
   let column: HTMLElement = side;

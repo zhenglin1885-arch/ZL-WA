@@ -96,6 +96,7 @@ const runEsbuild = async () => {
   const guestEntries = [
     'src/features/accounts/whatsapp.ts',
     'src/features/accounts/sendDiagnostics.ts',
+    'src/features/conversations/guest.ts',
     'src/features/accounts/unread.ts',
     'src/features/accounts/layout.ts',
     'src/features/accounts/voice.ts',

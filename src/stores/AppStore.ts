@@ -453,6 +453,7 @@ export default class AppStore extends TypedStore {
     settings.lockedPassword = '******';
     // Diagnostic exports must not include account names/remarks or profile data.
     delete settings.accountSidebar;
+    delete settings.aggregateConversations;
 
     return {
       host: {

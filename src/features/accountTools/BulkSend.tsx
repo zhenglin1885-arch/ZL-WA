@@ -33,15 +33,18 @@ const messageTypes: [BulkMessageType, string][] = [
   ['contact', '名片'],
   ['document', '文件'],
 ];
+const EMPTY_RECIPIENTS: Recipient[] = [];
 const BulkSend = observer(
   ({
     stores,
     onClose,
     replyMode = false,
+    initialRecipients = EMPTY_RECIPIENTS,
   }: {
     stores: RealStores;
     onClose: () => void;
     replyMode?: boolean;
+    initialRecipients?: Recipient[];
   }) => {
     const preferencesChannel = replyMode
       ? 'account-tools-reply-preferences'
@@ -52,10 +55,17 @@ const BulkSend = observer(
     >('exact');
     const queue = getBulkQueue(stores);
     const [, render] = useState(0);
-    const [creating, setCreating] = useState(replyMode);
-    const [accounts, setAccounts] = useState<string[]>([]);
-    const [recipients, setRecipients] = useState<Recipient[]>([]);
-    const [selected, setSelected] = useState<string[]>([]);
+    const [creating, setCreating] = useState(
+      replyMode || initialRecipients.length > 0,
+    );
+    const [accounts, setAccounts] = useState<string[]>(() => [
+      ...new Set(initialRecipients.map(row => row.accountId)),
+    ]);
+    const [recipients, setRecipients] =
+      useState<Recipient[]>(initialRecipients);
+    const [selected, setSelected] = useState<string[]>(() =>
+      initialRecipients.map(row => `${row.accountId}:${row.id}`),
+    );
     const [kind, setKind] = useState('all');
     const [search, setSearch] = useState('');
     const [accountSearch, setAccountSearch] = useState('');

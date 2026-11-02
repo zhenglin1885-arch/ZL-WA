@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import {
   mdiAccountEditOutline,
+  mdiForumOutline,
   mdiCheckAll,
   mdiChevronDown,
   mdiChevronDoubleLeft,
@@ -50,6 +51,7 @@ import {
   type AccountSidebarConfig,
 } from './state';
 import { accountStatus, markAllWhatsAppRead } from './whatsapp';
+import ConversationSidebar from '../conversations/ConversationSidebar';
 
 type DialogKind =
   | 'group'
@@ -60,6 +62,7 @@ type DialogKind =
   | 'rename-group'
   | 'delete-group';
 interface State {
+  aggregate: boolean;
   dialog: {
     kind: DialogKind;
     id: string;
@@ -95,6 +98,7 @@ export default class AccountSidebar extends Component<StoresProps, State> {
   constructor(props: StoresProps) {
     super(props);
     this.state = {
+      aggregate: false,
       dialog: null,
       menu: null,
       notice: '',
@@ -709,11 +713,26 @@ export default class AccountSidebar extends Component<StoresProps, State> {
   render() {
     const { config } = this;
     const { services } = this.props.stores;
+    if (this.state.aggregate)
+      return (
+        <ConversationSidebar
+          stores={this.props.stores}
+          activate={this.activate}
+          onBack={() => this.setState({ aggregate: false })}
+        />
+      );
     return (
       <aside
         className={`account-sidebar ${config.collapsed ? 'is-collapsed' : ''}`}
         aria-label="账号分组"
       >
+        <button
+          type="button"
+          className="account-sidebar__aggregate"
+          onClick={() => this.setState({ aggregate: true })}
+        >
+          <Icon icon={mdiForumOutline} /> 聚合会话
+        </button>
         <div className="account-sidebar__header">
           <button
             type="button"

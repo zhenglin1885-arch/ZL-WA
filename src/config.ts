@@ -6,6 +6,7 @@ import { defineMessages } from 'react-intl';
 
 import { shiftKey } from './environment';
 import type { AccountSidebarConfig } from './features/accounts/state';
+import type { ConversationGroups } from './features/conversations/types';
 
 export const DEFAULT_ACCENT_COLOR = '#7367F0';
 
@@ -575,6 +576,7 @@ export const DEFAULT_LOADER_COLOR = '#FFFFFF';
 
 export const DEFAULT_APP_SETTINGS = {
   accountSidebar: { groups: [], accounts: {} } as AccountSidebarConfig,
+  aggregateConversations: { groups: [], members: {} } as ConversationGroups,
   autoLaunchOnStart: false,
   autoLaunchInBackground: false,
   runInBackground: true,
