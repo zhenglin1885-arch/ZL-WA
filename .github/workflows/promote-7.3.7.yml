@@ -1,0 +1,61 @@
+name: Publish verified ZL-WA 7.3.7
+
+on:
+  push:
+    branches: ['publish/7.3.7']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EXPECTED_SHA: 'abc7ef7aae3c96a901c7d4e70f3d0a7aa2852364'
+    steps:
+      - name: Validate successful source build and immutable version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/41673591346" > run.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v7.3.7" > tag.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/candidate-7.3.7-20261103" > candidate.json
+          node <<'JS'
+          const fs = require('node:fs');
+          const run = JSON.parse(fs.readFileSync('run.json'));
+          const tags = ['tag.json', 'candidate.json'].map(file => JSON.parse(fs.readFileSync(file)));
+          if (run.name !== 'ZL-WA Windows' || run.conclusion !== 'success' || run.head_sha !== process.env.EXPECTED_SHA || run.head_branch !== 'release/7.3.7' || tags.some(tag => tag.object.type !== 'commit' || tag.object.sha !== process.env.EXPECTED_SHA)) throw Error('Source build/tag mismatch');
+          JS
+          if gh release view v7.3.7 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Stable release already exists; refusing to replace it.'
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: v7.3.7
+      - name: Download and verify the reviewed packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download candidate-7.3.7-20261103 --repo "$GITHUB_REPOSITORY" --pattern '*.exe' --dir out
+          cat > out/SHA256SUMS.txt <<'SUMS'
+          e8bca8ce6ccad256ca430d6a4884dec2dc7c8afb5db6b1709b6996ed8b4e041d  ZL-WA-win-AutoSetup-7.3.7-x64.exe
+          5b74e22a73c34290e05d5ed6dfc6c41fc180922f2b4ccc968fc785c4ecaa89f1  ZL-WA-win-Portable-7.3.7-x64.exe
+          SUMS
+          (cd out && sha256sum --check SHA256SUMS.txt)
+          node <<'JS'
+          const fs = require('node:fs');
+          if (require('./package.json').version !== '7.3.7') throw Error('Version mismatch');
+          const expected = ['SHA256SUMS.txt','ZL-WA-win-AutoSetup-7.3.7-x64.exe','ZL-WA-win-Portable-7.3.7-x64.exe'].sort();
+          if (JSON.stringify(fs.readdirSync('out').sort()) !== JSON.stringify(expected)) throw Error('Unexpected package set');
+          JS
+      - name: Publish stable 7.3.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v7.3.7 out/*.exe out/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --verify-tag --latest --title 'ZL-WA 7.3.7' --notes-file docs/releases/7.3.7.md
