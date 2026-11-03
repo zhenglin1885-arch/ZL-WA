@@ -21,7 +21,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 12;
+  const revision = 13;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -100,7 +100,7 @@ export function translationTick(
     // loses them, so read only message text and reconstruct emoji alt characters.
     state.readText = (root: Node): string => {
       const metadata =
-        '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
+        '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate], script, style, button, [data-testid*="quoted"], [data-testid*="link-preview"], [data-testid="msg-author"], [data-testid="msg-sender"], [data-testid="sender-name"], [data-testid="author"], [data-testid="msg-meta"], [data-testid="msg-time"], [data-testid="msg-info"], [data-testid="msg-status"], [data-icon^="msg-check"], [data-icon="msg-dblcheck"], time, blockquote';
       const excluded = (element: Element) => {
         if (element.matches(metadata)) return true;
         const text = (element.textContent || '').trim();
@@ -157,6 +157,74 @@ export function translationTick(
       };
       return walk(root).replaceAll('\u200B', '').replaceAll('\uFEFF', '');
     };
+    // A media caption can have several internal data-id/row wrappers. Only
+    // native message IDs identify separate messages; attachment IDs do not.
+    const nativeMessage = '[data-id^="true_"], [data-id^="false_"]';
+    const textMarker =
+      '.selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"], [data-lexical-text="true"]';
+    const incomingExcluded =
+      'footer, header, [contenteditable="true"], [data-zl-translation], [data-zl-translation-text], [data-zl-translate], [data-zl-retranslate], [data-testid*="quoted"], [data-testid*="link-preview"], blockquote, [data-testid="msg-author"], [data-testid="msg-sender"], [data-testid="sender-name"], [data-testid="author"]';
+    state.messageBubble = (node: HTMLElement): HTMLElement => {
+      let keyed = node.closest<HTMLElement>(nativeMessage);
+      if (keyed) {
+        const { id } = keyed.dataset;
+        for (
+          let parent = keyed.parentElement;
+          parent &&
+          !parent.matches('#main, [data-testid="conversation-panel-messages"]');
+          parent = parent.parentElement
+        ) {
+          if (parent.matches(nativeMessage)) {
+            if (parent.dataset.id !== id) break;
+            keyed = parent;
+          }
+        }
+        return keyed;
+      }
+      return (
+        node.closest<HTMLElement>('.message-in, .message-out') ||
+        node.closest<HTMLElement>('[role="row"]') ||
+        node.closest<HTMLElement>('[data-testid="msg-container"], [data-id]') ||
+        node.parentElement ||
+        node
+      );
+    };
+    state.incomingNodes = (bubble: HTMLElement): HTMLElement[] => {
+      const owned = (node: HTMLElement) =>
+        !node.closest(incomingExcluded) &&
+        node.getClientRects().length > 0 &&
+        getComputedStyle(node).visibility !== 'hidden' &&
+        !node.closest('[aria-hidden="true"]') &&
+        state.messageBubble(node) === bubble;
+      let nodes = [
+        ...(bubble.matches(textMarker) ? [bubble] : []),
+        ...bubble.querySelectorAll<HTMLElement>(textMarker),
+      ].filter(node => owned(node));
+      if (nodes.length === 0)
+        nodes = [
+          ...(bubble.matches('[data-pre-plain-text]') ? [bubble] : []),
+          ...bubble.querySelectorAll<HTMLElement>(
+            '[data-pre-plain-text] [dir="auto"], [data-pre-plain-text]',
+          ),
+        ].filter(node => owned(node));
+      const selected = new Set(nodes);
+      return nodes.filter(node => {
+        for (
+          let parent = node.parentElement;
+          parent && bubble.contains(parent);
+          parent = parent.parentElement
+        )
+          if (selected.has(parent)) return false;
+        return true;
+      });
+    };
+    state.readIncoming = (bubble: HTMLElement): string =>
+      state
+        .incomingNodes(bubble)
+        .map((node: HTMLElement) => state.readText(node))
+        .filter((text: string) => text.trim())
+        .join('\n')
+        .trim();
     state.needsTranslation = (text: string) => {
       // Emoji, numbers, punctuation, URLs and stickers keep the normal send path.
       const withoutEmoji = text.replaceAll(
@@ -985,8 +1053,8 @@ export function translationTick(
           bodies.add(body);
       }
     }
-    const seen = new Set<HTMLElement>();
     const seenBubbles = new Set<HTMLElement>();
+    const seenIdentities = new Set<string>();
     let processed = 0;
     for (const body of bodies) {
       const rect = body.getBoundingClientRect();
@@ -1017,51 +1085,45 @@ export function translationTick(
           ),
       );
       if (!candidate) continue;
-      // Formatted media captions can contain many selectable spans. Read their
-      // common message wrapper, rather than translating only the first span.
-      let textNode = candidate;
-      for (
-        let parent = candidate.parentElement;
-        parent;
-        parent = parent.parentElement
-      ) {
-        if (
-          parent.matches(
-            '.message-in, .message-out, [data-id], [data-testid="msg-container"], [role="row"], #main',
-          )
-        )
-          break;
-        if (
-          parent.matches(
-            '.copyable-text, [data-pre-plain-text], .selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"]',
-          )
-        )
-          textNode = parent;
-      }
-      if (seen.has(textNode)) continue;
-      seen.add(textNode);
-      if (processed >= 24) break;
-      processed += 1;
-      const bubble =
-        textNode.closest<HTMLElement>('[data-id]') ||
-        textNode.closest<HTMLElement>(
-          '.message-in, .message-out, [data-id], [data-testid="msg-container"], [role="row"]',
-        ) ||
-        textNode.parentElement ||
-        textNode;
+      const bubble = state.messageBubble(candidate) as HTMLElement;
       if (seenBubbles.has(bubble)) continue;
       seenBubbles.add(bubble);
-      const text = state.readText(textNode).trim();
-      if (!text.trim() || text.length > 12_000 || !state.needsTranslation(text))
+      const sourceNodes = state.incomingNodes(bubble) as HTMLElement[];
+      const textNode = sourceNodes[0];
+      if (!textNode) continue;
+      const text = state.readIncoming(bubble);
+      if (!text || text.length > 12_000 || !state.needsTranslation(text))
         continue;
-      const identity = `${state.chatKey()}:${bubble.closest('[data-id]')?.getAttribute('data-id') || ''}`;
+      const messageId = bubble.matches(
+        '[data-id^="true_"], [data-id^="false_"]',
+      )
+        ? bubble.dataset.id
+        : '';
+      const identity = `${state.chatKey()}:${messageId || ''}`;
+      if (messageId && seenIdentities.has(identity)) {
+        bubble
+          .querySelectorAll(
+            '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate]',
+          )
+          .forEach(node => node.remove());
+        continue;
+      }
+      if (processed >= 24) break;
+      processed += 1;
+      if (messageId) seenIdentities.add(identity);
       let record = state.incomingByBubble.get(bubble);
-      if (
-        !record ||
-        record.text !== text ||
-        record.identity !== identity ||
-        !record.container.isConnected
-      ) {
+      if (!record && messageId) {
+        for (const job of state.pending.values())
+          if (
+            job.direction === 'incoming' &&
+            job.record?.identity === identity &&
+            job.text === text
+          ) {
+            record = job.record;
+            break;
+          }
+      }
+      if (!record || record.text !== text || record.identity !== identity) {
         record?.container.remove();
         // A rebuilt bubble may carry a cloned decoration without its WeakMap
         // record. It is ours to replace; never append a second copy beside it.
@@ -1102,14 +1164,8 @@ export function translationTick(
           'border:0;background:transparent;color:inherit;vertical-align:middle;width:28px;height:28px;padding:2px;margin-left:4px;cursor:pointer;white-space:normal';
         refresh.style.color = state.color;
         container.append(label, refresh, button);
-        const mount = textNode.closest('.copyable-text');
-        state.withScroll(textNode, () => {
-          if (mount && mount !== textNode) mount.append(container);
-          else if (textNode === bubble) bubble.append(container);
-          else textNode.after(container);
-        });
         record = {
-          input: textNode,
+          input: bubble,
           text,
           identity,
           chat: state.chatKey(),
@@ -1137,7 +1193,7 @@ export function translationTick(
             if (manual) state.notice('正在翻译，请稍候');
             return;
           }
-          const latestText = state.readText(current.input).trim();
+          const latestText = state.readIncoming(current.input).trim();
           if (!latestText.trim() || latestText.length > 12_000) {
             if (manual) state.notice('消息为空或超过 12000 字符，无法翻译');
             return;
@@ -1168,7 +1224,7 @@ export function translationTick(
             direction: 'incoming',
             input: current.input,
             text: current.text,
-            bubble,
+            bubble: current.input,
             record: current,
             chat: current.chat,
             cacheKey: current.cacheKey,
@@ -1184,15 +1240,38 @@ export function translationTick(
           else state.queue.push(request);
         };
       }
-      // React can replace the complete caption while leaving our sibling
-      // decoration intact. Keep ownership on the message and rebind pending
-      // results instead of inserting another translation for the new node.
-      if (record.input !== textNode) {
+      // Move an existing controller after caption/whole-message replacement;
+      // keep a single pending request and discard only our cloned decorations.
+      for (const decoration of bubble.querySelectorAll('[data-zl-translation]'))
+        if (decoration !== record.container) decoration.remove();
+      for (const orphan of bubble.querySelectorAll(
+        '[data-zl-translation-text], [data-zl-retranslate], [data-zl-translate]',
+      ))
+        if (!orphan.closest('[data-zl-translation]')) orphan.remove();
+      const lastSource = sourceNodes.at(-1) || textNode;
+      const mount = lastSource.closest('.copyable-text');
+      state.withScroll(textNode, () => {
+        if (mount && bubble.contains(mount)) {
+          if (
+            record.container.parentElement !== mount ||
+            mount.lastElementChild !== record.container
+          )
+            mount.append(record.container);
+        } else if (lastSource === bubble) {
+          if (bubble.lastElementChild !== record.container)
+            bubble.append(record.container);
+        } else if (lastSource.nextElementSibling !== record.container)
+          lastSource.after(record.container);
+      });
+      if (record.input !== bubble) {
         for (const job of state.pending.values())
-          if (job.record === record) job.input = textNode;
-        record.input = textNode;
+          if (job.record === record) {
+            job.input = bubble;
+            job.bubble = bubble;
+          }
+        record.input = bubble;
       }
-      state.incoming.set(textNode, record);
+      state.incoming.set(bubble, record);
       state.incomingByBubble.set(bubble, record);
       const cached = state.memo.get(record.cacheKey);
       if (cached && record.status !== 'done' && record.status !== 'pending')
@@ -1363,7 +1442,7 @@ export function translationResult(
     !state.config.incoming ||
     (job.chat && state.chatKey() !== job.chat) ||
     !job.input.isConnected ||
-    state.readText(job.input).trim() !== job.text ||
+    (state.readIncoming || state.readText)(job.input).trim() !== job.text ||
     !record?.container.isConnected ||
     state.incoming.get(job.input) !== record
   ) {

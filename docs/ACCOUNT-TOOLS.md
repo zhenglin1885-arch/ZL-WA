@@ -717,3 +717,32 @@ metadata requests pending and confirms both first warm entry and re-entry alread
 render cached rows/photos. Existing grouping, scoped read, archive, title, popup,
 search/bulk and 604-row virtualization checks also passed. This uses synthetic
 accounts, not Windows/real WhatsApp performance measurements. Not yet packaged.
+
+### Single translation per media caption (2026-11-03)
+
+An image caption with three internal `data-id` paragraph wrappers reproduced three
+translation controls in test-6. The receiver treated the nearest attachment/text
+wrapper as a message boundary. Native message IDs now define the boundary; repeated
+internal wrappers are grouped into one full caption. Source extraction reads the
+owned native text roots once, excludes sender/quote/time/generated decorations,
+and retains all original paragraphs and emoji without modifying original content.
+
+Incoming controls are attached once per native message. A caption or complete
+message DOM rebuild reuses an in-flight request and its controller for the same
+message identity/source, rather than starting another request. Duplicate native
+DOM representations of the same ID discard extra owned decorations, while two
+distinct messages with identical text retain separate translations. Manual refresh
+and automatic preview share the same ownership checks. Generated output is excluded
+from subsequent source extraction. Guest revision 13 retires old listeners and
+removes old decorations while retaining successful, matching cache entries.
+
+Validation: the native Chromium fixture first failed with exactly three controls,
+then passed with one full translation and one automatic request. It also checked
+three caption paragraphs, original Chinese content/emoji preservation, sender and
+quote exclusion, pending whole-message replacement, same-ID clones, distinct
+identical messages, repeated scans and live adapter upgrade. Media/text bubble
+width, fonts, wrapping, long translations and failed-provider controls retained
+their layout. All 764 unit tests passed (two existing skips), and 24 native mouse/
+Enter outgoing text/edit/media send-protection cases passed. These are offline
+synthetic fixtures; the user's WhatsApp DOM has not been remotely inspected.
+This source fix is not yet packaged; test-6 retains the old caption recognition.

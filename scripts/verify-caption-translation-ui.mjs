@@ -72,7 +72,26 @@ try {
           if(edited.length!==1||edited[0].text!=='Nova mensagem editada')throw Error('Caption editing did not target new source');
           result(edited[0].id,edited[0].token,{text:'编辑后的译文',error:false});
           if(document.querySelector('[data-zl-translation-text]').textContent!=='编辑后的译文')throw Error('Edited caption result lost');
-          return {rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
+          document.querySelector('#main').innerHTML='<div class="message-in" data-id="false_10001@g.us_nested"><div data-testid="msg-author">+55 11 93206-1077</div><div class="copyable-text"><img alt="photo"><div data-id="caption-part-1"><span class="selectable-text">Amanhã à noite, o professor Lucas apresentará uma análise.<br>原文里的中文也必须保留</span></div><div data-id="caption-part-2"><span class="selectable-text">Como amanhã será feriado, o grupo ficará fechado.</span></div><div data-id="caption-part-3"><span class="selectable-text">Agradecemos a companhia de todos nesta noite! 🌹</span></div><div data-testid="msg-meta">20:49</div><blockquote><span class="selectable-text">Quoted text must not be translated</span></blockquote></div></div>';
+          scan();if(count()!==1)throw Error('Nested media caption created '+count()+' translation controls instead of one');
+          document.querySelector('[data-zl-translate]').click();const nested=scan();
+          if(nested.length!==1||!nested[0].text.includes('apresentará')||!nested[0].text.includes('ficará fechado')||!nested[0].text.includes('companhia')||!nested[0].text.includes('原文里的中文也必须保留')||nested[0].text.includes('93206')||nested[0].text.includes('20:49')||nested[0].text.includes('Quoted'))throw Error('Caption paragraphs were split or sender/quote metadata was included');
+          const copy=document.querySelector('.message-in').cloneNode(true);document.querySelector('.message-in').replaceWith(copy);scan();
+          if(count()!==1||window.__zlTranslation.pending.size!==1)throw Error('Rebuilt caption duplicated a pending request');
+          result(nested[0].id,nested[0].token,{text:'只显示一次的完整译文',error:false});scan();
+          if(count()!==1||document.querySelector('[data-zl-translation-text]').textContent!=='只显示一次的完整译文')throw Error('Rebuilt caption lost its original request result');
+          for(let i=0;i<3;i++)scan();
+          if(count()!==1||document.querySelector('[data-zl-translation-text]').textContent!=='只显示一次的完整译文')throw Error('Repeated scans duplicated the caption translation');
+          const duplicated=document.querySelector('.message-in').cloneNode(true);document.querySelector('.message-in').after(duplicated);scan();
+          if(count()!==1)throw Error('Two DOM representations of the same message retained duplicate translations');
+          duplicated.dataset.id='false_10001@g.us_separate';scan();if(count()!==2)throw Error('Two distinct messages with identical captions were merged');
+          document.querySelector('#main').innerHTML='<div class="message-in" data-id="false_10001@g.us_auto"><div class="copyable-text"><div data-id="part-one"><span class="selectable-text">Mensagem nova para tradução automática.</span></div><div data-id="part-two"><span class="selectable-text">Segundo parágrafo, sem pedido duplicado.</span></div><div data-id="part-three"><span class="selectable-text">Terceiro parágrafo completo.</span></div></div></div>';
+          const preview={...config,preview:true};tick(preview);window.__zlTranslation.previewBlockedChat=undefined;window.__zlTranslation.dirty=true;
+          const auto=tick(preview);if(auto.length!==1||!auto[0].text.includes('Terceiro'))throw Error('Preview split one caption into multiple requests');
+          for(let i=0;i<3;i++){window.__zlTranslation.dirty=true;if(tick(preview).length)throw Error('A pending preview was queued twice');}
+          result(auto[0].id,auto[0].token,{text:'自动译文只显示一次',error:false});window.__zlTranslation.dirty=true;tick(preview);
+          if(count()!==1||document.querySelector('[data-zl-translation-text]').textContent!=='自动译文只显示一次')throw Error('Auto preview translated its own generated result');
+          return {sameIdDomCopiesDeduplicated:true,distinctIdenticalMessagesPreserved:true,oneAutomaticCaptionRequest:true,nestedCaptionDeduplicated:true,fullCaptionPreserved:true,pendingWholeMessageRebound:true,rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
         })()`);
         } finally {
           win.destroy();
