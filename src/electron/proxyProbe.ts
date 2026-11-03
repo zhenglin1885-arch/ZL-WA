@@ -31,13 +31,25 @@ export async function probeProxyDocument(
       bytes += chunk.value.byteLength;
       if (bytes > 5_000_000)
         throw new Error('页面响应超过验证上限，未确认页面可加载');
-      if (prefix.length < 8192)
+      if (prefix.length < 65_536)
         prefix += new TextDecoder().decode(
-          chunk.value.subarray(0, 8192 - prefix.length),
+          chunk.value.subarray(0, 65_536 - prefix.length),
         );
     }
     if (!bytes || !/<(?:!doctype\s+html|html\b)/i.test(prefix))
       throw new Error('未收到完整可识别的页面正文');
+    const visibleHtml = prefix
+      .replaceAll(/<script\b[\S\s]*?(?:<\/script\s*>|$)/gi, '')
+      .replaceAll(/<style\b[\S\s]*?(?:<\/style\s*>|$)/gi, '')
+      .replaceAll(/<!--[\S\s]*?(?:-->|$)/g, '');
+    if (
+      /<h[12]\b[^>]*>\s*(?:<[^>]+>\s*)*sorry,?\s+something went wrong\.?\s*(?:<[^>]+>\s*)*<\/h[12]\s*>/i.test(
+        visibleHtml,
+      )
+    )
+      throw new Error(
+        'WhatsApp 返回临时错误页，尚未确认可加载聊天界面，请稍后重试',
+      );
     return { documentChecked: true, documentBytes: bytes };
   };
   try {

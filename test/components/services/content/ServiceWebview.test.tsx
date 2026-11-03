@@ -84,6 +84,76 @@ const ServiceWebview = jest.requireActual<
 >('../../../../src/components/services/content/ServiceWebview').default;
 
 describe('ServiceWebview', () => {
+  it('retries only a confirmed startup error document, at most twice, using the same webview', async () => {
+    jest.useFakeTimers();
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isActive: true,
+      isEnabled: true,
+      accountSnapshot: { status: 'error' },
+    });
+    const component = new ServiceWebview(props as any);
+    const surface = { state: 'error-document', recoveryRecommended: true };
+    const view: any = {
+      ...createMockWebviewElement(),
+      executeJavaScript: jest.fn(async () => surface),
+      loadURL: jest.fn(async () => {}),
+    };
+    component.webview = { view } as any;
+    try {
+      component.trackPageHealth(surface, component.webview!.view!);
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(view.loadURL).toHaveBeenCalledWith('https://web.whatsapp.com/');
+      component.trackPageHealth(surface, component.webview!.view!);
+      await jest.advanceTimersByTimeAsync(12_000);
+      component.trackPageHealth(surface, component.webview!.view!);
+      await jest.advanceTimersByTimeAsync(20_000);
+      expect(view.loadURL).toHaveBeenCalledTimes(2);
+    } finally {
+      component.componentWillUnmount();
+      jest.useRealTimers();
+    }
+  });
+  it('does not reload a startup page after a chat or editable surface has appeared', async () => {
+    jest.useFakeTimers();
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isActive: true,
+      isEnabled: true,
+      accountSnapshot: { status: 'error' },
+    });
+    const component = new ServiceWebview(props as any);
+    const view: any = {
+      ...createMockWebviewElement(),
+      executeJavaScript: jest.fn(async () => ({
+        state: 'error-overlay',
+        recoveryRecommended: false,
+      })),
+      loadURL: jest.fn(async () => {}),
+    };
+    component.webview = { view } as any;
+    try {
+      component.trackPageHealth(
+        { state: 'error-document', recoveryRecommended: true },
+        view,
+      );
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(view.loadURL).not.toHaveBeenCalled();
+      component.trackPageHealth({ state: 'chat' }, view);
+      component.trackPageHealth(
+        { state: 'error-document', recoveryRecommended: true },
+        view,
+      );
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(view.loadURL).not.toHaveBeenCalled();
+    } finally {
+      component.componentWillUnmount();
+      jest.useRealTimers();
+    }
+  });
+
   it('invalidates the aggregate cache when a WhatsApp document starts navigating', () => {
     const props = createProps();
     Object.assign(props.service, {
@@ -189,7 +259,7 @@ describe('ServiceWebview', () => {
     component._setWebview(createMockWebview(view) as any);
     try {
       await component.pollAccount();
-      expect(view.executeJavaScript).toHaveBeenCalledTimes(3);
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(4);
       expect(view.executeJavaScript.mock.calls[0][0]).toContain(
         'configureWhatsAppLayout',
       );
@@ -198,6 +268,9 @@ describe('ServiceWebview', () => {
       );
       expect(view.executeJavaScript.mock.calls[2][0]).toContain(
         'watchWhatsAppUnread',
+      );
+      expect(view.executeJavaScript.mock.calls[3][0]).toContain(
+        'readWhatsAppPageHealth',
       );
     } finally {
       component.componentWillUnmount();

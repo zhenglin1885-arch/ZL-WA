@@ -30,6 +30,7 @@ import { sendBulkMessage } from '../../../features/accountTools/bulkGuest';
 import { ensureBulkLibrary } from '../../../features/accountTools/bulkRuntime';
 import { configureTranslation } from '../../../features/accountTools/runtime';
 import { getConversationRuntime } from '../../../features/conversations/runtime';
+import { readWhatsAppPageHealth } from '../../../features/accounts/sendDiagnostics';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
 
@@ -136,6 +137,88 @@ class ServiceWebview extends Component<IProps> {
 
   private disposed = false;
 
+  private pageRecoveryTimer?: ReturnType<typeof setTimeout>;
+
+  private pageRecoveryAttempts = 0;
+
+  private pageRecoveryChecking = false;
+
+  private pageRecoveryStarted = Date.now();
+
+  private hadChatSurface = false;
+
+  private isRecoveryCurrent(view: NonNullable<WebviewElement>) {
+    return (
+      !this.disposed &&
+      !this.hadChatSurface &&
+      this.webview?.view === view &&
+      this.props.service.isActive === true &&
+      this.props.service.isEnabled !== false &&
+      !this.props.service.isHibernating &&
+      Date.now() - this.pageRecoveryStarted < 90_000
+    );
+  }
+
+  trackPageHealth = (
+    surface: { state: string; recoveryRecommended?: boolean },
+    view: NonNullable<WebviewElement>,
+  ) => {
+    if (surface.state === 'chat' || surface.state === 'login') {
+      this.hadChatSurface = true;
+      clearTimeout(this.pageRecoveryTimer);
+      this.pageRecoveryTimer = undefined;
+      return;
+    }
+    if (
+      this.disposed ||
+      this.hadChatSurface ||
+      this.pageRecoveryTimer ||
+      this.pageRecoveryChecking ||
+      this.pageRecoveryAttempts >= 2 ||
+      Date.now() - this.pageRecoveryStarted > 90_000 ||
+      this.props.service.isActive !== true ||
+      this.props.service.isEnabled === false ||
+      this.props.service.isHibernating ||
+      surface.state !== 'error-document' ||
+      !surface.recoveryRecommended
+    )
+      return;
+    this.pageRecoveryAttempts += 1;
+    const jitter =
+      [...this.props.service.id].reduce(
+        (total, char) => total + (char.codePointAt(0) || 0),
+        0,
+      ) % 1500;
+    const wait = (this.pageRecoveryAttempts === 1 ? 3000 : 10_000) + jitter;
+    this.pageRecoveryTimer = setTimeout(() => {
+      this.pageRecoveryTimer = undefined;
+      if (!this.isRecoveryCurrent(view)) return;
+      this.pageRecoveryChecking = true;
+      void (async () => {
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const live = await Promise.race([
+            view.executeJavaScript(`(${readWhatsAppPageHealth.toString()})()`),
+            new Promise<null>(resolve => {
+              deadline = setTimeout(() => resolve(null), 2000);
+            }),
+          ]);
+          if (
+            this.isRecoveryCurrent(view) &&
+            live?.state === 'error-document' &&
+            live.recoveryRecommended
+          )
+            await view.loadURL('https://web.whatsapp.com/');
+        } catch {
+          /* Keep the error page and manual recovery available. */
+        } finally {
+          if (deadline) clearTimeout(deadline);
+          this.pageRecoveryChecking = false;
+        }
+      })();
+    }, wait);
+  };
+
   pollAccount = async (): Promise<void> => {
     const { service, stores } = this.props;
     const view = this.webview?.view;
@@ -197,9 +280,17 @@ class ServiceWebview extends Component<IProps> {
           stores?.settings.app.translationTextColor,
         );
       const snapshot = await view.executeJavaScript(
-        `(${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)})`,
+        `(async()=>{const surface=(${readWhatsAppPageHealth.toString()})();const snapshot=await (${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)},surface);return {...snapshot,pageHealth:surface.state,pageRecovery:surface.recoveryRecommended};})()`,
       );
       if (!current()) return;
+      if (snapshot.pageHealth)
+        this.trackPageHealth(
+          {
+            state: snapshot.pageHealth,
+            recoveryRecommended: snapshot.pageRecovery,
+          },
+          view,
+        );
       if (snapshot.status === 'online' && service.isActive)
         ensureBulkLibrary(view).catch(error =>
           debug('Could not prepare WhatsApp Audio upload interface', error),
@@ -231,7 +322,15 @@ class ServiceWebview extends Component<IProps> {
       });
       if (stores?.services) {
         const conversations = getConversationRuntime(stores);
-        if (snapshot.status === 'logged-out')
+        if (
+          snapshot.status === 'logged-out' ||
+          [
+            'unexpected-origin',
+            'error-document',
+            'error-overlay',
+            'error-frame',
+          ].includes(snapshot.pageHealth)
+        )
           conversations.invalidate(service.id);
         else if (snapshot.status === 'online') conversations.warm(service);
       }
@@ -267,7 +366,15 @@ class ServiceWebview extends Component<IProps> {
         this.lastAppliedZoom = zoom;
       }
     } catch {
-      if (this.webview?.view === view) {
+      // Static server error documents may reject normal WhatsApp adapters.
+      // Inspect them independently so startup recovery does not require the SDK.
+      if (current()) {
+        const surface = await view
+          .executeJavaScript(`(${readWhatsAppPageHealth.toString()})()`)
+          .catch(() => null);
+        if (current() && surface) this.trackPageHealth(surface, view);
+      }
+      if (current()) {
         runInAction(() => {
           service.accountSnapshot = {
             ...service.accountSnapshot,
@@ -327,6 +434,8 @@ class ServiceWebview extends Component<IProps> {
   };
 
   accountNavigationStarted = (): void => {
+    clearTimeout(this.pageRecoveryTimer);
+    this.pageRecoveryTimer = undefined;
     this.props.service.accountUnreadLive = false;
     this.lastAppliedZoom = null;
     if (
@@ -377,6 +486,8 @@ class ServiceWebview extends Component<IProps> {
 
   componentWillUnmount(): void {
     this.disposed = true;
+    clearTimeout(this.pageRecoveryTimer);
+    this.pageRecoveryTimer = undefined;
     this.finishStartup();
     const { service, detachService } = this.props;
     if (this.props.stores?.services && service.recipe?.id === 'whatsapp')

@@ -89,3 +89,99 @@ it('does not report an old load error as the current page failure after recovery
   expect(result.page).toMatchObject({ loadFailed: false, errorCode: null });
   expect(result.connection).toEqual({ sdkReady: true });
 });
+
+it('identifies an application error page independently of successful network loading and ignores stale SDK success', async () => {
+  const surface = {
+    state: 'error-document',
+    origin: 'whatsapp-web',
+    navigationStart: 10,
+    recoveryRecommended: true,
+  };
+  const view = {
+    executeJavaScript: jest
+      .fn()
+      .mockResolvedValueOnce({
+        unavailable: true,
+        reason: 'error-document',
+        surface,
+      })
+      .mockResolvedValueOnce(surface),
+  };
+  const result = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(result.page).toMatchObject({
+    loadFailed: false,
+    contentFailed: true,
+    recoveryRecommended: true,
+    changedDuringRead: false,
+  });
+  expect(result.connection).toEqual({
+    unavailable: true,
+    reason: 'error-document',
+  });
+  expect(result.sampledAt).toMatch(/^\d{4}-/);
+});
+it('does not attribute a previous document to the same webview after navigation during proxy diagnostics', async () => {
+  const surface = {
+    state: 'chat',
+    origin: 'whatsapp-web',
+    navigationStart: 10,
+  };
+  const view = {
+    executeJavaScript: jest
+      .fn()
+      .mockResolvedValueOnce({ socket: 'CONNECTED', surface })
+      .mockResolvedValueOnce({ ...surface, navigationStart: 20 }),
+  };
+  const result = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(result.page.changedDuringRead).toBe(true);
+  expect(result.connection).toEqual({
+    unavailable: true,
+    reason: 'page-changed',
+  });
+});
+it('does not copy a diagnostic for a different account selected while the request was running', async () => {
+  const result = await collectSendDiagnostics(
+    {
+      isError: false,
+      errorMessage: '',
+      webview: { executeJavaScript: async () => ({ socket: 'CONNECTED' }) },
+    },
+    async () => ({ route: 'PROXY' }),
+    () => false,
+  );
+  expect(result.connection).toEqual({
+    unavailable: true,
+    reason: 'account-changed',
+  });
+  expect(result.proxy).toEqual({
+    unavailable: true,
+    reason: 'account-changed',
+  });
+});
+
+it('does not keep a healthy SDK report when the final page verification fails', async () => {
+  const view = {
+    executeJavaScript: jest
+      .fn()
+      .mockResolvedValueOnce({
+        socket: 'CONNECTED',
+        surface: { state: 'chat', navigationStart: 1, origin: 'whatsapp-web' },
+      })
+      .mockRejectedValueOnce(new Error('private')),
+  };
+  const result = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(result.connection).toEqual({
+    unavailable: true,
+    reason: 'page-verification-failed',
+  });
+  expect(result.page.recoveryRecommended).toBe(false);
+});

@@ -8,7 +8,7 @@ import {
 } from '@mdi/js';
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
-import { useEffect, useState, useId } from 'react';
+import { useEffect, useState, useId, useRef } from 'react';
 import { startChatBackup } from '../chatBackup/runtime';
 import type { GroupMode } from '../groups/types';
 import GroupTools from '../groups/GroupTools';
@@ -124,8 +124,12 @@ const SettingsPanel = observer(
     const [notice, setNotice] = useState('');
     const [smart, setSmart] = useState('');
     const [diagnostics, setDiagnostics] = useState('');
+    const [pageProblem, setPageProblem] = useState(false);
+    const currentService = useRef(service);
+    currentService.current = service;
     useEffect(() => {
       let cancelled = false;
+      setPageProblem(false);
       if (service)
         void getTools(service.id)
           .then(c => {
@@ -648,12 +652,16 @@ const SettingsPanel = observer(
             void (async () => {
               setBusy(true);
               try {
-                const diagnostics = await collectSendDiagnostics(service, () =>
-                  ipcRenderer.invoke(
-                    'account-tools-proxy-diagnostics',
-                    service.id,
-                  ),
+                const diagnostics = await collectSendDiagnostics(
+                  service,
+                  () =>
+                    ipcRenderer.invoke(
+                      'account-tools-proxy-diagnostics',
+                      service.id,
+                    ),
+                  () => currentService.current === service,
                 );
+                setPageProblem(diagnostics.page.recoveryRecommended);
                 clipboard.writeText(
                   JSON.stringify(
                     {
@@ -669,7 +677,11 @@ const SettingsPanel = observer(
                   ),
                 );
                 setNotice(
-                  '发送诊断已复制，请粘贴反馈；不包含消息内容、号码、代理地址或密钥。',
+                  diagnostics.page.contentFailed
+                    ? '检测到 WhatsApp 错误页或页面跳转异常，不能依据旧 SDK 状态判断连接正常。诊断已复制。'
+                    : diagnostics.page.surface?.state === 'covered-frame'
+                      ? '检测到覆盖页面，暂时无法确认聊天界面状态。诊断已复制。'
+                      : '发送诊断已复制，请粘贴反馈；不包含消息内容、号码、代理地址或密钥。',
                 );
               } catch (error) {
                 setNotice(
@@ -683,6 +695,47 @@ const SettingsPanel = observer(
         >
           检查并复制发送诊断
         </button>
+        {pageProblem && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                try {
+                  if (!service.webview) throw new Error('账号页面尚未准备好');
+                  const view = service.webview;
+                  const fresh = await collectSendDiagnostics(
+                    service,
+                    async () => ({}),
+                    () => currentService.current === service,
+                  );
+                  if (
+                    !fresh.page.recoveryRecommended ||
+                    service.webview !== view
+                  ) {
+                    setPageProblem(false);
+                    setNotice(
+                      '页面状态已变化，请重新检查诊断；为保护聊天草稿，未重新载入。',
+                    );
+                    return;
+                  }
+                  await view.loadURL('https://web.whatsapp.com/');
+                  setPageProblem(false);
+                  setNotice(
+                    '正在返回 WhatsApp 聊天页，继续使用当前账号和代理设置。',
+                  );
+                } catch {
+                  setNotice('返回失败，请使用账号菜单重新载入 WhatsApp。');
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            返回 WhatsApp 聊天页
+          </button>
+        )}
         <p role="status" className="tools-notice">
           {notice}
         </p>

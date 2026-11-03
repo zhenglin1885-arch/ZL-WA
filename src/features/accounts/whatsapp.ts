@@ -13,8 +13,19 @@ export interface AccountSnapshot {
 
 export async function readWhatsAppSnapshot(
   omitUnchangedAvatar = false,
+  surface?: { state: string },
 ): Promise<AccountSnapshot> {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
+    return { status: 'error' };
+  if (
+    surface &&
+    [
+      'unexpected-origin',
+      'error-document',
+      'error-overlay',
+      'error-frame',
+    ].includes(surface.state)
+  )
     return { status: 'error' };
   const page = window as any;
   const module = (name: string): any => {

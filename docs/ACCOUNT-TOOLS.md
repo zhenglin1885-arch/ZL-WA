@@ -746,3 +746,40 @@ their layout. All 764 unit tests passed (two existing skips), and 24 native mous
 Enter outgoing text/edit/media send-protection cases passed. These are offline
 synthetic fixtures; the user's WhatsApp DOM has not been remotely inspected.
 This source fix is not yet packaged; test-6 retains the old caption recognition.
+
+### Startup WhatsApp error documents (2026-11-03)
+
+The reported green “Sorry, something went wrong” page appeared after restarting,
+and several manual reloads eventually restored the chat. The previous diagnostic
+could label an HTTP-loaded error document as healthy by reading cached SDK/socket
+state. Neither that cached state nor historical ACK counts established that the
+visible chat was usable. The report does not establish whether WhatsApp's response
+or the proxy route caused the transient failure.
+
+Diagnostics now inspect the visible document independently of the SDK, reject
+known error headings outside native chat content, identify covering frames and
+unexpected origins, and verify the document again after collecting proxy details.
+An account switch, navigation (including same-URL navigation), or failed final
+verification suppresses stale connection results. Only fixed surface categories,
+flags and counts are exported; no headings, URLs, message text or drafts are copied.
+`sampledAt` records the collection time; `runtime.timestamp` remains build metadata.
+
+During the first 90 seconds of an active account view, a confirmed static startup
+error document may retry the canonical WhatsApp Web root twice (3 and 10 seconds
+plus a small per-account delay). Each attempt rechecks the live document. A chat
+or login surface ends recovery for that view; editors, frames, inactive accounts,
+disabled accounts and hibernating accounts cannot trigger automatic recovery.
+Normal adapter failures also allow this independent surface check. Timers stop on
+navigation/unmount. Recovery uses the same webview, session and proxy; it does not
+clear login data, send messages or retry outgoing messages.
+
+After a diagnostic identifies a safe static error document, “返回 WhatsApp 聊天页”
+offers manual recovery and revalidates the page before navigation. Proxy document
+testing also rejects recognizable HTTP-200 WhatsApp error HTML, without treating
+the same text embedded in scripts/comments as an error document.
+
+Validation includes bounded retry tests, stale SDK suppression, navigation/account
+switch checks, final-verification failure, and an offline native Chromium fixture
+for error documents, real chat text, editable drafts, iframe errors, same-URL
+navigation and diagnostic privacy. These are synthetic cases, not a reproduction
+with the user's live account/proxy. This source change is not yet packaged.

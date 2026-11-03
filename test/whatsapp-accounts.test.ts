@@ -1,3 +1,4 @@
+/* eslint-disable no-await-in-loop -- Sequential surface cases share SDK fixtures. */
 import {
   accountStatus,
   markAllWhatsAppRead,
@@ -6,6 +7,18 @@ import {
 } from '../src/features/accounts/whatsapp';
 
 describe('WhatsApp account adapter', () => {
+  it('does not report a stale SDK/socket as online when the rendered page is a known application error', async () => {
+    for (const state of [
+      'error-document',
+      'error-overlay',
+      'error-frame',
+      'unexpected-origin',
+    ])
+      await expect(readWhatsAppSnapshot(false, { state })).resolves.toEqual({
+        status: 'error',
+      });
+  });
+
   const originals = new Map<string, PropertyDescriptor | undefined>();
   let modules: Record<string, any>;
   let selectors: Set<string>;

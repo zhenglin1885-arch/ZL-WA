@@ -59,3 +59,25 @@ it('times out stalled document bodies and releases the deadline timer', async ()
     jest.useRealTimers();
   }
 });
+
+it('rejects a branded error document even when HTTP 200 and HTML are valid', async () => {
+  await expect(
+    probeProxyDocument(
+      async () =>
+        new Response(
+          '<!doctype html><html><body><h1>Sorry, something went wrong.</h1><p>WhatsApp</p></body></html>',
+          { headers: { 'content-type': 'text/html' } },
+        ),
+    ),
+  ).rejects.toThrow('临时错误页');
+});
+it('does not mistake error-message literals in scripts or comments for the returned page', async () => {
+  const html =
+    '<!doctype html><html><body><!--<h1>Sorry, something went wrong.</h1>--><script>var template="<h1>Sorry, something went wrong.</h1>";</script><div id="app"></div></body></html>';
+  await expect(
+    probeProxyDocument(
+      async () =>
+        new Response(html, { headers: { 'content-type': 'text/html' } }),
+    ),
+  ).resolves.toMatchObject({ documentChecked: true });
+});
