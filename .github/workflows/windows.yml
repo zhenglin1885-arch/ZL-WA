@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['test/7.3.6-20261102-6']
+    branches: ['release/7.3.7']
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
           node-version-file: .nvmrc
       - uses: pnpm/action-setup@v4
       - name: Validate release version
-        run: node -e "if (require('./package.json').version !== '7.3.6') throw Error('Version mismatch')"
+        run: node -e "if (require('./package.json').version !== '7.3.7') throw Error('Version mismatch')"
       - name: Install dependencies and Electron
         run: |
           pnpm install --frozen-lockfile
@@ -57,12 +57,12 @@ jobs:
           name: ZL-WA-Windows-x64
           path: out/*.exe
           if-no-files-found: error
-      - name: Create checksums and publish test package
+      - name: Create checksums and publish verification candidate
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $expected = @('ZL-WA-win-AutoSetup-7.3.6-x64.exe', 'ZL-WA-win-Portable-7.3.6-x64.exe') | Sort-Object
+          $expected = @('ZL-WA-win-AutoSetup-7.3.7-x64.exe', 'ZL-WA-win-Portable-7.3.7-x64.exe') | Sort-Object
           $actual = @(Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty Name | Sort-Object)
           if (($actual -join ',') -ne ($expected -join ',')) { throw 'Unexpected package set.' }
           $lines = Get-ChildItem out -Filter *.exe | ForEach-Object {
@@ -71,5 +71,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create test-7.3.6-20261102-6 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.6 test-6 (2026-11-02)' --notes 'Windows x64 test-6: warm aggregate conversation metadata and bounded avatar caches for faster entry/re-entry, expanded-folder-only selection, archive isolation, native conversation titles, folder context menus with edit/delete/scoped mark-read, and red unread indicators capped at 99+. Includes previous fixes. This prerelease does not update the stable channel.'
+          gh release create candidate-7.3.7-20261103 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 verification candidate' --notes-file docs/releases/7.3.7.md
           if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }
