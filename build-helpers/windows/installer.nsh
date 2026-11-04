@@ -6,6 +6,10 @@
   ReadRegStr $R8 ${ROOT} "${INSTALL_REGISTRY_KEY}" InstallLocation
   ${If} $R8 != ""
     GetFullPathName $R8 "$R8\."
+    StrCpy $R9 $R8 1 -1
+    ${If} $R9 == "\"
+      StrCpy $R8 $R8 -1
+    ${EndIf}
     StrLen $R9 "$R8\"
     StrCpy $0 "$EXEDIR\" $R9
     ${If} $0 == "$R8\"
@@ -62,6 +66,7 @@
       ${EndIf}
     ${EndIf}
     zl_stage_done:
+    ClearErrors
   !endif
 !macroend
 

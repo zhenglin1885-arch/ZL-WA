@@ -819,3 +819,49 @@ hidden-window repaint, suspend/close cancellation, hung probes, navigation and
 diagnostic privacy. These are synthetic tests; sleep/display-driver behavior on
 the user's Windows machine still needs verification. This source change is not
 yet packaged in the published 7.3.7 installers.
+
+### Windows upgrade process checks and installer staging (2026-11-04)
+
+The reported 7.3.7 upgrade showed both “app cannot be closed” and old-uninstaller
+exit code 2. The user confirmed running the setup from the old installation
+directory and succeeding when running it as administrator. Electron-builder's
+default checker treats every executable whose path starts with `$INSTDIR` as the
+application. This can include the setup itself and prefix-sibling directories;
+closing the application window cannot release that setup process. Separately,
+the application can remain in the tray, and ordinary quit confirmation could
+prevent an online-update exit. The screenshots do not identify a particular locked
+file or prove that every failure has the same cause.
+
+The NSIS include now stages a setup located inside a registered old installation
+into its temporary plugin directory before acquiring the installer mutex. The
+staged copy waits for the original process to exit before continuing. Installers
+outside the old directory retain synchronous completion/exit-code behavior. The
+new checker matches `ZL-WA.exe` at the exact target path, gives it a graceful
+update-specific quit request, then revalidates executable/start time before any
+bounded forced termination. It does not terminate another installation or a
+different executable by directory prefix/image name. PowerShell query/access
+failures are not treated as a successful negative check. The limited fallback
+only accepts a confirmed absence of the executable; it never kills by name.
+
+Before shutting down/uninstalling, an existing target directory is checked for
+write access. Insufficient rights produce a clear administrator-run instruction.
+Old-uninstaller failures still stop installation; they are not ignored or worked
+around by deleting files. Messages distinguish failure to start the uninstaller
+from a nonzero return code, and retain advice to preserve account data. The
+existing `/KEEP_APP_DATA` upgrade behavior is unchanged.
+
+Online updates mark an accepted install exit before `app.quit()`, bypassing only
+that exit's tray/confirmation behavior. A normal quit retains its preferences.
+An installer `--quit-for-update` request is handled before window focus/readiness;
+if no existing instance owns the lock, the quit-only invocation exits before
+loading accounts. Older versions still receive their supported `--quit` flag.
+
+Validation includes 780 unit tests (two existing skips), type/lint checks, both
+NSIS compile variants, and a Windows-2022 regression with the production NSIS
+3.0.4.1 compiler/plugins. Synthetic processes cover exact-path detection,
+background-process shutdown, unrelated executable/other installation preservation,
+spaces/apostrophes/Unicode in paths, setup inside the old directory, compatibility
+with the old directory scan, normal silent installation, and the new uninstaller.
+This is not a full upgrade of the reporting user's installation or an ACL/security
+software reproduction. The published 7.3.7 packages have not been replaced; these
+source changes need a newly built installer.
