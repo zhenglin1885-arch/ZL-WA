@@ -1,6 +1,6 @@
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
-!define ZL_GUARD_SCRIPT_PATH "${__FILEDIR__}/installer-process-guard.ps1"
+!define ZL_GUARD_SCRIPT_PATH "${__FILEDIR__}\installer-process-guard.ps1"
 
 # This runs BEFORE electron-builder's installer mutex and old uninstaller.
 # The original installer may be inside the installation directory. Exit it
