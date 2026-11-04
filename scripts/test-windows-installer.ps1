@@ -22,6 +22,7 @@ function Run-Guard([string]$mode, [string]$directory) {
     $start.EnvironmentVariables['ZL_WA_SETUP_EXE'] = 'ZL-WA.exe'
     $process = [Diagnostics.Process]::Start($start)
     if (-not $process.WaitForExit(25000)) { $process.Kill(); throw 'Guard exceeded its deadline' }
+    Write-Host "Guard mode=$mode exit=$($process.ExitCode)"
     return $process.ExitCode
 }
 
