@@ -2,6 +2,18 @@
 !include "FileFunc.nsh"
 !define ZL_GUARD_SCRIPT_PATH "${__FILEDIR__}\installer-process-guard.ps1"
 
+!macro ZL_STAGE_IF_INSIDE ROOT
+  ReadRegStr $R8 ${ROOT} "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $R8 != ""
+    GetFullPathName $R8 "$R8\."
+    StrLen $R9 "$R8\"
+    StrCpy $0 "$EXEDIR\" $R9
+    ${If} $0 == "$R8\"
+      Goto zl_stage
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 # This runs BEFORE electron-builder's installer mutex and old uninstaller.
 # The original installer may be inside the installation directory. Exit it
 # before a staged copy starts checking/removing old application files.
@@ -11,6 +23,13 @@
     ClearErrors
     ${GetOptions} $R7 "/ZL-STAGED" $R8
     ${If} ${Errors}
+      # Only move installers inside a registered old installation. Normal
+      # external/silent deployments keep synchronous completion and exit codes.
+      SetRegView 64
+      !insertmacro ZL_STAGE_IF_INSIDE HKCU
+      !insertmacro ZL_STAGE_IF_INSIDE HKLM
+      Goto zl_stage_done
+      zl_stage:
       InitPluginsDir
       ClearErrors
       CopyFiles /SILENT "$EXEPATH" "$PLUGINSDIR\ZL-WA-setup.exe"
@@ -42,6 +61,7 @@
         ${EndIf}
       ${EndIf}
     ${EndIf}
+    zl_stage_done:
   !endif
 !macroend
 

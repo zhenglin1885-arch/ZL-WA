@@ -71,6 +71,8 @@ class Fixture {
     $marker = Join-Path $root 'stage-result.txt'
     $env:ZL_WA_SMOKE_TARGET = $target
     $env:ZL_WA_SMOKE_MARKER = $marker
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\ZL-WA-Installer-Smoke')
+    $key.SetValue('InstallLocation', $target); $key.Dispose()
     $original = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru
     $owned += $original
     Assert-True ($original.WaitForExit(20000)) 'Original installer did not exit before the staged install'
@@ -83,6 +85,14 @@ class Fixture {
     $proof.originalInstallerExited = $true
     $proof.legacyDirectoryScanPasses = $true
     $proof.stagedInstallerGuardRuns = $true
+    Remove-Item -LiteralPath $marker
+    $external = Join-Path $root 'external-setup.exe'
+    Copy-Item -LiteralPath $setup -Destination $external
+    $normal = Start-Process -FilePath $external -ArgumentList '/S' -PassThru
+    $owned += $normal
+    Assert-True ($normal.WaitForExit(20000) -and $normal.ExitCode -eq 0) 'Normal silent installer did not finish synchronously'
+    Assert-True ((Test-Path -LiteralPath $marker) -and [IO.File]::ReadAllText($marker) -eq $external) 'External installer was unnecessarily detached'
+    $proof.normalSilentExitCodePreserved = $true
     Remove-Item -LiteralPath $marker
     $uninstallBuilder = Join-Path $target 'uninstall-builder.exe'
     & $compiler -INPUTCHARSET UTF8 /V2 /DBUILD_UNINSTALLER "/DPROJECT_DIR=$repo" "/DZL_PLUGINS=$plugins" "/DSMOKE_OUTPUT=$uninstallBuilder" (Join-Path $PSScriptRoot 'fixtures\windows-installer-smoke.nsi')
@@ -100,6 +110,7 @@ class Fixture {
     $proof | ConvertTo-Json | Write-Output
 } finally {
     foreach ($process in $owned) { try { if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit(2000) | Out-Null } } catch {} }
+    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree('Software\ZL-WA-Installer-Smoke', $false)
     Remove-Item Env:ZL_WA_SMOKE_TARGET, Env:ZL_WA_SMOKE_MARKER -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }

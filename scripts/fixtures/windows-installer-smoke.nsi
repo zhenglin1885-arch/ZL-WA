@@ -4,6 +4,7 @@ SilentInstall silent
 Name "ZL-WA installer smoke"
 OutFile "${SMOKE_OUTPUT}"
 !addplugindir /x86-unicode "${ZL_PLUGINS}"
+!define INSTALL_REGISTRY_KEY "Software\ZL-WA-Installer-Smoke"
 !define APP_EXECUTABLE_FILENAME "ZL-WA.exe"
 !include "${PROJECT_DIR}\build-helpers\windows\installer.nsh"
 !insertmacro customHeader
