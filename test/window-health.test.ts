@@ -7,16 +7,25 @@ import {
   installWindowRecovery,
   recordWindowHealth,
   readWindowHealth,
+  inspectWindowSurface,
 } from '../src/electron/windowHealth';
 
 function fixture() {
   const contents: any = new EventEmitter();
   contents.isDestroyed = () => false;
   contents.reload = jest.fn();
+  contents.invalidate = jest.fn();
+  contents.executeJavaScript = jest.fn(async () => ({
+    state: 'root-present',
+    documentState: 'complete',
+  }));
   const window: any = new EventEmitter();
   window.webContents = contents;
   window.isDestroyed = () => false;
-  const hooks = { record: jest.fn(), quitting: () => false };
+  window.isVisible = jest.fn(() => true);
+  window.isMinimized = () => false;
+  const resumeEvents = new EventEmitter();
+  const hooks = { record: jest.fn(), quitting: () => false, resumeEvents };
   const dispose = installWindowRecovery(window, hooks);
   return { window, contents, hooks, dispose };
 }
@@ -55,6 +64,72 @@ it('suppresses repeated crash/reload cycles until a stable period has elapsed', 
   crash();
   jest.advanceTimersByTime(1000);
   expect(contents.reload).toHaveBeenCalledTimes(2);
+  dispose();
+});
+it('requests a repaint after resume without reloading or retrying account work, then records shell state', async () => {
+  const { contents, hooks, dispose } = fixture();
+  hooks.resumeEvents.emit('resume');
+  await jest.advanceTimersByTimeAsync(4000);
+  expect(contents.invalidate).toHaveBeenCalledTimes(1);
+  expect(contents.reload).not.toHaveBeenCalled();
+  expect(hooks.record).toHaveBeenCalledWith({
+    event: 'renderer-surface',
+    surface: { state: 'root-present', documentState: 'complete' },
+  });
+  dispose();
+  expect(hooks.resumeEvents.listenerCount('resume')).toBe(0);
+});
+it('defers repainting a hidden window until shown and cancels pending work on suspend/close', async () => {
+  const { contents, window, hooks, dispose } = fixture();
+  window.isVisible.mockReturnValue(false);
+  hooks.resumeEvents.emit('resume');
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(contents.invalidate).not.toHaveBeenCalled();
+  window.isVisible.mockReturnValue(true);
+  window.emit('show');
+  expect(contents.invalidate).toHaveBeenCalledTimes(1);
+  hooks.resumeEvents.emit('suspend');
+  await jest.advanceTimersByTimeAsync(4000);
+  expect(contents.executeJavaScript).not.toHaveBeenCalled();
+  hooks.resumeEvents.emit('resume');
+  dispose();
+  await jest.advanceTimersByTimeAsync(4000);
+  expect(contents.invalidate).toHaveBeenCalledTimes(1);
+});
+it('exports only fixed shell state even if a renderer returns extra private fields', async () => {
+  const { contents, window, dispose } = fixture();
+  contents.executeJavaScript.mockResolvedValue({
+    state: 'root-empty',
+    documentState: 'complete',
+    text: 'private customer',
+    url: 'private URL',
+  });
+  expect(await inspectWindowSurface(window)).toEqual({
+    state: 'root-empty',
+    documentState: 'complete',
+  });
+  contents.executeJavaScript.mockResolvedValue({
+    state: 'private message',
+    documentState: 'complete',
+  });
+  expect(await inspectWindowSurface(window)).toEqual({ state: 'unavailable' });
+  dispose();
+});
+it('bounds a hung shell probe and removes timers/listeners', async () => {
+  const { contents, window, dispose } = fixture();
+  contents.executeJavaScript.mockImplementation(() => new Promise(() => {}));
+  const pending = inspectWindowSurface(window);
+  await jest.advanceTimersByTimeAsync(3000);
+  expect(await pending).toEqual({ state: 'timed-out' });
+  expect(contents.listenerCount('did-start-loading')).toBe(0);
+  expect(jest.getTimerCount()).toBe(0);
+  dispose();
+});
+it('does not attribute a shell probe from before a reload to the current document', async () => {
+  const { contents, window, dispose } = fixture();
+  const pending = inspectWindowSurface(window);
+  contents.emit('did-start-loading');
+  expect(await pending).toEqual({ state: 'page-changed' });
   dispose();
 });
 it('does not reload a healthy, temporarily unresponsive, intentionally killed or exiting renderer', () => {

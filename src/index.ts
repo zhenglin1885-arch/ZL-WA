@@ -346,6 +346,7 @@ const createWindow = () => {
   installWindowRecovery(mainWindow, {
     record: recordHealth,
     quitting: () => willQuitApp || overrideAppQuitForUpdate,
+    resumeEvents: powerMonitor,
   });
   const processGone = (_event: unknown, details: Electron.Details) => {
     if (details.type === 'GPU')
@@ -358,6 +359,15 @@ const createWindow = () => {
   };
   const suspended = () => recordHealth({ event: 'system-suspend' });
   const resumed = () => recordHealth({ event: 'system-resume' });
+  const reloadRequested = (event: Electron.IpcMainEvent, reason: unknown) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      event.senderFrame !== mainWindow?.webContents.mainFrame ||
+      reason !== 'system-resume'
+    )
+      return;
+    recordHealth({ event: 'renderer-reload-requested', reason });
+  };
   const rendererError = (event: Electron.IpcMainEvent, details: unknown) => {
     if (
       event.sender !== mainWindow?.webContents ||
@@ -398,11 +408,13 @@ const createWindow = () => {
   powerMonitor.on('suspend', suspended);
   powerMonitor.on('resume', resumed);
   ipcMain.on('zl-window-renderer-error', rendererError);
+  ipcMain.on('zl-window-reload-requested', reloadRequested);
   mainWindow.once('closed', () => {
     app.removeListener('child-process-gone', processGone);
     powerMonitor.removeListener('suspend', suspended);
     powerMonitor.removeListener('resume', resumed);
     ipcMain.removeListener('zl-window-renderer-error', rendererError);
+    ipcMain.removeListener('zl-window-reload-requested', reloadRequested);
   });
 
   enableWebContents(mainWindow.webContents);

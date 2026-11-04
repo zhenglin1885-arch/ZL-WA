@@ -325,7 +325,10 @@ export default class AppStore extends TypedStore {
       enabled: () => this.stores.settings.app.reloadAfterResume,
       thresholdMinutes: () => this.stores.settings.app.reloadAfterResumeTime,
       online: () => this.isOnline,
-      reload: () => window.location.reload(),
+      reload: () => {
+        ipcRenderer.send('zl-window-reload-requested', 'system-resume');
+        window.location.reload();
+      },
     });
     const suspended = () => {
       this.timeSuspensionStart = moment();

@@ -31,7 +31,7 @@ try {
       'https',
       () =>
         new Response(
-          '<!doctype html><html><body><div id="root">ready</div></body></html>',
+          '<!doctype html><html><body><div id="root"><main>ready</main></div></body></html>',
           { headers: { 'Content-Type': 'text/html' } },
         ),
     );
@@ -45,6 +45,7 @@ try {
       },
     });
     const records = [];
+    const resumeEvents = new (req('node:events').EventEmitter)();
     let dispose;
     let timer;
     try {
@@ -55,6 +56,7 @@ try {
       dispose = module.exports.installWindowRecovery(win, {
         record: row => records.push(row),
         quitting: () => false,
+        resumeEvents,
       });
       const loaded = new Promise(resolve => {
         win.webContents.once('did-finish-load', resolve);
@@ -81,6 +83,30 @@ try {
         throw new Error(
           'Crash recovery or original session preservation failed',
         );
+      await win.webContents.executeJavaScript(
+        "document.querySelector('#root').replaceChildren();true",
+      );
+      const empty = await module.exports.inspectWindowSurface(win);
+      if (empty.state !== 'root-empty')
+        throw new Error('Empty application root was reported as ready');
+      await win.webContents.executeJavaScript(
+        "document.querySelector('#root').innerHTML='<main>ready</main>';true",
+      );
+      win.show();
+      resumeEvents.emit('resume');
+      await new Promise(resolve => {
+        setTimeout(resolve, 3200);
+      });
+      if (
+        !records.some(row => row.event === 'renderer-repaint-requested') ||
+        !records.some(
+          row =>
+            row.event === 'renderer-surface' &&
+            row.surface.state === 'root-present',
+        ) ||
+        records.filter(row => row.event === 'renderer-reload').length !== 1
+      )
+        throw new Error('Resume repaint did not preserve the live renderer');
       const boundary = await win.webContents.executeJavaScript(
         `(${async function verifyBoundary(base) {
           const React = require(`${base}/node_modules/react`);
@@ -166,6 +192,8 @@ try {
         throw new Error('Native recovery button click failed');
       return {
         nativeRendererCrashRecovered: true,
+        resumeRepaintWithoutReload: true,
+        emptyRootDetected: true,
         originalStoragePreserved: true,
         noReloadLoop: true,
         rootReactFallbackVisible: true,

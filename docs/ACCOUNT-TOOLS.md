@@ -783,3 +783,39 @@ switch checks, final-verification failure, and an offline native Chromium fixtur
 for error documents, real chat text, editable drafts, iframe errors, same-URL
 navigation and diagnostic privacy. These are synthetic cases, not a reproduction
 with the user's live account/proxy. This source change is not yet packaged.
+
+### Window surface checks after system resume (2026-11-04)
+
+The supplied diagnostic ends with suspend at 06:26:10 UTC, resume at 10:53:22 UTC,
+and `renderer-loaded` 11.4 seconds later while the user still saw a blank window.
+There is no recorded renderer/GPU-process exit or React-boundary exception. Long
+suspends already request a reload through the user's existing `reloadAfterResume`
+preference. HTML load completion alone does not establish that React mounted or
+Windows painted the frame. The file says version 7.3.6 although the user reports
+exporting it from 7.3.7. This discrepancy requires identifying the running build;
+it does not disprove reproduction in both versions. The evidence does not establish
+a GPU/driver failure or a specific bootstrap exception.
+
+Resume now requests a bounded repaint through Electron's `invalidate()` API. A
+recently resumed window also repaints after its main document loads or the hidden
+window is shown/restored. This does not navigate/reload the window, wake or reload
+accounts, change GPU settings, clear sessions, or retry sends. The existing
+optional resume reload stays under its existing setting. Closing, quitting or
+suspending cancels scheduled work; no periodic monitor is installed.
+
+After load/resume and during diagnostic export, a three-second bounded probe
+checks only the app's `#root`: missing, empty, hidden, or present. A present DOM
+root is deliberately not called a healthy painted window. Navigation during a
+probe invalidates its result. It neither enters WhatsApp frames nor reads text,
+URLs, titles or identifiers. Export adds the sample time, build hash/branch,
+Electron/Chromium versions, hardware acceleration/GPU feature status, window
+visibility/minimize/focus flags, and the live shell result. Explicit resume and
+tray reload requests are recorded separately from load completion.
+
+Validation: 778 unit tests passed (two existing skips), type/lint checks passed,
+and native Chromium verified crash recovery/session preservation, empty-root
+detection, resume repaint without reload, and the React fallback. Tests also cover
+hidden-window repaint, suspend/close cancellation, hung probes, navigation and
+diagnostic privacy. These are synthetic tests; sleep/display-driver behavior on
+the user's Windows machine still needs verification. This source change is not
+yet packaged in the published 7.3.7 installers.

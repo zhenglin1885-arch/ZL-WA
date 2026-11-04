@@ -1,6 +1,6 @@
 // ZL-WA modification: independent application identity; upstream functionality retained.
 import { join } from 'node:path';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import {
   BrowserWindow,
@@ -15,7 +15,11 @@ import {
   systemPreferences,
 } from 'electron';
 import macosVersion from 'macos-version';
-import { readWindowHealth } from '../electron/windowHealth';
+import {
+  inspectWindowSurface,
+  readWindowHealth,
+  recordWindowHealth,
+} from '../electron/windowHealth';
 
 import { isLinux, isMac, isWindows } from '../environment';
 import { getTranslatedText } from '../helpers/i18n-helpers';
@@ -124,6 +128,13 @@ export default class TrayIcon {
             window.webContents.isDestroyed()
           )
             return;
+          recordWindowHealth(
+            join(app.getPath('userData'), 'window-health.json'),
+            {
+              event: 'renderer-reload-requested',
+              reason: 'manual-tray',
+            },
+          );
           window.webContents.reload();
           window.show();
         },
@@ -138,12 +149,51 @@ export default class TrayIcon {
               filters: [{ name: 'JSON', extensions: ['json'] }],
             });
             if (result.canceled || !result.filePath) return;
+            const window = tray.mainWindow;
+            const surface = window
+              ? await inspectWindowSurface(window)
+              : { state: 'unavailable' };
+            let build: { gitHashShort?: string; gitBranch?: string } = {};
+            try {
+              const info = JSON.parse(
+                await readFile(join(__dirname, '../buildInfo.json'), 'utf8'),
+              );
+              build = {
+                gitHashShort: /^[\da-f]{7,40}$/.test(info.gitHashShort)
+                  ? info.gitHashShort
+                  : undefined,
+                gitBranch:
+                  typeof info.gitBranch === 'string' &&
+                  /^[\w./-]{1,100}$/.test(info.gitBranch)
+                    ? info.gitBranch
+                    : undefined,
+              };
+            } catch {
+              /* Optional build metadata is unavailable in some development launches. */
+            }
             await writeFile(
               result.filePath,
               JSON.stringify(
                 {
                   version: app.getVersion(),
                   platform: process.platform,
+                  sampledAt: new Date().toISOString(),
+                  build,
+                  browser: {
+                    electron: process.versions.electron,
+                    chromium: process.versions.chrome,
+                  },
+                  hardwareAcceleration: app.isHardwareAccelerationEnabled(),
+                  gpuFeatures: app.getGPUFeatureStatus(),
+                  window:
+                    window && !window.isDestroyed()
+                      ? {
+                          visible: window.isVisible(),
+                          minimized: window.isMinimized(),
+                          focused: window.isFocused(),
+                        }
+                      : null,
+                  surface,
                   events: readWindowHealth(
                     join(app.getPath('userData'), 'window-health.json'),
                   ),
