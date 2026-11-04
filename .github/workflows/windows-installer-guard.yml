@@ -1,0 +1,33 @@
+name: ZL-WA Windows installer regression
+
+on:
+  push:
+    branches: ['fix/windows-installer-upgrade-20261104']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the production NSIS compiler and plugins
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+            $file = Join-Path $root ($item + '.7z')
+            Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+            & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+          }
+          "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify process isolation and installation from the old app directory
+        shell: powershell
+        run: ./scripts/test-windows-installer.ps1

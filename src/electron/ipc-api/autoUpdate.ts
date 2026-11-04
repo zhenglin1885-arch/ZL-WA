@@ -2,6 +2,7 @@
 import { app, ipcMain, net, shell, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import GitHubUpdates from '../GitHubUpdates';
+import { prepareUpdateShutdown } from '../updateShutdown';
 
 export default ({
   mainWindow,
@@ -17,6 +18,7 @@ export default ({
     launch: async path => {
       const error = await shell.openPath(path);
       if (error) throw new Error('无法启动安装包，请重试');
+      prepareUpdateShutdown();
       app.quit();
     },
     fetch: (url, options) => net.fetch(url, options),

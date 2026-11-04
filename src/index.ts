@@ -48,6 +48,10 @@ import {
 import { ifUndefined } from './jsUtils';
 
 import Settings from './electron/Settings';
+import {
+  isUpdateShutdown,
+  prepareUpdateShutdown,
+} from './electron/updateShutdown';
 import handleDeepLink, { getDeepLinkFromArgs } from './electron/deepLinking';
 import './electron/exception';
 import ipcApi from './electron/ipc-api';
@@ -182,6 +186,11 @@ const liftSingleInstanceLock = retrieveSettingValue(
 const gotTheLock = liftSingleInstanceLock
   ? true
   : app.requestSingleInstanceLock();
+// An installer quit request must not start a fresh set of accounts if the old
+// process already exited. Existing instances receive it via second-instance.
+if (isWindows && gotTheLock && process.argv.includes('--quit-for-update')) {
+  app.exit(0);
+}
 if (gotTheLock) {
   try {
     cacheLocation = new CacheLocation(
@@ -199,6 +208,11 @@ if (gotTheLock) {
     }
   }
   app.on('second-instance', (_event, argv) => {
+    if (isWindows && argv.includes('--quit-for-update')) {
+      prepareUpdateShutdown();
+      app.quit();
+      return;
+    }
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (!mainWindow.isVisible()) {
@@ -1073,6 +1087,11 @@ appEvents.on('install-update', () => {
 });
 
 app.on('before-quit', event => {
+  if (isUpdateShutdown()) {
+    willQuitApp = true;
+    overrideAppQuitForUpdate = true;
+    return;
+  }
   const yesButtonIndex = 0;
   let selection = yesButtonIndex;
   if (
