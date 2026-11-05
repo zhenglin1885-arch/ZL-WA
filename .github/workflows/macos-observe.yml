@@ -1,4 +1,4 @@
-name: Stage verified macOS Intel package
+name: Publish verified macOS Intel 7.3.7
 on:
   push:
     branches: ['observe/mac-7.3.7']
@@ -6,34 +6,49 @@ permissions:
   actions: read
   contents: write
 jobs:
-  stage:
+  publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: ZL-WA-macOS-x64
-          run-id: 42045166936
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: out
-      - name: Verify Intel build and stage downloads for inspection
+          persist-credentials: false
+      - name: Verify exact successful Intel source and unused formal tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936" > run.json
-          python3 - <<'PY'
-          import json,hashlib
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/candidate-mac-x64-7.3.7-20261105-1" > tag.json
+          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/mac-v7.3.7" > existing.json
+          node <<'JS'
+          const assert=require('node:assert/strict'),r=require('./run.json'),t=require('./tag.json');
+          const commit='83d97793213ecd999d8c3867bc6be9b76b3b35cc';
+          assert.equal(r.head_sha,commit);assert.equal(r.conclusion,'success');assert.equal(r.status,'completed');
+          assert.equal(t.object.type,'commit');assert.equal(t.object.sha,commit);
+          assert.equal(require('./existing.json').length,0,'Formal Mac release already exists');
+          JS
+      - name: Download and verify exact inspected Intel files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir out
+          gh release download candidate-mac-x64-7.3.7-20261105-1 --repo "$GITHUB_REPOSITORY" --dir out
+          python3 - <<'PYTHON'
+          import hashlib
           from pathlib import Path
-          root=Path('out');r=json.loads((root/'verification-x64.json').read_text());run=json.loads(Path('run.json').read_text())
-          commit='83d97793213ecd999d8c3867bc6be9b76b3b35cc'
-          assert run['head_sha']==commit and run['conclusion']=='success'
-          assert r['commit']==commit and r['arch']=='x64' and r['version']=='7.3.7'
-          assert r['signatureValid'] and r['zipDmgPayloadIdentical'] and r['startup']['nativePackagedStartup']
-          assert r['startup']['localSessionReady'] and r['startup']['settingsLoaded'] and r['startup']['servicesLoaded'] and not r['startup']['errorFallback']
-          lines=[]
-          for f in r['files']:
-            assert hashlib.sha256((root/f['name']).read_bytes()).hexdigest()==f['sha256']
-            lines.append(f"{f['sha256']}  {f['name']}")
-          (root/'SHA256SUMS-macOS-7.3.7-x64.txt').write_text('\n'.join(sorted(lines))+'\n')
-          PY
-          gh release create candidate-mac-x64-7.3.7-20261105-1 out/*.dmg out/*.zip out/verification-x64.json out/SHA256SUMS-macOS-7.3.7-x64.txt --repo "$GITHUB_REPOSITORY" --target 83d97793213ecd999d8c3867bc6be9b76b3b35cc --prerelease --latest=false --title 'ZL-WA macOS Intel 7.3.7 verification candidate' --notes 'Intel bundle passed native startup, DMG integrity and signature validation. Ad-hoc signed, not Apple notarized. Staged for payload inspection before formal publication.'
+          root=Path('out');expected={"ZL-WA-macOS-7.3.7-x64.dmg": "abb2fdaf4b437208f53aa89144e8f62eb93a316ff2fe88fb9aa8784df21a6e6d", "ZL-WA-macOS-7.3.7-x64.zip": "e58a820bef9c53309cc017dff9a887e8ee453e5bb996e4ef68fa0a5784a5d428", "verification-x64.json": "6b2e49831d48011b717c078161940b6bb184cc0635fd7584689bc251a99c2cf2", "SHA256SUMS-macOS-7.3.7-x64.txt": "6403292e9ae2998ca9af88da61f4de0deb144c0ccfbffc223c8f9d6accad1520"}
+          assert {p.name for p in root.iterdir()}==set(expected)
+          for name,digest in expected.items():assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          PYTHON
+          (cd out && sha256sum --check SHA256SUMS-macOS-7.3.7-x64.txt)
+      - name: Publish formal Intel assets and report ARM progress
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create mac-v7.3.7 out/*.dmg out/*.zip out/verification-x64.json out/SHA256SUMS-macOS-7.3.7-x64.txt --repo "$GITHUB_REPOSITORY" --target 83d97793213ecd999d8c3867bc6be9b76b3b35cc --latest=false --title 'ZL-WA 7.3.7 for macOS' --notes-file docs/releases/mac-7.3.7.md
+          gh release view mac-v7.3.7 --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets > formal.json
+          node -e "const r=require('./formal.json');if(r.isDraft||r.isPrerelease||r.assets.length!==4)throw Error('Invalid formal release');console.log('::notice::Formal macOS Intel 7.3.7 is published; ad-hoc signed, not Apple notarized.')"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/jobs?per_page=100" > jobs.json
+          node -e 'for(const j of require("./jobs.json").jobs)console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||""}; ${j.steps?.filter(s=>s.status==="in_progress").map(s=>s.name).join(", ")||""}; job ${j.id}`)'
