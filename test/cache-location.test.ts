@@ -1,5 +1,6 @@
 import {
   mkdtempSync,
+  realpathSync,
   mkdirSync,
   writeFileSync,
   readFileSync,
@@ -22,7 +23,7 @@ describe('browser data location migration', () => {
   let root: string;
   let profile: string;
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'zl-cache-test-'));
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'zl-cache-test-')));
     profile = join(root, 'profile');
     mkdirSync(profile);
     mkdirSync(join(profile, 'Partitions', 'account', 'IndexedDB'), {
@@ -169,7 +170,7 @@ describe('installed updates and explicit cache recovery', () => {
   let profile: string;
   let installation: string;
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'zl-cache-recovery-'));
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'zl-cache-recovery-')));
     profile = join(root, 'profile');
     installation = join(root, 'Software', 'ZL-WA');
     mkdirSync(join(profile, 'Partitions', 'account', 'IndexedDB'), {
