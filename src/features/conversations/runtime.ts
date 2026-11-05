@@ -94,18 +94,26 @@ export class ConversationRuntime {
     this.activate = activate;
   }
 
+  private ready(service: Account | undefined) {
+    if (!service) return false;
+    const profile = service.accountSnapshot;
+    return (
+      service.recipe.id === 'whatsapp' &&
+      service.isEnabled &&
+      !service.isHibernating &&
+      !service.isLoading &&
+      !service.isError &&
+      Boolean(service.webview) &&
+      profile?.status === 'online' &&
+      Boolean(profile.ownerId || profile.ownerIds?.some(Boolean))
+    );
+  }
+
   private sourceCurrent(
     service: Account,
     source = this.sources.get(service.id),
   ) {
-    if (
-      service.recipe.id !== 'whatsapp' ||
-      !source ||
-      service.webview !== source.view ||
-      !service.isEnabled ||
-      service.isHibernating ||
-      service.isLoading
-    )
+    if (!this.ready(service) || !source || service.webview !== source.view)
       return false;
     const profile = service.accountSnapshot;
     if (profile?.status === 'logged-out' || profile?.status === 'loading')
@@ -153,14 +161,7 @@ export class ConversationRuntime {
     if (service.recipe.id !== 'whatsapp') return;
     if (this.sources.has(service.id) && !this.sourceCurrent(service))
       this.invalidate(service.id);
-    if (
-      !service.isEnabled ||
-      service.isHibernating ||
-      service.isLoading ||
-      !service.webview ||
-      service.accountSnapshot?.status !== 'online'
-    )
-      return;
+    if (!this.ready(service)) return;
     if (Date.now() - (this.lastReadAt.get(service.id) || 0) < 30_000) return;
     if (Date.now() - (this.lastWarmAttempt.get(service.id) || 0) < 30_000)
       return;
@@ -182,10 +183,7 @@ export class ConversationRuntime {
         const service = this.warmQueue.values().next().value!;
         this.warmQueue.delete(service.id);
         if (
-          service.isEnabled &&
-          !service.isHibernating &&
-          service.webview &&
-          service.accountSnapshot?.status === 'online' &&
+          this.ready(service) &&
           Date.now() - (this.lastReadAt.get(service.id) || 0) >= 30_000
         ) {
           await this.read(service, generation);
@@ -235,6 +233,7 @@ export class ConversationRuntime {
   }
 
   private read(service: Account, generation: number) {
+    if (!this.ready(service)) return Promise.resolve();
     const existing = this.readJobs.get(service.id);
     if (existing) return existing;
     const revision = this.revisions.get(service.id) || 0;
@@ -271,6 +270,7 @@ export class ConversationRuntime {
       generation === this.generation &&
       revision === (this.revisions.get(service.id) || 0) &&
       service.webview === view &&
+      this.ready(service) &&
       this.stores.services.all.includes(service);
     if (!valid()) return;
     try {
@@ -368,7 +368,7 @@ export class ConversationRuntime {
       else if (!service.webview)
         this.errors.set(service.id, '等待账号页面载入');
     }
-    const all = eligible.filter(s => !s.isHibernating && s.webview);
+    const all = eligible.filter(service => this.ready(service));
     const ids = new Set(all.map(s => s.id));
     for (const id of this.snapshots.keys())
       if (!ids.has(id)) this.clearAccount(id);
@@ -563,11 +563,7 @@ export class ConversationRuntime {
           .executeJavaScript(`(${setAggregateChatMode.toString()})(false)`)
           .catch(() => {});
       }
-    if (
-      this.active &&
-      current &&
-      this.stores.services.active?.recipe.id === 'whatsapp'
-    ) {
+    if (this.active && current && this.ready(this.stores.services.active)) {
       this.layoutViews.add(current);
       await this.bounded(
         current.executeJavaScript(

@@ -29,15 +29,16 @@ describe('aggregate account isolation and lifecycle', () => {
     name: id,
     recipe: { id: 'whatsapp' },
     isEnabled: true,
-    accountSnapshot: { nickname: id },
+    accountSnapshot: { nickname: id, status: 'online', ownerId: `${id}@c.us` },
     webview: {
-      executeJavaScript: jest.fn(async (code: string) =>
-        code.includes('index:')
-          ? {
-              context: { owners: [`${id}@c.us`] },
-              index: { rows: [item], contactsReady: true },
-            }
-          : true,
+      executeJavaScript: jest.fn(
+        async (code: string): Promise<unknown> =>
+          code.includes('index:')
+            ? {
+                context: { owners: [`${id}@c.us`] },
+                index: { rows: [item], contactsReady: true },
+              }
+            : true,
       ),
     },
   });
@@ -61,6 +62,89 @@ describe('aggregate account isolation and lifecycle', () => {
     (runtime as any).active = true;
   });
   afterEach(() => runtime.dispose());
+  it('skips unready accounts without spending guest-read slots or waiting for their timeouts, and includes them once ready', async () => {
+    jest.useFakeTimers();
+    try {
+      const pending = service('pending');
+      pending.accountSnapshot.status = 'loading';
+      const unidentified = service('unidentified');
+      unidentified.accountSnapshot.ownerId = '';
+      const sleeping = { ...service('sleeping'), isHibernating: true };
+      const loading = { ...service('loading'), isLoading: true };
+      const failed = { ...service('failed'), isError: true };
+      const loggedOut = service('logged-out');
+      loggedOut.accountSnapshot.status = 'logged-out';
+      const skipped = [
+        pending,
+        unidentified,
+        sleeping,
+        loading,
+        failed,
+        loggedOut,
+      ];
+      skipped.forEach(account =>
+        account.webview.executeJavaScript.mockImplementation(
+          () => new Promise(() => {}),
+        ),
+      );
+      const ready = service('ready');
+      stores.services.all = [...skipped, ready];
+      stores.services.active = pending;
+      runtime.warm(pending as any);
+      runtime.warm(unidentified as any);
+      const refreshing = runtime.refresh();
+      await jest.advanceTimersByTimeAsync(0);
+      expect(runtime.refreshing).toBe(false);
+      await refreshing;
+      expect(runtime.total).toBe(1);
+      expect(runtime.rows.map(row => row.accountId)).toEqual(['ready']);
+      skipped.forEach(account =>
+        expect(account.webview.executeJavaScript).not.toHaveBeenCalled(),
+      );
+      expect(stores.services._awake).not.toHaveBeenCalled();
+      expect(ensureBulkLibrary).not.toHaveBeenCalled();
+
+      pending.accountSnapshot.status = 'online';
+      pending.webview.executeJavaScript.mockResolvedValue({
+        context: { owners: ['pending@c.us'] },
+        index: { rows: [item], contactsReady: true },
+      });
+      await runtime.refresh();
+      expect(runtime.rows.map(row => row.accountId)).toEqual([
+        'pending',
+        'ready',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('discards an in-flight result when its account starts loading, and does not bind notes or fetch avatars', async () => {
+    const account = { ...service('A'), isLoading: false };
+    stores.services.all = [account];
+    let finish!: (value: any) => void;
+    account.webview.executeJavaScript.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+    );
+    const refreshing = runtime.refresh();
+    account.isLoading = true;
+    finish(indexedWithUnread(3));
+    await refreshing;
+    expect(runtime.rows).toHaveLength(0);
+    expect(ipcRenderer.invoke).not.toHaveBeenCalled();
+  });
+  it('retains usable conversations when an online account is only finishing contact synchronization', async () => {
+    stores.services.all = [service('A')];
+    stores.services.all[0].webview.executeJavaScript.mockResolvedValue({
+      context: { owners: ['A@c.us'] },
+      index: { rows: [item], contactsReady: false },
+    });
+    await runtime.refresh();
+    expect(runtime.rows).toHaveLength(1);
+    expect(runtime.errors.get('A')).toContain('通讯录仍在同步');
+  });
   it('warms before opening, reuses the same store cache and throttles background reads', async () => {
     jest.useFakeTimers();
     try {

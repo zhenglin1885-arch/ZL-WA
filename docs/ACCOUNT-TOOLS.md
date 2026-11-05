@@ -890,3 +890,29 @@ Chromium sidebar regression passed, including both themes, local/fallback/group
 titles, hidden sync details, persistent/check-box highlights, 604-row
 virtualization, warm cache entry, archive filters, group create/rename/delete,
 scoped mark-read, selection and move dialogs. Source only; not yet packaged.
+
+### Read only ready accounts in the aggregate view (2026-11-05)
+
+Sleeping accounts were already excluded from aggregate scans, but a created
+webview with a loading/logged-out/unidentified profile could still occupy a reader
+until its guest timeout. Refresh, background warmup, queued-read validation,
+cached-row/avatar visibility and active-layout installation now require an
+enabled WhatsApp account with a nonloading/nonerror view, online status, and a
+known owner ID/alias. A result finishing after the account becomes unready is
+discarded before binding notes or storing rows. No pending account is polled by
+an additional timer or awakened automatically. Existing normal account polls
+and aggregate refreshes include it when it becomes ready again.
+
+An online, identified account whose conversations are already readable remains
+usable while the rest of its contacts finish synchronizing; a partial contact
+index is not treated as an unavailable account. Group membership, local remarks,
+native conversation IDs, manual opening/sending and the hidden sync-status UI
+remain unchanged.
+
+Validation: a blocked-reader fixture confirms that six unready accounts receive
+no guest calls and do not delay a ready account, and that a pending account is
+included after readiness changes. It also covers mid-read loading and partial
+contact synchronization. All 783 unit tests passed (two existing skips), type/
+lint checks passed, and the native Chromium aggregate sidebar regression passed.
+These are synthetic checks, not a benchmark on the user's 25-account machine.
+Source only; not yet packaged.
