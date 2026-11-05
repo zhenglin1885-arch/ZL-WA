@@ -33,8 +33,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: arm64
-            runner: macos-26
           - arch: x64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
@@ -136,7 +134,12 @@ jobs:
           actual=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
           assert actual=={'arm64':'arm64','x64':'x86_64'}[arch],actual
           PY
-          node scripts/verify-macos-package.mjs "$app/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json"
+          installed='/Applications/ZL-WA.app'
+          test ! -e "$installed"
+          ditto "$app" "$installed"
+          cmp "$app/Contents/Resources/app.asar" "$installed/Contents/Resources/app.asar"
+          codesign --verify --deep --strict "$installed"
+          node scripts/verify-macos-package.mjs "$installed/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json"
           python3 - "$arch" <<'PY'
           import json,os,sys,hashlib
           from pathlib import Path
@@ -149,6 +152,7 @@ jobs:
           PY
           hdiutil detach "$RUNNER_TEMP/dmg-app"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ZL-WA-macOS-${{ matrix.arch }}
           path: |
@@ -163,33 +167,3 @@ jobs:
           echo "Architecture: ${{ matrix.arch }}; signing: ${ZL_MAC_SIGN_MODE:-unknown}; notarized: ${ZL_MAC_NOTARIZED:-false}" >> "$GITHUB_STEP_SUMMARY"
           if [ -f mac-build.log ]; then tail -60 mac-build.log >> "$GITHUB_STEP_SUMMARY"; fi
 
-  candidate:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: ZL-WA-macOS-*
-          path: out
-          merge-multiple: true
-      - name: Verify architecture set and publish macOS candidate
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import json,hashlib,os
-          root=Path('out');reports=[json.loads((root/f'verification-{arch}.json').read_text()) for arch in ['arm64','x64']]
-          lines=[]
-          for r in reports:
-            assert r['commit']==os.environ['GITHUB_SHA'] and r['startup']['nativePackagedStartup'] and r['version']=='7.3.7'
-            for f in r['files']:
-              assert hashlib.sha256((root/f['name']).read_bytes()).hexdigest()==f['sha256']
-              lines.append(f"{f['sha256']}  {f['name']}")
-          (root/'SHA256SUMS-macOS-7.3.7.txt').write_text('\n'.join(sorted(lines))+'\n')
-          (root/'macOS-7.3.7-verification.json').write_text(json.dumps(reports,indent=2)+'\n')
-          PY
-          gh release create candidate-mac-7.3.7-20261105-2 out/*.dmg out/*.zip out/SHA256SUMS-macOS-7.3.7.txt out/macOS-7.3.7-verification.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA macOS 7.3.7 verification candidate' --notes 'Native Apple Silicon and Intel builds. Awaiting package verification before adding macOS assets to the 7.3.7 release. Signing/notarization status is recorded in the verification JSON.'
