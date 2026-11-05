@@ -4,8 +4,21 @@ on:
     branches: ['publish/mac-7.3.7']
 permissions:
   contents: read
+concurrency:
+  group: zl-wa-macos-alternative-arm
+  cancel-in-progress: true
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel obsolete uninstalled-app verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/42043644756/cancel" || true
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -16,12 +29,12 @@ jobs:
     timeout-minutes: 60
     env:
       CI: true
-      ZL_SOURCE_COMMIT: 327fa29031bdf06ee9aff0addeb45029eb230f9f
+      ZL_SOURCE_COMMIT: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          ref: 327fa29031bdf06ee9aff0addeb45029eb230f9f
+          ref: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -113,7 +126,12 @@ jobs:
           actual=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
           assert actual=={'arm64':'arm64','x64':'x86_64'}[arch],actual
           PY
-          node scripts/verify-macos-package.mjs "$app/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json"
+          installed='/Applications/ZL-WA.app'
+          test ! -e "$installed"
+          ditto "$app" "$installed"
+          cmp "$app/Contents/Resources/app.asar" "$installed/Contents/Resources/app.asar"
+          codesign --verify --deep --strict "$installed"
+          node scripts/verify-macos-package.mjs "$installed/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json"
           python3 - "$arch" <<'PY'
           import json,os,sys,hashlib
           from pathlib import Path
@@ -126,6 +144,7 @@ jobs:
           PY
           hdiutil detach "$RUNNER_TEMP/dmg-app"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ZL-WA-macOS-${{ matrix.arch }}
           path: |
@@ -153,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in {1..40}; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/42041499031/artifacts" > artifacts.json
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936/artifacts" > artifacts.json
             if node -e "if(!require('./artifacts.json').artifacts.some(a=>a.name==='ZL-WA-macOS-x64'&&!a.expired))process.exit(1)"; then exit 0; fi
             sleep 15
           done
@@ -161,7 +180,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ZL-WA-macOS-x64
-          run-id: 42041499031
+          run-id: 42045166936
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: out
       - uses: actions/download-artifact@v4
@@ -171,7 +190,7 @@ jobs:
       - name: Verify architecture set and publish macOS candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ZL_SOURCE_COMMIT: 327fa29031bdf06ee9aff0addeb45029eb230f9f
+          ZL_SOURCE_COMMIT: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
         run: |
           set -euo pipefail
           python3 - <<'PY'
