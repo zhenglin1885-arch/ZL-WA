@@ -1,4 +1,4 @@
-name: Publish verified macOS Intel 7.3.7
+name: Complete verified macOS 7.3.7 release
 on:
   push:
     branches: ['observe/mac-7.3.7']
@@ -8,47 +8,79 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify exact successful Intel source and unused formal tag
+      - name: Wait for native Apple Silicon verification
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936" > run.json
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/candidate-mac-x64-7.3.7-20261105-1" > tag.json
-          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/mac-v7.3.7" > existing.json
+          gh run watch 42050119503 --repo "$GITHUB_REPOSITORY" --interval 30 --exit-status > build-wait.log 2>&1 || { tail -30 build-wait.log; exit 1; }
+      - name: Verify immutable build source, tags and existing Intel release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42050119503" > arm-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936" > intel-run.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/candidate-mac-7.3.7-20261105-4" > candidate-tag.json
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/mac-v7.3.7" > formal-tag.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/mac-v7.3.7" > formal.json
           node <<'JS'
-          const assert=require('node:assert/strict'),r=require('./run.json'),t=require('./tag.json');
-          const commit='83d97793213ecd999d8c3867bc6be9b76b3b35cc';
-          assert.equal(r.head_sha,commit);assert.equal(r.conclusion,'success');assert.equal(r.status,'completed');
-          assert.equal(t.object.type,'commit');assert.equal(t.object.sha,commit);
-          assert.equal(require('./existing.json').length,0,'Formal Mac release already exists');
+          const assert=require('node:assert/strict');
+          const source='83d97793213ecd999d8c3867bc6be9b76b3b35cc';
+          const arm=require('./arm-run.json'),intel=require('./intel-run.json');
+          assert.equal(arm.head_sha,'58d756d400471fc4d54bdf41e7a466908726550f');
+          assert.equal(arm.name,'ZL-WA macOS 7.3.7 backup ARM builder');
+          assert.equal(intel.head_sha,source);assert.equal(intel.name,'ZL-WA macOS 7.3.7');
+          for(const r of [arm,intel]){assert.equal(r.status,'completed');assert.equal(r.conclusion,'success');}
+          for(const name of ['./candidate-tag.json','./formal-tag.json']){const r=require(name);assert.equal(r.object.type,'commit');assert.equal(r.object.sha,source);}
+          const formal=require('./formal.json'),previous={"ZL-WA-macOS-7.3.7-x64.dmg": "abb2fdaf4b437208f53aa89144e8f62eb93a316ff2fe88fb9aa8784df21a6e6d", "ZL-WA-macOS-7.3.7-x64.zip": "e58a820bef9c53309cc017dff9a887e8ee453e5bb996e4ef68fa0a5784a5d428", "verification-x64.json": "6b2e49831d48011b717c078161940b6bb184cc0635fd7584689bc251a99c2cf2", "SHA256SUMS-macOS-7.3.7-x64.txt": "6403292e9ae2998ca9af88da61f4de0deb144c0ccfbffc223c8f9d6accad1520"};
+          assert.equal(formal.draft,false);assert.equal(formal.prerelease,false);
+          assert.deepEqual(formal.assets.map(a=>a.name).sort(),Object.keys(previous).sort());
+          for(const a of formal.assets)if(a.digest)assert.equal(a.digest,'sha256:'+previous[a.name]);
           JS
-      - name: Download and verify exact inspected Intel files
+      - name: Verify all native startup reports and exact candidate files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           mkdir out
-          gh release download candidate-mac-x64-7.3.7-20261105-1 --repo "$GITHUB_REPOSITORY" --dir out
+          gh release download candidate-mac-7.3.7-20261105-4 --repo "$GITHUB_REPOSITORY" --dir out
           python3 - <<'PYTHON'
-          import hashlib
+          import json,hashlib
           from pathlib import Path
-          root=Path('out');expected={"ZL-WA-macOS-7.3.7-x64.dmg": "abb2fdaf4b437208f53aa89144e8f62eb93a316ff2fe88fb9aa8784df21a6e6d", "ZL-WA-macOS-7.3.7-x64.zip": "e58a820bef9c53309cc017dff9a887e8ee453e5bb996e4ef68fa0a5784a5d428", "verification-x64.json": "6b2e49831d48011b717c078161940b6bb184cc0635fd7584689bc251a99c2cf2", "SHA256SUMS-macOS-7.3.7-x64.txt": "6403292e9ae2998ca9af88da61f4de0deb144c0ccfbffc223c8f9d6accad1520"}
-          assert {p.name for p in root.iterdir()}==set(expected)
-          for name,digest in expected.items():assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          root=Path('out');reports=json.loads((root/'macOS-7.3.7-verification.json').read_text())
+          assert len(reports)==2 and {r['arch'] for r in reports}=={'arm64','x64'}
+          files={f'ZL-WA-macOS-7.3.7-{a}.{e}' for a in ['arm64','x64'] for e in ['dmg','zip']}
+          assert {p.name for p in root.iterdir()}==files|{'SHA256SUMS-macOS-7.3.7.txt','macOS-7.3.7-verification.json'}
+          seen=set();hashes={}
+          for r in reports:
+            assert r['commit']=='83d97793213ecd999d8c3867bc6be9b76b3b35cc' and r['version']=='7.3.7'
+            assert r['signatureValid'] and r['zipDmgPayloadIdentical'] and r['signing']=='adhoc' and not r['notarized']
+            startup=r['startup'];assert startup['nativePackagedStartup'] and startup['platform']=='darwin'
+            assert startup['arch']==r['arch'] and startup['version']=='7.3.7'
+            assert startup['localSessionReady'] and startup['settingsLoaded'] and startup['servicesLoaded'] and startup['rootElements']>0 and not startup['errorFallback']
+            assert len(r['files'])==2
+            for f in r['files']:
+              assert f['name'] in {f"ZL-WA-macOS-7.3.7-{r['arch']}.{e}" for e in ['dmg','zip']}
+              p=root/f['name'];assert p.stat().st_size==f['bytes']
+              digest=hashlib.sha256(p.read_bytes()).hexdigest();assert digest==f['sha256']
+              seen.add(f['name']);hashes[f['name']]=digest
+          assert seen==files
+          previous={"ZL-WA-macOS-7.3.7-x64.dmg": "abb2fdaf4b437208f53aa89144e8f62eb93a316ff2fe88fb9aa8784df21a6e6d", "ZL-WA-macOS-7.3.7-x64.zip": "e58a820bef9c53309cc017dff9a887e8ee453e5bb996e4ef68fa0a5784a5d428", "verification-x64.json": "6b2e49831d48011b717c078161940b6bb184cc0635fd7584689bc251a99c2cf2", "SHA256SUMS-macOS-7.3.7-x64.txt": "6403292e9ae2998ca9af88da61f4de0deb144c0ccfbffc223c8f9d6accad1520"}
+          for name in ['ZL-WA-macOS-7.3.7-x64.dmg','ZL-WA-macOS-7.3.7-x64.zip']:assert hashes[name]==previous[name]
           PYTHON
-          (cd out && sha256sum --check SHA256SUMS-macOS-7.3.7-x64.txt)
-      - name: Publish formal Intel assets and report ARM progress
+          (cd out && sha256sum --check SHA256SUMS-macOS-7.3.7.txt)
+      - name: Append native Apple Silicon files to formal macOS release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release create mac-v7.3.7 out/*.dmg out/*.zip out/verification-x64.json out/SHA256SUMS-macOS-7.3.7-x64.txt --repo "$GITHUB_REPOSITORY" --target 83d97793213ecd999d8c3867bc6be9b76b3b35cc --latest=false --title 'ZL-WA 7.3.7 for macOS' --notes-file docs/releases/mac-7.3.7.md
-          gh release view mac-v7.3.7 --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets > formal.json
-          node -e "const r=require('./formal.json');if(r.isDraft||r.isPrerelease||r.assets.length!==4)throw Error('Invalid formal release');console.log('::notice::Formal macOS Intel 7.3.7 is published; ad-hoc signed, not Apple notarized.')"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/jobs?per_page=100" > jobs.json
-          node -e 'for(const j of require("./jobs.json").jobs)console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||""}; ${j.steps?.filter(s=>s.status==="in_progress").map(s=>s.name).join(", ")||""}; job ${j.id}`)'
+          gh release upload mac-v7.3.7 out/*-arm64.dmg out/*-arm64.zip out/SHA256SUMS-macOS-7.3.7.txt out/macOS-7.3.7-verification.json --repo "$GITHUB_REPOSITORY"
+          gh release edit mac-v7.3.7 --repo "$GITHUB_REPOSITORY" --notes-file docs/releases/mac-7.3.7.md --latest=false
+          gh release view mac-v7.3.7 --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets > final.json
+          node -e "const r=require('./final.json');if(r.isDraft||r.isPrerelease||r.assets.length!==8)throw Error('Invalid completed Mac release');console.log('::notice::Formal macOS 7.3.7 now includes native Apple Silicon and Intel; both startup checks passed; ad-hoc signed, not Apple notarized.')"
