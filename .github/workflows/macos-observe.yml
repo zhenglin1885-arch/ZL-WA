@@ -16,10 +16,18 @@ jobs:
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/42043644756/jobs?per_page=100" > jobs.json
           node -e 'for(const j of require("./jobs.json").jobs)console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||""}; job ${j.id}`)'
-          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/127293248862/logs" > job.log
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/127293248862/logs" > job.log 2> api-error.log || true
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42041499031/logs" > run-logs.zip 2>> api-error.log || true
           python3 - <<'PYTHON'
           from pathlib import Path
-          s=Path('job.log').read_text(errors='replace')
+          import zipfile
+          s=Path('api-error.log').read_text(errors='replace')+'\n'+Path('job.log').read_text(errors='replace')
+          if zipfile.is_zipfile('run-logs.zip'):
+            with zipfile.ZipFile('run-logs.zip') as z:
+              names=[n for n in z.namelist() if 'Verify distributed' in n]
+              s+='\nZIP log names:'+str(z.namelist())+'\n'+'\n'.join(z.read(n).decode(errors='replace') for n in names)
+          else:
+            s+='\nRUN LOG DOWNLOAD:'+Path('run-logs.zip').read_text(errors='replace')
           i=s.find('Verify distributed bundle')
           s=s[i:] if i>=0 else s[-30000:]
           s=s[-30000:]
