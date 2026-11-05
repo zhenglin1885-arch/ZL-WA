@@ -31,9 +31,15 @@ import { SPELLCHECKER_LOCALES } from '../i18n/languages';
 import { cleanseJSObject } from '../jsUtils';
 import type { UnreadServices } from '../lib/dbus/Ferdium';
 import type Service from '../models/Service';
+import {
+  normalizeAccountConfig,
+  serializeAccountConfig,
+  updateAccount,
+} from '../features/accounts/state';
 import CachedRequest from './lib/CachedRequest';
 import Request from './lib/Request';
 import TypedStore from './lib/TypedStore';
+import type SettingsStore from './SettingsStore';
 
 const debug = require('../preload-safe-debug')('Ferdium:ServiceStore');
 
@@ -151,6 +157,7 @@ export default class ServicesStore extends TypedStore {
     );
 
     this.registerReactions([
+      this._restoreManualSleepReaction.bind(this),
       this._focusServiceReaction.bind(this),
       this._updateWindowTitleReaction.bind(this),
       this._getUnreadMessageCountReaction.bind(this),
@@ -1222,7 +1229,10 @@ export default class ServicesStore extends TypedStore {
     debug(`Hibernate ${service.name}`);
 
     service.isHibernationRequested = true;
-    if (manual) service.isManuallyHibernating = true;
+    if (manual) {
+      service.isManuallyHibernating = true;
+      this._persistManualSleep(serviceId, true);
+    }
     service.lastHibernated = Date.now();
   }
 
@@ -1239,6 +1249,7 @@ export default class ServicesStore extends TypedStore {
     // An explicit close stays asleep until the user opens that account again.
     if (automatic && service.isManuallyHibernating) return;
     if (service.isManuallyHibernating) {
+      this._persistManualSleep(serviceId, false);
       service.accountSnapshot = {
         ...service.accountSnapshot,
         status: 'loading',
@@ -1295,6 +1306,37 @@ export default class ServicesStore extends TypedStore {
     );
     service.isHibernationRequested = false;
     service.lastHibernated = null;
+  }
+
+  private _persistManualSleep(serviceId: string, sleeping: boolean) {
+    const settings = this.stores.settings as unknown as SettingsStore;
+    const config = normalizeAccountConfig(settings.app.accountSidebar);
+    const next = updateAccount(config, serviceId, { manualSleep: sleeping });
+    settings
+      ._update({
+        type: 'app',
+        data: { accountSidebar: serializeAccountConfig(next) },
+      })
+      .catch(error => debug('Could not save account sleep preference', error));
+  }
+
+  // Models may be constructed while main-process preferences are still arriving.
+  // Restore sleep before the settings-ready layout can admit a startup webview.
+  _restoreManualSleepReaction() {
+    const accounts = (this.stores.settings as unknown as SettingsStore).app
+      .accountSidebar?.accounts;
+    for (const service of this.all) {
+      if (
+        accounts?.[service.id]?.manualSleep === true &&
+        !service.isManuallyHibernating
+      ) {
+        runInAction(() => {
+          service.isManuallyHibernating = true;
+          service.isHibernationRequested = true;
+          service.lastHibernated = Date.now();
+        });
+      }
+    }
   }
 
   @action _resetLastPollTimer({ serviceId = null }) {

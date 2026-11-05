@@ -54,6 +54,27 @@ describe('local account organization', () => {
     expect(saved.accounts.a.remark).toBe('备注');
     expect(saved.groups[1].name).toBe('销售');
   });
+  it('preserves per-account manual sleep through IPC serialization and unrelated preference edits', () => {
+    const config = normalizeAccountConfig({
+      accounts: {
+        sleeping: { manualSleep: true, remark: '备注' },
+        awake: { manualSleep: false },
+      },
+    });
+    const saved = JSON.parse(JSON.stringify(serializeAccountConfig(config)));
+    expect(saved.accounts.sleeping).toMatchObject({
+      manualSleep: true,
+      remark: '备注',
+    });
+    expect(saved.accounts.awake.manualSleep).toBe(false);
+    const edited = updateAccount(normalizeAccountConfig(saved), 'sleeping', {
+      zoom: 1.2,
+    });
+    expect(serializeAccountConfig(edited).accounts.sleeping.manualSleep).toBe(
+      true,
+    );
+  });
+
   it('places existing and unassigned sessions in the default group', () => {
     const config = normalizeAccountConfig();
     expect(config.groups[0].name).toBe('默认分组');

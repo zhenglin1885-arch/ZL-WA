@@ -268,6 +268,18 @@ export default class Service {
       this.isHibernationRequested = true;
     }
 
+    // Restore explicit sleep before autoruns or any service view can mount.
+    // This also applies to the last selected account and when automatic sleep
+    // is disabled. Ordinary automatic hibernation is not persisted here.
+    if (
+      window['ferdium'].stores.settings.app.accountSidebar?.accounts?.[this.id]
+        ?.manualSleep === true
+    ) {
+      this.isManuallyHibernating = true;
+      this.isHibernationRequested = true;
+      this.lastHibernated = Date.now();
+    }
+
     autorun((): void => {
       this._setAutoRun();
     });

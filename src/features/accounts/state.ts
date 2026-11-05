@@ -13,6 +13,7 @@ export interface AccountPreferences {
   nickname?: string;
   zoom?: number;
   order?: number;
+  manualSleep?: boolean;
 }
 
 export interface AccountSidebarConfig {
@@ -41,6 +42,7 @@ export function serializeAccountConfig(
           nickname: prefs.nickname,
           zoom: prefs.zoom,
           order: prefs.order,
+          manualSleep: prefs.manualSleep,
         },
       ]),
     ),

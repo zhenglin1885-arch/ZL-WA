@@ -916,3 +916,31 @@ contact synchronization. All 783 unit tests passed (two existing skips), type/
 lint checks passed, and the native Chromium aggregate sidebar regression passed.
 These are synthetic checks, not a benchmark on the user's 25-account machine.
 Source only; not yet packaged.
+
+### Preserve manual account sleep across restarts (2026-11-05)
+
+Account-card manual sleep now saves a per-service `manualSleep` preference in the
+existing local account-sidebar settings. The plain IPC serializer preserves it
+when editing groups, remarks, order or zoom. Ordinary automatic hibernation does
+not set this preference. Explicit wake clears it; automatic wake leaves it intact.
+
+The service model restores both manual/requested sleep before its initial autorun,
+including the last selected account and accounts with automatic hibernation
+disabled. A store reaction also restores it when settings arrive after the models,
+before the settings-ready layout may admit webviews. Existing startup admission
+and aggregate readiness filters therefore continue to exclude the sleeper without
+opening its WhatsApp page. Selecting its card can show the existing sleep screen;
+the explicit wake control is required to load it. Existing global startup-sleep
+preferences and other accounts are unchanged.
+
+This preference belongs to the account card's service ID. Deleting that card and
+creating a new one is independent of restoring customer notes by WhatsApp owner.
+Older versions did not save manual sleep, so previously lost sleep choices cannot
+be inferred retroactively; sleep must be selected in a build containing this fix.
+
+Validation: all 785 unit tests passed (two existing skips), with type/lint checks.
+An offline native Chromium fixture uses real service/store classes and a disposable
+JSON settings file across four fresh windows: save sleep, late settings arrival,
+restart with the sleeping account selected, and restart after explicit wake. It
+checks early restoration, disabled automatic hibernation, automatic-wake blocking,
+and preservation of the other account/remark. Source only; not yet packaged.

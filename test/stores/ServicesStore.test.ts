@@ -89,7 +89,21 @@ describe('ServicesStore', () => {
     Object.assign(store, {
       one: (id: string) => (id === 'target' ? target : other),
     });
+    const app = {
+      accountSidebar: {
+        groups: [],
+        accounts: { target: { remark: '保留备注' } },
+      },
+    };
+    const save = jest.fn(async ({ data }) => {
+      Object.assign(app, data);
+    });
+    Object.assign(store, { stores: { settings: { app, _update: save } } });
     store._hibernate({ serviceId: 'target', manual: true });
+    expect(app.accountSidebar.accounts.target).toMatchObject({
+      manualSleep: true,
+      remark: '保留备注',
+    });
     expect(target.isManuallyHibernating).toBe(true);
     expect(target.isHibernationRequested).toBe(true);
     expect(target.isHibernationEnabled).toBe(false);
@@ -108,6 +122,37 @@ describe('ServicesStore', () => {
     store._awake({ serviceId: 'sleeping', automatic: true });
     expect(service.isManuallyHibernating).toBe(true);
     expect(service.lastHibernated).toBe(123);
+  });
+
+  it('restores saved sleep when preferences arrive after account models, without affecting another account', () => {
+    const sleeping = {
+      id: 'sleeping',
+      isManuallyHibernating: false,
+      isHibernationRequested: false,
+      lastHibernated: null,
+    };
+    const awake = {
+      id: 'awake',
+      isManuallyHibernating: false,
+      isHibernationRequested: false,
+    };
+    const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
+    const app = {
+      accountSidebar: {
+        groups: [],
+        accounts: {} as Record<string, { manualSleep: boolean }>,
+      },
+    };
+    Object.defineProperty(store, 'all', { value: [sleeping, awake] });
+    Object.assign(store, { stores: { settings: { app } } });
+    store._restoreManualSleepReaction();
+    expect(sleeping.isManuallyHibernating).toBe(false);
+    app.accountSidebar.accounts.sleeping = { manualSleep: true };
+    store._restoreManualSleepReaction();
+    expect(sleeping.isManuallyHibernating).toBe(true);
+    expect(sleeping.isHibernationRequested).toBe(true);
+    expect(awake.isManuallyHibernating).toBe(false);
+    expect(awake.isHibernationRequested).toBe(false);
   });
 
   it('selects a sleeping window without waking or mounting the account', () => {
@@ -140,7 +185,21 @@ describe('ServicesStore', () => {
     };
     const store = Object.create(ServicesStore.prototype) as ServicesStoreClass;
     Object.assign(store, { one: () => service });
+    const app = {
+      accountSidebar: {
+        groups: [],
+        accounts: { sleeping: { manualSleep: true, remark: '原备注' } },
+      },
+    };
+    const save = jest.fn(async ({ data }) => {
+      Object.assign(app, data);
+    });
+    Object.assign(store, { stores: { settings: { app, _update: save } } });
     store._awake({ serviceId: 'sleeping' });
+    expect(app.accountSidebar.accounts.sleeping).toMatchObject({
+      manualSleep: false,
+      remark: '原备注',
+    });
     expect(service.isManuallyHibernating).toBe(false);
     expect(service.isHibernationRequested).toBe(false);
     expect(service.lastHibernated).toBeNull();
