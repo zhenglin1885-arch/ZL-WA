@@ -1,0 +1,29 @@
+name: Inspect macOS startup failure
+on:
+  push:
+    branches: ['observe/mac-7.3.7']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read native startup failure log and alternate builder status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42043644756/jobs?per_page=100" > jobs.json
+          node -e 'for(const j of require("./jobs.json").jobs)console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||""}; job ${j.id}`)'
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/127293248862/logs" > job.log
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          s=Path('job.log').read_text(errors='replace')
+          i=s.find('Verify distributed bundle')
+          s=s[i:] if i>=0 else s[-30000:]
+          s=s[-30000:]
+          for start in range(0,len(s),1700):
+            chunk=s[start:start+1700].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+            print('::notice::'+chunk)
+          PYTHON
