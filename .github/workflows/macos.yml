@@ -103,6 +103,7 @@ jobs:
           node esbuild.mjs
           flags=()
           if [ "$ZL_MAC_SIGN_MODE" = adhoc ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
             flags+=('-c.mac.identity=-')
           else
             flags+=('-c.forceCodeSigning=true')
