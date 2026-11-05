@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['release/7.3.7']
+    branches: ['test/7.3.7-20261105-1']
   workflow_dispatch:
 
 permissions:
@@ -50,6 +50,36 @@ jobs:
             exit 1
           }
           Get-Content tests.log -Tail 8
+      - name: Prepare the production NSIS compiler and plugins
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+            $file = Join-Path $root ($item + '.7z')
+            Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+            & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+          }
+          "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify process isolation and installation from the old app directory
+        shell: powershell
+        run: |
+          try {
+            ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+          } catch {
+            $message = ($_ | Out-String).Trim()
+            Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+            throw
+          } finally {
+            if (Test-Path installer-test.log) {
+              '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            }
+          }
       - name: Build Windows x64
         run: pnpm build:windows
       - uses: actions/upload-artifact@v4
@@ -57,7 +87,7 @@ jobs:
           name: ZL-WA-Windows-x64
           path: out/*.exe
           if-no-files-found: error
-      - name: Create checksums and publish verification candidate
+      - name: Create checksums and publish test package
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,5 +101,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create candidate-7.3.7-20261103 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 verification candidate' --notes-file docs/releases/7.3.7.md
+          gh release create test-7.3.7-20261105-1 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 test-1 (2026-11-05)' --notes-file docs/releases/7.3.7-test-1.md
           if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }
