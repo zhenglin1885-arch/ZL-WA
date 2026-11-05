@@ -14,7 +14,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          for run in 42045166936 42045324110; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" > jobs.json
-            node -e 'for(const j of require("./jobs.json").jobs)console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||""}; ${j.steps?.filter(s=>s.status==="in_progress").map(s=>s.name).join(", ")||""}; job ${j.id}`)'
-          done
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/logs" > run-logs.zip
+          python3 - <<'PYTHON'
+          import zipfile
+          with zipfile.ZipFile('run-logs.zip') as z:
+            names=[n for n in z.namelist() if 'Install dependencies and Electron' in n]
+            s='\n'.join(z.read(n).decode(errors='replace') for n in names)[-24000:]
+          for start in range(0,len(s),1700):
+            chunk=s[start:start+1700].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+            print('::notice::'+chunk)
+          PYTHON
