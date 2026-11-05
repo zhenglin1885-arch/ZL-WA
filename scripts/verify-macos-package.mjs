@@ -13,10 +13,10 @@ const child = spawn(executable, [`--remote-debugging-port=${port}`], {
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
-for (const stream of [child.stdout, child.stderr])
-  stream.on('data', chunk => {
-    logs = (logs + chunk.toString()).slice(-16_000);
-  });
+const appendLog = chunk => {
+  logs = (logs + chunk.toString()).slice(-16_000);
+};
+for (const stream of [child.stdout, child.stderr]) stream.on('data', appendLog);
 let socket;
 try {
   const until = Date.now() + 90_000;
