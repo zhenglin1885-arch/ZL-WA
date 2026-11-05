@@ -1,0 +1,21 @@
+name: Inspect macOS 7.3.7 build
+on:
+  push:
+    branches: ['publish/mac-7.3.7']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read native build progress
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42039865155/jobs?per_page=100" > jobs.json
+          node <<'JS'
+          const jobs=require('./jobs.json').jobs;
+          for(const j of jobs){const detail=j.steps?.filter(s=>s.status==='in_progress'||s.conclusion==='failure').map(s=>s.name).join(', ');console.log(`::notice::${j.name}: ${j.status} ${j.conclusion||''}; ${detail||''}; job ${j.id}`);}
+          JS
