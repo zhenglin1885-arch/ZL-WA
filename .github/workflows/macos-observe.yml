@@ -1,18 +1,39 @@
-name: Inspect macOS startup failure
+name: Stage verified macOS Intel package
 on:
   push:
     branches: ['observe/mac-7.3.7']
 permissions:
-  actions: write
-  contents: read
+  actions: read
+  contents: write
 jobs:
-  inspect:
+  stage:
     runs-on: ubuntu-latest
     steps:
-      - name: Read native startup failure log and alternate builder status
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZL-WA-macOS-x64
+          run-id: 42045166936
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: out
+      - name: Verify Intel build and stage downloads for inspection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/rerun-failed-jobs"
-          echo '::notice::Retry requested for Apple Silicon dependency download after HTTP 504; application source unchanged.'
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936" > run.json
+          python3 - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          root=Path('out');r=json.loads((root/'verification-x64.json').read_text());run=json.loads(Path('run.json').read_text())
+          commit='83d97793213ecd999d8c3867bc6be9b76b3b35cc'
+          assert run['head_sha']==commit and run['conclusion']=='success'
+          assert r['commit']==commit and r['arch']=='x64' and r['version']=='7.3.7'
+          assert r['signatureValid'] and r['zipDmgPayloadIdentical'] and r['startup']['nativePackagedStartup']
+          assert r['startup']['localSessionReady'] and r['startup']['settingsLoaded'] and r['startup']['servicesLoaded'] and not r['startup']['errorFallback']
+          lines=[]
+          for f in r['files']:
+            assert hashlib.sha256((root/f['name']).read_bytes()).hexdigest()==f['sha256']
+            lines.append(f"{f['sha256']}  {f['name']}")
+          (root/'SHA256SUMS-macOS-7.3.7-x64.txt').write_text('\n'.join(sorted(lines))+'\n')
+          PY
+          gh release create candidate-mac-x64-7.3.7-20261105-1 out/*.dmg out/*.zip out/verification-x64.json out/SHA256SUMS-macOS-7.3.7-x64.txt --repo "$GITHUB_REPOSITORY" --target 83d97793213ecd999d8c3867bc6be9b76b3b35cc --prerelease --latest=false --title 'ZL-WA macOS Intel 7.3.7 verification candidate' --notes 'Intel bundle passed native startup, DMG integrity and signature validation. Ad-hoc signed, not Apple notarized. Staged for payload inspection before formal publication.'
