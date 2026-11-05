@@ -3,7 +3,7 @@ on:
   push:
     branches: ['observe/mac-7.3.7']
 permissions:
-  actions: read
+  actions: write
   contents: read
 jobs:
   inspect:
@@ -14,13 +14,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/logs" > run-logs.zip
-          python3 - <<'PYTHON'
-          import zipfile
-          with zipfile.ZipFile('run-logs.zip') as z:
-            names=[n for n in z.namelist() if 'Install dependencies and Electron' in n]
-            s='\n'.join(z.read(n).decode(errors='replace') for n in names)[-6000:]
-          for start in range(0,len(s),1700):
-            chunk=s[start:start+1700].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
-            print('::notice::'+chunk)
-          PYTHON
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/42045324110/rerun-failed-jobs"
+          echo '::notice::Retry requested for Apple Silicon dependency download after HTTP 504; application source unchanged.'
