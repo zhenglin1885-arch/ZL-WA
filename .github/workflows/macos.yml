@@ -5,21 +5,36 @@ on:
     branches: ['build/mac-7.3.7-20261105']
   workflow_dispatch:
 
-concurrency:
-  group: zl-wa-macos-7.3.7
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Cancel obsolete builds on this packaging branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/macos.yml/runs?branch=build%2Fmac-7.3.7-20261105&per_page=30" > runs.json
+          node -e 'const r=require("./runs.json");for(const x of r.workflow_runs)if(x.id<Number(process.env.GITHUB_RUN_ID)&&x.head_branch==="build/mac-7.3.7-20261105"&&["queued","in_progress","pending","waiting","requested"].includes(x.status))console.log(x.id)' > obsolete.txt
+          while read -r id; do gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" || true; done < obsolete.txt
+
   build:
+    needs: prepare
+    concurrency:
+      group: zl-wa-macos-7.3.7-${{ matrix.arch }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: arm64
-            runner: macos-15
+            runner: macos-26
           - arch: x64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
@@ -174,4 +189,4 @@ jobs:
           (root/'SHA256SUMS-macOS-7.3.7.txt').write_text('\n'.join(sorted(lines))+'\n')
           (root/'macOS-7.3.7-verification.json').write_text(json.dumps(reports,indent=2)+'\n')
           PY
-          gh release create candidate-mac-7.3.7-20261105 out/*.dmg out/*.zip out/SHA256SUMS-macOS-7.3.7.txt out/macOS-7.3.7-verification.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA macOS 7.3.7 verification candidate' --notes 'Native Apple Silicon and Intel builds. Awaiting package verification before adding macOS assets to the 7.3.7 release. Signing/notarization status is recorded in the verification JSON.'
+          gh release create candidate-mac-7.3.7-20261105-2 out/*.dmg out/*.zip out/SHA256SUMS-macOS-7.3.7.txt out/macOS-7.3.7-verification.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA macOS 7.3.7 verification candidate' --notes 'Native Apple Silicon and Intel builds. Awaiting package verification before adding macOS assets to the 7.3.7 release. Signing/notarization status is recorded in the verification JSON.'
