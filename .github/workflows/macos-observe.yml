@@ -19,7 +19,7 @@ jobs:
           import zipfile
           with zipfile.ZipFile('run-logs.zip') as z:
             names=[n for n in z.namelist() if 'Install dependencies and Electron' in n]
-            s='\n'.join(z.read(n).decode(errors='replace') for n in names)[-24000:]
+            s='\n'.join(z.read(n).decode(errors='replace') for n in names)[-6000:]
           for start in range(0,len(s),1700):
             chunk=s[start:start+1700].replace('%','%25').replace('\r','%0D').replace('\n','%0A')
             print('::notice::'+chunk)
