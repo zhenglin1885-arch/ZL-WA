@@ -1,0 +1,193 @@
+name: ZL-WA macOS 7.3.7 backup ARM builder
+on:
+  push:
+    branches: ['backup/mac-7.3.7']
+permissions:
+  contents: read
+concurrency:
+  group: zl-wa-macos-backup-arm
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CI: true
+      ZL_SOURCE_COMMIT: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@v4
+      - name: Check architecture, version and signing configuration
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLEID: ${{ secrets.APPLEID }}
+          APPLEID_PASSWORD: ${{ secrets.APPLEID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          node -e "if(process.arch!=='arm64'||require('./package.json').version!=='7.3.7')throw Error('Unexpected host architecture/version')"
+          if [ -n "${CSC_LINK:-}" ]; then
+            echo 'ZL_MAC_SIGN_MODE=developer-id' >> "$GITHUB_ENV"
+            echo '::notice::Developer ID signing certificate is configured'
+            echo 'CSC_IDENTITY_AUTO_DISCOVERY=true' >> "$GITHUB_ENV"
+          else
+            echo 'ZL_MAC_SIGN_MODE=adhoc' >> "$GITHUB_ENV"
+            echo '::notice::No Apple Developer ID certificate is configured; this build uses ad-hoc signing'
+            echo 'CSC_IDENTITY_AUTO_DISCOVERY=false' >> "$GITHUB_ENV"
+          fi
+          if [ -n "${CSC_LINK:-}" ] && [ -n "${APPLEID:-}" ] && [ -n "${APPLEID_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            echo 'GIT_BRANCH_NAME=release' >> "$GITHUB_ENV"
+            echo 'ZL_MAC_NOTARIZED=true' >> "$GITHUB_ENV"
+          else
+            echo 'GIT_BRANCH_NAME=mac-package' >> "$GITHUB_ENV"
+            echo 'ZL_MAC_NOTARIZED=false' >> "$GITHUB_ENV"
+          fi
+      - name: Install dependencies and Electron
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec install-electron
+      - name: Package service recipes
+        working-directory: recipes
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm package
+      - name: Check source
+        run: |
+          pnpm typecheck > typecheck.log 2>&1 || { node scripts/report-macos-ci-failure.cjs typecheck.log; exit 1; }
+          pnpm test --runInBand --coverage=false > tests.log 2>&1 || { node scripts/report-macos-ci-failure.cjs tests.log; exit 1; }
+          tail -8 tests.log
+      - name: Build macOS DMG and ZIP
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLEID: ${{ secrets.APPLEID }}
+          APPLEID_PASSWORD: ${{ secrets.APPLEID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          pnpm exec preval-build-info-cli
+          node esbuild.mjs
+          flags=()
+          if [ "$ZL_MAC_SIGN_MODE" = adhoc ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+            flags+=('-c.mac.identity=-')
+          else
+            flags+=('-c.forceCodeSigning=true')
+          fi
+          pnpm exec electron-builder --mac dmg zip --arm64 --publish never '-c.mac.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' '-c.dmg.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' "${flags[@]}" > mac-build.log 2>&1 || { node scripts/report-macos-ci-failure.cjs mac-build.log; exit 1; }
+      - name: Verify distributed bundle and native startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch='arm64'
+          zip="out/ZL-WA-macOS-7.3.7-$arch.zip"
+          dmg="out/ZL-WA-macOS-7.3.7-$arch.dmg"
+          hdiutil verify "$dmg"
+          mkdir -p "$RUNNER_TEMP/zip-app" "$RUNNER_TEMP/dmg-app"
+          ditto -x -k "$zip" "$RUNNER_TEMP/zip-app"
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg-app" "$dmg"
+          app="$RUNNER_TEMP/dmg-app/ZL-WA.app"
+          cmp "$app/Contents/Resources/app.asar" "$RUNNER_TEMP/zip-app/ZL-WA.app/Contents/Resources/app.asar"
+          codesign --verify --deep --strict "$app"
+          codesign -dv --verbose=4 "$app" > codesign-status.log 2>&1
+          if [ "$ZL_MAC_SIGN_MODE" = developer-id ]; then grep -q 'Authority=Developer ID Application' codesign-status.log; fi
+          if [ "$ZL_MAC_NOTARIZED" = true ]; then xcrun stapler validate "$app"; spctl --assess --type execute "$app"; fi
+          python3 - "$app" "$arch" <<'PY'
+          import plistlib,sys,subprocess
+          from pathlib import Path
+          app=Path(sys.argv[1]);arch=sys.argv[2]
+          info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+          assert info['CFBundleShortVersionString']=='7.3.7' and info['CFBundleIdentifier']=='com.zl-wa.desktop'
+          binary=app/'Contents/MacOS/ZL-WA'
+          actual=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
+          assert actual=={'arm64':'arm64','x64':'x86_64'}[arch],actual
+          PY
+          installed='/Applications/ZL-WA.app'
+          test ! -e "$installed"
+          ditto "$app" "$installed"
+          cmp "$app/Contents/Resources/app.asar" "$installed/Contents/Resources/app.asar"
+          codesign --verify --deep --strict "$installed"
+          node scripts/verify-macos-package.mjs "$installed/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json"
+          python3 - "$arch" <<'PY'
+          import json,os,sys,hashlib
+          from pathlib import Path
+          arch=sys.argv[1];root=Path('out');files=[]
+          for ext in ['dmg','zip']:
+            p=root/f'ZL-WA-macOS-7.3.7-{arch}.{ext}'
+            files.append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          result={'version':'7.3.7','arch':arch,'commit':os.environ['ZL_SOURCE_COMMIT'],'signing':os.environ['ZL_MAC_SIGN_MODE'],'notarized':os.environ['ZL_MAC_NOTARIZED']=='true','zipDmgPayloadIdentical':True,'signatureValid':True,'startup':json.loads((root/f'startup-{arch}.json').read_text()),'files':files}
+          (root/f'verification-{arch}.json').write_text(json.dumps(result,indent=2)+'\n')
+          PY
+          hdiutil detach "$RUNNER_TEMP/dmg-app"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ZL-WA-macOS-arm64
+          path: |
+            out/*.dmg
+            out/*.zip
+            out/verification-*.json
+          if-no-files-found: error
+      - name: Publish diagnostic status
+        if: always()
+        shell: bash
+        run: |
+          echo "Architecture: arm64; signing: ${ZL_MAC_SIGN_MODE:-unknown}; notarized: ${ZL_MAC_NOTARIZED:-false}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f mac-build.log ]; then tail -60 mac-build.log >> "$GITHUB_STEP_SUMMARY"; fi
+
+  candidate:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Wait for verified Intel artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..40}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/42045166936/artifacts" > artifacts.json
+            if node -e "if(!require('./artifacts.json').artifacts.some(a=>a.name==='ZL-WA-macOS-x64'&&!a.expired))process.exit(1)"; then exit 0; fi
+            sleep 15
+          done
+          exit 1
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZL-WA-macOS-x64
+          run-id: 42045166936
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZL-WA-macOS-arm64
+          path: out
+      - name: Verify architecture set and publish macOS candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZL_SOURCE_COMMIT: 83d97793213ecd999d8c3867bc6be9b76b3b35cc
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib,os
+          root=Path('out');reports=[json.loads((root/f'verification-{arch}.json').read_text()) for arch in ['arm64','x64']]
+          lines=[]
+          for r in reports:
+            assert r['commit']==os.environ['ZL_SOURCE_COMMIT'] and r['startup']['nativePackagedStartup'] and r['version']=='7.3.7'
+            for f in r['files']:
+              assert hashlib.sha256((root/f['name']).read_bytes()).hexdigest()==f['sha256']
+              lines.append(f"{f['sha256']}  {f['name']}")
+          (root/'SHA256SUMS-macOS-7.3.7.txt').write_text('\n'.join(sorted(lines))+'\n')
+          (root/'macOS-7.3.7-verification.json').write_text(json.dumps(reports,indent=2)+'\n')
+          PY
+          gh release create candidate-mac-7.3.7-20261105-4 out/*.dmg out/*.zip out/SHA256SUMS-macOS-7.3.7.txt out/macOS-7.3.7-verification.json --repo "$GITHUB_REPOSITORY" --target "$ZL_SOURCE_COMMIT" --prerelease --latest=false --title 'ZL-WA macOS 7.3.7 verification candidate' --notes 'Native Apple Silicon and Intel builds. Awaiting package verification before adding macOS assets to the 7.3.7 release. Signing/notarization status is recorded in the verification JSON.'
