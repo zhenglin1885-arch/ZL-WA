@@ -61,9 +61,11 @@ jobs:
           node -e "if(process.arch!=='${{ matrix.arch }}'||require('./package.json').version!=='7.3.7')throw Error('Unexpected host architecture/version')"
           if [ -n "${CSC_LINK:-}" ]; then
             echo 'ZL_MAC_SIGN_MODE=developer-id' >> "$GITHUB_ENV"
+            echo '::notice::Developer ID signing certificate is configured'
             echo 'CSC_IDENTITY_AUTO_DISCOVERY=true' >> "$GITHUB_ENV"
           else
             echo 'ZL_MAC_SIGN_MODE=adhoc' >> "$GITHUB_ENV"
+            echo '::notice::No Apple Developer ID certificate is configured; this build uses ad-hoc signing'
             echo 'CSC_IDENTITY_AUTO_DISCOVERY=false' >> "$GITHUB_ENV"
           fi
           if [ -n "${CSC_LINK:-}" ] && [ -n "${APPLEID:-}" ] && [ -n "${APPLEID_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
@@ -84,8 +86,8 @@ jobs:
           pnpm package
       - name: Check source
         run: |
-          pnpm typecheck > typecheck.log 2>&1 || { tail -100 typecheck.log; exit 1; }
-          pnpm test --runInBand --coverage=false > tests.log 2>&1 || { tail -150 tests.log; exit 1; }
+          pnpm typecheck > typecheck.log 2>&1 || { node scripts/report-macos-ci-failure.cjs typecheck.log; exit 1; }
+          pnpm test --runInBand --coverage=false > tests.log 2>&1 || { node scripts/report-macos-ci-failure.cjs tests.log; exit 1; }
           tail -8 tests.log
       - name: Build macOS DMG and ZIP
         shell: bash
@@ -105,7 +107,7 @@ jobs:
           else
             flags+=('-c.forceCodeSigning=true')
           fi
-          pnpm exec electron-builder --mac dmg zip --${{ matrix.arch }} --publish never '-c.mac.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' '-c.dmg.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' "${flags[@]}" > mac-build.log 2>&1 || { tail -150 mac-build.log; exit 1; }
+          pnpm exec electron-builder --mac dmg zip --${{ matrix.arch }} --publish never '-c.mac.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' '-c.dmg.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' "${flags[@]}" > mac-build.log 2>&1 || { node scripts/report-macos-ci-failure.cjs mac-build.log; exit 1; }
       - name: Verify distributed bundle and native startup
         shell: bash
         run: |
