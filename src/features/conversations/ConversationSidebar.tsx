@@ -66,6 +66,8 @@ const ConversationSidebar = observer(
     const [notice, setNotice] = useState('');
     const [busy, setBusy] = useState(false);
     const [opening, setOpening] = useState('');
+    const [active, setActive] = useState('');
+    const latestOpen = useRef('');
     const [menu, setMenu] = useState<{
       id: string;
       anchor: HTMLElement;
@@ -229,10 +231,12 @@ const ConversationSidebar = observer(
       });
     };
     const open = async (row: AggregateConversation) => {
+      latestOpen.current = row.key;
       setOpening(row.key);
       setNotice('');
       try {
         await runtime.open(row);
+        if (latestOpen.current === row.key) setActive(row.key);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
       } finally {
@@ -310,20 +314,7 @@ const ConversationSidebar = observer(
           </button>
         </div>
         <div className="conversation-summary" role="status">
-          {runtime.refreshing
-            ? `正在读取 ${runtime.checked}/${runtime.total} 个账号`
-            : `${visible.length} 个会话`}
-          {runtime.errors.size > 0 && (
-            <details>
-              <summary>{runtime.errors.size} 个账号待同步</summary>
-              {[...runtime.errors].map(([id, error]) => (
-                <div key={id}>
-                  {stores.services.all.find(service => service.id === id)?.name}
-                  ：{error}
-                </div>
-              ))}
-            </details>
-          )}
+          {visible.length} 个会话
         </div>
         {notice && !dialog && (
           <div className="account-sidebar__notice" role="alert">
@@ -412,16 +403,21 @@ const ConversationSidebar = observer(
                 );
               const { row } = entry;
               const avatar = runtime.avatars.get(row.key);
+              const title =
+                (!row.group && row.remark.trim()) || row.name || row.phone;
+              const isActive =
+                active === row.key &&
+                stores.services.active?.id === row.accountId;
               return (
                 <div
-                  className={`conversation-row ${opening === row.key ? 'is-opening' : ''}`}
+                  className={`conversation-row ${opening === row.key ? 'is-opening' : ''} ${isActive ? 'is-active' : ''} ${selected.has(row.key) ? 'is-selected' : ''}`}
                   key={row.key}
                   data-conversation-key={row.key}
                   style={{ top: entry.top, height: entry.height }}
                 >
                   <input
                     type="checkbox"
-                    aria-label={`选择 ${row.name} · ${row.accountRemark || row.accountName}`}
+                    aria-label={`选择 ${title} · ${row.accountRemark || row.accountName}`}
                     checked={selected.has(row.key)}
                     onChange={() =>
                       setSelected(current => {
@@ -435,15 +431,12 @@ const ConversationSidebar = observer(
                   <button
                     type="button"
                     className="conversation-row__open"
-                    aria-label={`打开 ${row.name} · ${row.accountRemark || row.accountName}`}
+                    aria-pressed={isActive}
+                    aria-label={`打开 ${title} · ${row.accountRemark || row.accountName}`}
                     onClick={() => void open(row)}
                   >
                     <span className="conversation-row__avatar">
-                      {avatar ? (
-                        <img src={avatar} alt="" />
-                      ) : (
-                        row.name.slice(0, 2)
-                      )}
+                      {avatar ? <img src={avatar} alt="" /> : title.slice(0, 2)}
                       {row.unread > 0 && (
                         <b aria-label={`未读消息 ${row.unread} 条`}>
                           {row.unread > 99 ? '99+' : row.unread}
@@ -452,7 +445,7 @@ const ConversationSidebar = observer(
                     </span>
                     <span className="conversation-row__content">
                       <span className="conversation-row__title">
-                        {row.name}
+                        {title}
                         <time>{formatTime(row.timestamp)}</time>
                       </span>
                       <span className="conversation-row__preview">
@@ -474,7 +467,7 @@ const ConversationSidebar = observer(
             <p className="conversation-empty">
               {all.length > 0
                 ? '没有符合条件的会话'
-                : '等待已登录账号的联系人和会话同步。休眠账号不会被自动唤醒。'}
+                : '暂无会话，请确认账号已登录后点击刷新。'}
             </p>
           )}
         </div>

@@ -865,3 +865,28 @@ with the old directory scan, normal silent installation, and the new uninstaller
 This is not a full upgrade of the reporting user's installation or an ACL/security
 software reproduction. The published 7.3.7 packages have not been replaced; these
 source changes need a newly built installer.
+
+### Aggregate conversation display preferences (2026-11-04)
+
+The sidebar now shows only the filtered conversation count in its summary. Per-
+account synchronization progress, pending counts and expandable errors are hidden;
+the runtime still tracks them and its refresh/hibernation behavior is unchanged.
+
+Private-chat titles prefer the account-local customer `remarkName`, falling back
+to the existing WhatsApp name/number when no remark exists. Group titles keep
+their native group name even if a local group remark exists. This changes only
+rendered titles, accessible labels and avatar initials; native names, IDs, search,
+membership, messages and WhatsApp contacts are not rewritten. The account remark
+below each row remains unchanged.
+
+Successfully opened conversations keep an active highlight after opening finishes;
+checkbox selections also receive row shading. Both adapt to dark/light themes
+using inset shadows without changing row height or virtualization. Unchecking an
+opened row leaves its active-chat highlight; account identity remains part of the
+row key and active-account check.
+
+Validation: 21 existing conversation tests, type/lint checks, and the native
+Chromium sidebar regression passed, including both themes, local/fallback/group
+titles, hidden sync details, persistent/check-box highlights, 604-row
+virtualization, warm cache entry, archive filters, group create/rename/delete,
+scoped mark-read, selection and move dialogs. Source only; not yet packaged.

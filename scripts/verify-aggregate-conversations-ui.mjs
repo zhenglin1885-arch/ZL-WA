@@ -28,7 +28,7 @@ try {
           const program = `(async()=>{
     const React=require(${JSON.stringify(`${process.cwd()}/node_modules/react`)}),{createRoot}=require(${JSON.stringify(`${process.cwd()}/node_modules/react-dom/client`)}),{observable,runInAction}=require(${JSON.stringify(`${process.cwd()}/node_modules/mobx`)});
     const {ipcRenderer}=require('electron');
-    ipcRenderer.invoke=async(channel,owners)=>{if(channel==='customers-bind')return {owner:owners[0],ownerAliases:owners,revision:1,summaries:{'10001@c.us':{remarkName:'重点 Alice',flags:[]}},aliases:{},pins:[],pinsInitialized:true};if(channel==='account-tools-history')return [];return {};};
+    ipcRenderer.invoke=async(channel,owners)=>{if(channel==='customers-bind')return {owner:owners[0],ownerAliases:owners,revision:1,summaries:{'10001@c.us':{remarkName:owners[0].endsWith('1@c.us')?'重点 Alice':'',flags:[]},'12345@g.us':{remarkName:'群备注不作为标题',flags:[]}},aliases:{},pins:[],pinsInitialized:true};if(channel==='account-tools-history')return [];return {};};
     const Component=require(${JSON.stringify(`${process.cwd()}/build/features/conversations/ConversationSidebar.js`)}).default;
     const rows=[{id:'10001@c.us',aliases:['10001@c.us'],name:'Alice',phone:'10001',group:false,archived:false,unread:123,preview:'Hello there',timestamp:1700000000,lastFromMe:false},{id:'12345@g.us',aliases:['12345@g.us'],name:'Investment group',phone:'',group:true,archived:false,unread:0,preview:'Group update',timestamp:1700000001,lastFromMe:true}];
     const heldIndexes=[];let blockIndexes=false;const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;const photo=canvas.toDataURL('image/jpeg');
@@ -52,6 +52,7 @@ try {
     const runtime=require(${JSON.stringify(`${process.cwd()}/build/features/conversations/runtime.js`)}).getConversationRuntime(stores);
     for(const service of stores.services.all)runtime.warm(service);
     await wait(()=>runtime.rows.length===4&&runtime.avatars.size===4);
+    runtime.errors.set('dormant','账号已休眠，请在账号列表唤醒后刷新');
     blockIndexes=true;
     const root=createRoot(document.querySelector('#root'));
     root.render(React.createElement('div',{id:'fixture'},React.createElement(Component,{stores,activate:id=>runInAction(()=>{stores.services.active=stores.services.all.find(item=>item.id===id);}),onBack:()=>{window.back=true;}}),React.createElement('main',{className:'fixture-right'},'原账号聊天区域')));
@@ -61,10 +62,27 @@ try {
     blockIndexes=false;heldIndexes.splice(0).forEach(release=>release());
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝二号')),'Account remark missing');
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝三号')),'Other account remark missing');
-    check([...document.querySelectorAll('.conversation-row__title')].some(item=>item.textContent.startsWith('Alice'))&&!document.querySelector('.conversation-list').textContent.includes('重点 Alice'),'Customer remark replaced native row title');
+    const titles=[...document.querySelectorAll('.conversation-row__title')].map(item=>item.textContent);
+    check(titles.some(text=>text.startsWith('重点 Alice'))&&titles.some(text=>text.startsWith('Alice')),'Local contact remark or unremarked-name fallback missing');
+    check(titles.some(text=>text.startsWith('Investment group'))&&!titles.some(text=>text.includes('群备注不作为标题')),'Group title was replaced by a local remark');
+    check(!document.querySelector('.conversation-summary details')&&!/待同步|正在读取|已休眠/.test(document.querySelector('.conversation-summary').textContent),'Account synchronization details are still visible');
     const first=document.querySelector('.conversation-row__open');first.click();await wait(()=>opened.length===1);
+    await wait(()=>first.closest('.conversation-row').classList.contains('is-active')&&!first.closest('.conversation-row').classList.contains('is-opening'));
+    const activeRow=first.closest('.conversation-row');
+    const darkSelected=getComputedStyle(activeRow).backgroundColor;
+    check(darkSelected==='rgb(44, 52, 66)'&&getComputedStyle(activeRow).boxShadow!=='none'&&first.getAttribute('aria-pressed')==='true','Opened conversation lost its persistent dark-mode highlight');
+    document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,80));
+    check(getComputedStyle(activeRow).backgroundColor!==darkSelected&&getComputedStyle(activeRow).boxShadow!=='none','Light-mode selected highlight did not adapt');
+    document.body.classList.add('theme__dark');
+
     document.querySelector('[aria-label="全选当前结果"]').click();
     await wait(()=>document.querySelector('.conversation-toolbar').textContent.includes('已选 4'));
+    check(document.querySelectorAll('.conversation-row.is-selected').length===4,'Checked rows have no selected shading');
+    const firstCheckbox=activeRow.querySelector('input[type="checkbox"]');firstCheckbox.click();
+    await wait(()=>document.querySelectorAll('.conversation-row.is-selected').length===3);
+    check(activeRow.classList.contains('is-active')&&!activeRow.classList.contains('is-selected'),'Clearing a checkbox removed the opened-chat highlight');
+    firstCheckbox.click();await wait(()=>document.querySelectorAll('.conversation-row.is-selected').length===4);
+
     const nativeClick=async(element,button='left')=>{
       await wait(()=>{const r=element.getBoundingClientRect();return r.width>0&&r.height>0&&element.contains(document.elementFromPoint(Math.round(r.x+r.width/2),Math.round(r.y+r.height/2)));});
       const r=element.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);
@@ -170,7 +188,7 @@ try {
     check(heldIndexes.length>0,'Repeat-entry cache check did not hold fresh metadata');
     blockIndexes=false;heldIndexes.splice(0).forEach(release=>release());
     await new Promise(r=>setTimeout(r,200));
-    return {instantWarmEntry:true,instantRepeatEntry:true,cachedAvatarReuse:true,groupContextMenuAndRename:true,deleteReturnsMembersToDefault:true,defaultGroupProtected:true,scopedAllReadAndBadgeRemoval:true,redUnreadBadge99Plus:true,expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,nativeTitlesIgnoreCustomerRemarks:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndEllipsisRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
+    return {instantWarmEntry:true,instantRepeatEntry:true,cachedAvatarReuse:true,groupContextMenuAndRename:true,deleteReturnsMembersToDefault:true,defaultGroupProtected:true,scopedAllReadAndBadgeRemoval:true,redUnreadBadge99Plus:true,expandedFoldersOnlySelection:true,archivesExclusiveToArchive:true,localContactRemarksAndNativeGroupNames:true,unremarkedContactFallback:true,syncDetailsHidden:true,persistentOpenedHighlight:true,checkboxSelectionHighlight:true,lightDarkSelectionAdaptation:true,popupWithinNarrowViewport:true,inlineValidationVisible:true,visibleNativeCreatePopup:true,visibleNativeMovePopup:true,cancelLeavesMembership:true,statusAndEllipsisRemoved:true,enlargedPlus:true,separateAccountRows:true,accountRemarks:true,openUsesOriginalAccount:true,selectAll:true,createAndMoveGroup:true,bulkComposer:true,filteredSelection:true,accountRemarkSearch:true,virtualized604Conversations:true};
    })().catch(error=>({fixtureError:String(error.stack||error)}))`;
           fs.writeFileSync('/tmp/zl-aggregate-renderer.cjs', program);
           const output = await win.webContents.executeJavaScript(program);
