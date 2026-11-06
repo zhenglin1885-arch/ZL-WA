@@ -21,7 +21,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 13;
+  const revision = 14;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -644,6 +644,7 @@ export function translationTick(
         current.button.disabled = false;
         current.button.hidden = true;
         current.button.style.display = 'none';
+        current.container.style.minWidth = '32px';
         if (current.refresh) {
           current.refresh.hidden = false;
           current.refresh.disabled = false;
@@ -665,6 +666,7 @@ export function translationTick(
           current.button.textContent = '点击翻译';
           current.button.hidden = false;
           current.button.style.display = 'inline-flex';
+          current.container.style.minWidth = '76px';
           current.autoAttempted = true;
         }
       }
@@ -1134,7 +1136,7 @@ export function translationTick(
         const container = document.createElement('div');
         container.dataset.zlTranslation = 'true';
         container.style.cssText =
-          'height:auto;clear:both;min-width:0;max-width:100%;box-sizing:border-box;contain:inline-size;padding:6px 0 2px;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:inherit';
+          'height:auto;clear:both;min-width:76px;max-width:100%;box-sizing:border-box;contain:inline-size;padding:6px 0 2px;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:inherit';
         const sourceStyle = getComputedStyle(textNode);
         container.style.font = sourceStyle.font;
         container.style.lineHeight = sourceStyle.lineHeight;
@@ -1151,7 +1153,7 @@ export function translationTick(
         button.dataset.zlTranslate = 'true';
         button.textContent = '点击翻译';
         button.style.cssText =
-          'display:inline-flex;align-items:center;border:0;border-radius:5px;background:#175aff;color:#fff;padding:7px 10px;margin:4px 0;max-width:100%;box-sizing:border-box;white-space:normal;cursor:pointer;font:13px/1.4 sans-serif';
+          'display:inline-flex;align-items:center;justify-content:center;flex:0 0 76px;width:76px;min-width:76px;max-width:none;height:34px;border:0;border-radius:5px;background:#175aff;color:#fff;padding:7px 10px;margin:4px 0;box-sizing:border-box;white-space:nowrap;word-break:normal;overflow-wrap:normal;writing-mode:horizontal-tb;cursor:pointer;font:13px/1.4 sans-serif';
         const refresh = document.createElement('button');
         refresh.type = 'button';
         refresh.dataset.zlRetranslate = 'true';
@@ -1214,9 +1216,10 @@ export function translationTick(
           refresh.title = '正在重新翻译…';
           current.autoAttempted = true;
           button.disabled = true;
-          button.textContent = force ? '重新翻译中…' : '翻译中…';
+          button.textContent = '翻译中…';
           button.hidden = false;
           button.style.display = 'inline-flex';
+          container.style.minWidth = '76px';
           if (!force) label.textContent = '';
           state.sequence += 1;
           const id = state.sequence;
@@ -1461,6 +1464,7 @@ export function translationResult(
       record.label.textContent = `${result.message || '翻译失败'}；可点击重试`;
       record.button.hidden = false;
       record.button.style.display = 'inline-flex';
+      record.container.style.minWidth = '76px';
     };
     if (state.withScroll) state.withScroll(record.container, showError);
     else showError();
@@ -1473,6 +1477,7 @@ export function translationResult(
     record.button.textContent = '点击翻译';
     record.button.hidden = true;
     record.button.style.display = 'none';
+    record.container.style.minWidth = '32px';
   }
   return false;
 }

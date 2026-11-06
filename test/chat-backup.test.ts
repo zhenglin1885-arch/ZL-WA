@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
   existsSync,
@@ -362,6 +363,7 @@ test('opened-chat capture retries unacknowledged writes, observes translations a
   };
   try {
     const first = await captureChat(request);
+    expect(first.packet.accountPhone).toBe(owner.split('@')[0]);
     expect(first.packet.messages[0]).toMatchObject({
       text: 'original',
       translation: 'translated',
@@ -418,4 +420,128 @@ test('exports account-first folders isolating different accounts and login owner
     const chat = readdirSync(full).find(n => n !== '目录.html')!;
     expect(readFileSync(join(full, chat), 'utf8')).toContain(png);
   }
+});
+
+test('names account folders after WhatsApp nickname and final six phone digits, preserving the folder after restart', async () => {
+  const store = create();
+  const p = {
+    ...packet(),
+    ownerId: '55119670777@c.us',
+    accountName: 'Oravion Capital',
+  };
+  store.ingest('account-a', p);
+  await store.export('all');
+  const root = join(dir, 'exports');
+  expect(readdirSync(root).sort((a, b) => a.localeCompare(b))).toEqual(
+    ['Oravion Capital-670777', '目录.html'].sort((a, b) => a.localeCompare(b)),
+  );
+  expect(readFileSync(join(root, '目录.html'), 'utf8')).toContain(
+    encodeURIComponent('Oravion Capital-670777'),
+  );
+  await create().export('all');
+  expect(readdirSync(root)).toHaveLength(2);
+  store.ingest('account-a', { ...p, accountName: 'New/nickname' });
+  await store.export('all');
+  expect(
+    existsSync(join(root, 'New_nickname-670777', '全部聊天记录', '目录.html')),
+  ).toBe(true);
+  expect(existsSync(join(root, 'Oravion Capital-670777'))).toBe(false);
+});
+
+test('uses the actual phone for LID accounts and never treats a LID as a phone number', async () => {
+  const store = create();
+  store.ingest('known', {
+    ...packet(),
+    ownerId: '999888777@lid',
+    accountName: 'Known',
+    accountPhone: '55119670777',
+  });
+  store.ingest('unknown', {
+    ...packet(),
+    ownerId: '999888777@lid',
+    accountName: 'Unknown',
+  });
+  await store.export('all');
+  const root = join(dir, 'exports');
+  expect(existsSync(join(root, 'Known-670777', '目录.html'))).toBe(true);
+  const unknown = readdirSync(root).find(name => name.startsWith('Unknown-'))!;
+  expect(unknown).toMatch(/^Unknown-号码未知-[\da-f]{8}$/);
+  expect(readFileSync(join(root, '目录.html'), 'utf8')).toContain(
+    encodeURIComponent(unknown),
+  );
+  expect(() =>
+    validateBackupPacket({ ...packet(), accountPhone: '999888777@lid' }),
+  ).toThrow();
+});
+
+test('renames legacy hashed account folders while preserving existing exported dates and links', async () => {
+  const store = create();
+  const p = packet();
+  store.ingest('account-a', p);
+  const hash = createHash('sha256')
+    .update(`account-a:${p.ownerId}`)
+    .digest('hex')
+    .slice(0, 8);
+  const root = join(dir, 'exports');
+  const old = join(root, `Old nickname-${hash}`);
+  mkdirSync(join(old, '2026-01-01'), { recursive: true });
+  writeFileSync(
+    join(old, '2026-01-01', '目录.html'),
+    'earlier exported records',
+  );
+  await store.export('all');
+  expect(existsSync(old)).toBe(false);
+  expect(
+    readFileSync(
+      join(root, 'Account-456789', '2026-01-01', '目录.html'),
+      'utf8',
+    ),
+  ).toBe('earlier exported records');
+  expect(
+    readFileSync(join(root, 'Account-456789', '目录.html'), 'utf8'),
+  ).toContain('2026-01-01/目录.html');
+});
+
+test('keeps accounts with identical nickname and phone suffix separate across repeated exports', async () => {
+  const store = create();
+  store.ingest('account-a', packet());
+  const p = packet();
+  store.ingest('account-b', {
+    ...p,
+    ownerId: '999456789@c.us',
+    messages: [{ ...p.messages[0], text: 'other account only' }],
+  });
+  await store.export('all');
+  const root = join(dir, 'exports');
+  const folders = readdirSync(root).filter(name => name !== '目录.html');
+  expect(folders).toHaveLength(2);
+  expect(new Set(folders).size).toBe(2);
+  for (const folder of folders) {
+    expect(folder).toMatch(/^Account-456789(?:-[\da-f]{8})?$/);
+    expect(readdirSync(join(root, folder, '全部聊天记录'))).toHaveLength(2);
+  }
+  await create().export('all');
+  expect(readdirSync(root).filter(name => name !== '目录.html')).toEqual(
+    folders,
+  );
+});
+
+test('uses the latest account nickname for all chats after restart, including unchanged older chats', async () => {
+  const store = create();
+  const p = packet();
+  store.ingest('account-a', p);
+  store.ingest('account-a', { ...p, chatId: '111222333@c.us' });
+  await store.export('all');
+  store.ingest('account-a', { ...p, accountName: 'Current nickname' });
+  await create().export('all');
+  const root = join(dir, 'exports');
+  expect(readdirSync(root).filter(name => name !== '目录.html')).toEqual([
+    'Current nickname-456789',
+  ]);
+  expect(
+    readdirSync(join(root, 'Current nickname-456789', '全部聊天记录')),
+  ).toHaveLength(3);
+  expect(readFileSync(join(root, '目录.html'), 'utf8')).toContain(
+    'Current nickname',
+  );
 });

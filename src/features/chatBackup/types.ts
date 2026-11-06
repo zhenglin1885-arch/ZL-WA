@@ -18,6 +18,7 @@ export interface BackupMessage {
 export interface BackupPacket {
   ownerId: string;
   accountName: string;
+  accountPhone?: string;
   chatId: string;
   chatName: string;
   messages: BackupMessage[];
@@ -75,6 +76,9 @@ export function validateBackupPacket(value: unknown): BackupPacket {
     p.chatName.length > 500 ||
     typeof p.accountName !== 'string' ||
     p.accountName.length > 500 ||
+    (p.accountPhone !== undefined &&
+      (typeof p.accountPhone !== 'string' ||
+        !/^\d{6,16}$/.test(p.accountPhone))) ||
     !Array.isArray(p.messages) ||
     p.messages.length > 250
   )

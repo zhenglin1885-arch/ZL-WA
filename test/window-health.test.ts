@@ -8,12 +8,14 @@ import {
   recordWindowHealth,
   readWindowHealth,
   inspectWindowSurface,
+  reloadWindowShell,
 } from '../src/electron/windowHealth';
 
 function fixture() {
   const contents: any = new EventEmitter();
   contents.isDestroyed = () => false;
   contents.reload = jest.fn();
+  contents.isLoadingMainFrame = jest.fn(() => false);
   contents.invalidate = jest.fn();
   contents.executeJavaScript = jest.fn(async () => ({
     state: 'root-present',
@@ -118,12 +120,14 @@ it('exports only fixed shell state even if a renderer returns extra private fiel
 it('bounds a hung shell probe and removes timers/listeners', async () => {
   const { contents, window, dispose } = fixture();
   contents.executeJavaScript.mockImplementation(() => new Promise(() => {}));
+  const listenerCount = contents.listenerCount('did-start-loading');
   const pending = inspectWindowSurface(window);
   await jest.advanceTimersByTimeAsync(3000);
   expect(await pending).toEqual({ state: 'timed-out' });
-  expect(contents.listenerCount('did-start-loading')).toBe(0);
+  expect(contents.listenerCount('did-start-loading')).toBe(listenerCount);
   expect(jest.getTimerCount()).toBe(0);
   dispose();
+  expect(contents.listenerCount('did-start-loading')).toBe(0);
 });
 it('does not attribute a shell probe from before a reload to the current document', async () => {
   const { contents, window, dispose } = fixture();
@@ -183,3 +187,124 @@ it('keeps bounded diagnostics across restart and tolerates missing/corrupt stora
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it.each(['root-empty', 'startup-pending', 'startup-failed'])(
+  'rechecks a completed %s shell and recovers once without a reload loop',
+  async state => {
+    const { contents, hooks, dispose } = fixture();
+    contents.executeJavaScript.mockResolvedValue({
+      state,
+      documentState: 'complete',
+    });
+    contents.emit('did-finish-load');
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(contents.reload).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(6000);
+    expect(contents.reload).toHaveBeenCalledTimes(1);
+    expect(hooks.record).toHaveBeenCalledWith({
+      event: 'renderer-reload',
+      reason: 'startup-incomplete',
+    });
+    contents.emit('did-finish-load');
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(contents.reload).toHaveBeenCalledTimes(1);
+    expect(hooks.record).toHaveBeenCalledWith({
+      event: 'recovery-suppressed',
+      reason: 'startup-incomplete',
+    });
+    expect(jest.getTimerCount()).toBe(0);
+    dispose();
+  },
+);
+it('lets a transiently empty root finish mounting instead of interrupting startup', async () => {
+  const { contents, dispose } = fixture();
+  contents.executeJavaScript.mockResolvedValueOnce({
+    state: 'root-empty',
+    documentState: 'complete',
+  });
+  contents.emit('did-finish-load');
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(contents.executeJavaScript).toHaveBeenCalledTimes(2);
+  expect(contents.reload).not.toHaveBeenCalled();
+  dispose();
+});
+it.each(['loading', 'interactive'])(
+  'does not recover a root while its document is still %s',
+  async documentState => {
+    const { contents, dispose } = fixture();
+    contents.executeJavaScript.mockResolvedValue({
+      state: 'root-empty',
+      documentState,
+    });
+    contents.emit('did-finish-load');
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(contents.reload).not.toHaveBeenCalled();
+    dispose();
+  },
+);
+it('cancels a blank-root confirmation when a new navigation starts', async () => {
+  const { contents, dispose } = fixture();
+  contents.executeJavaScript.mockResolvedValue({
+    state: 'root-empty',
+    documentState: 'complete',
+  });
+  contents.emit('did-finish-load');
+  await jest.advanceTimersByTimeAsync(2000);
+  contents.emit('did-start-loading');
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(contents.reload).not.toHaveBeenCalled();
+  dispose();
+});
+it('waits until a hidden incomplete shell is shown before attempting recovery', async () => {
+  const { contents, window, dispose } = fixture();
+  window.isVisible.mockReturnValue(false);
+  contents.executeJavaScript.mockResolvedValue({
+    state: 'root-empty',
+    documentState: 'complete',
+  });
+  contents.emit('did-finish-load');
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(contents.reload).not.toHaveBeenCalled();
+  window.isVisible.mockReturnValue(true);
+  window.emit('show');
+  await jest.advanceTimersByTimeAsync(8000);
+  expect(contents.reload).toHaveBeenCalledTimes(1);
+  dispose();
+});
+it('routes scheduled reloads through the main process and skips overlapping navigation', () => {
+  const { contents, window, hooks, dispose } = fixture();
+  contents.isLoadingMainFrame.mockReturnValue(true);
+  expect(reloadWindowShell(window, hooks.record, 'system-resume')).toBe(false);
+  expect(contents.reload).not.toHaveBeenCalled();
+  contents.isLoadingMainFrame.mockReturnValue(false);
+  expect(reloadWindowShell(window, hooks.record, 'system-resume')).toBe(true);
+  expect(contents.reload).toHaveBeenCalledTimes(1);
+  contents.reload.mockImplementation(() => {
+    throw new Error('Synthetic reload failure');
+  });
+  expect(reloadWindowShell(window, hooks.record, 'system-resume')).toBe(false);
+  expect(hooks.record).toHaveBeenCalledWith({
+    event: 'recovery-failed',
+    reason: 'system-resume',
+  });
+  dispose();
+});
+
+it.each(['closed', 'suspend'] as const)(
+  'cancels a pending startup confirmation on %s',
+  async event => {
+    const { contents, window, hooks, dispose } = fixture();
+    contents.executeJavaScript.mockResolvedValue({
+      state: 'root-empty',
+      documentState: 'complete',
+    });
+    contents.emit('did-finish-load');
+    await jest.advanceTimersByTimeAsync(2000);
+    if (event === 'closed') window.emit('closed');
+    else hooks.resumeEvents.emit('suspend');
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(contents.reload).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+    dispose();
+  },
+);

@@ -27,13 +27,13 @@ try {
       },
     );
     const isolated = session.fromPartition(`zl-window-recovery-${Date.now()}`);
+    const readyPage =
+      '<!doctype html><html><body><div id="root"><main>ready</main></div></body></html>';
+    let pageHtml = readyPage;
     await isolated.protocol.handle(
       'https',
       () =>
-        new Response(
-          '<!doctype html><html><body><div id="root"><main>ready</main></div></body></html>',
-          { headers: { 'Content-Type': 'text/html' } },
-        ),
+        new Response(pageHtml, { headers: { 'Content-Type': 'text/html' } }),
     );
     const win = new BrowserWindow({
       show: false,
@@ -107,6 +107,144 @@ try {
         records.filter(row => row.event === 'renderer-reload').length !== 1
       )
         throw new Error('Resume repaint did not preserve the live renderer');
+      // Use a fresh recovery lifecycle so the preceding intentional crash's
+      // cooldown does not mask the independent blank-startup scenario.
+      dispose();
+      dispose = module.exports.installWindowRecovery(win, {
+        record: row => records.push(row),
+        quitting: () => false,
+        resumeEvents,
+      });
+      pageHtml =
+        '<!doctype html><html><body><div id="root"></div></body></html>';
+      await win.loadURL('https://window-recovery.invalid/?empty-startup');
+      pageHtml = readyPage;
+      const recoveredBlank = new Promise(resolve => {
+        win.webContents.once('did-finish-load', resolve);
+      });
+      await Promise.race([
+        recoveredBlank,
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Empty root did not recover')),
+            15_000,
+          );
+        }),
+      ]);
+      clearTimeout(timer);
+      if (
+        !records.some(
+          row =>
+            row.event === 'renderer-reload' &&
+            row.reason === 'startup-incomplete',
+        )
+      )
+        throw new Error(
+          'Blank startup did not use bounded main-process recovery',
+        );
+      if (
+        !(await win.webContents.executeJavaScript(
+          "document.querySelector('#root').textContent === 'ready' && localStorage.getItem('original-profile') === 'preserved' && document.cookie.includes('synthetic=preserved')",
+        ))
+      )
+        throw new Error('Blank startup recovery lost the shell or profile');
+      const startup = await win.webContents.executeJavaScript(
+        `(${function verifyStartup(base) {
+          const startupGuard = require(
+            `${base}/build/electron/rendererStartup`,
+          );
+          const { ipcRenderer } = require('electron');
+          const captured = [];
+          const original = ipcRenderer.send;
+          ipcRenderer.send = (channel, details) => {
+            if (channel === 'zl-window-renderer-error') captured.push(details);
+            else original.call(ipcRenderer, channel, details);
+          };
+          let starts = 0;
+          startupGuard.startRendererWhenReady(() => {
+            starts += 1;
+          });
+          window.dispatchEvent(new Event('load'));
+          if (starts !== 1)
+            throw new Error('Late initialization was skipped or duplicated');
+          document.querySelector('#root').innerHTML =
+            '<section data-zl-startup="pending">loading</section>';
+          startupGuard.installRendererStartupGuard();
+          const error = new TypeError('synthetic-private-startup');
+          error.stack =
+            'TypeError: synthetic-private-startup\n at initialize (file:///C:/private-home/app.js:12:4)';
+          startupGuard.startRendererWhenReady(() => {
+            throw error;
+          });
+          window.dispatchEvent(new ErrorEvent('error', { error }));
+          window.dispatchEvent(
+            new PromiseRejectionEvent('unhandledrejection', {
+              promise: Promise.resolve(),
+              reason: error,
+            }),
+          );
+          const button = document.querySelector(
+            '[data-zl-startup="failed"] button',
+          );
+          if (
+            !button ||
+            captured.length !== 3 ||
+            JSON.stringify(captured).includes('synthetic-private') ||
+            JSON.stringify(captured).includes('private-home')
+          )
+            throw new Error(
+              'Pre-React fallback or sanitized exception reporting failed',
+            );
+          const box = button.getBoundingClientRect();
+          return {
+            x: Math.round(box.x + box.width / 2),
+            y: Math.round(box.y + box.height / 2),
+          };
+        }.toString()})(${JSON.stringify(process.cwd())})`,
+      );
+      const failedSurface = await module.exports.inspectWindowSurface(win);
+      if (failedSurface.state !== 'startup-failed')
+        throw new Error('Startup fallback was mistaken for a ready shell');
+      win.focus();
+      win.webContents.focus();
+      const startupScreenshot = await win.webContents.capturePage();
+      fs.writeFileSync(
+        '/tmp/zl-window-startup-fallback.png',
+        startupScreenshot.toPNG(),
+      );
+      const manuallyRecovered = new Promise(resolve => {
+        win.webContents.once('did-finish-load', resolve);
+      });
+      win.webContents.sendInputEvent({
+        type: 'mouseDown',
+        x: startup.x,
+        y: startup.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      win.webContents.sendInputEvent({
+        type: 'mouseUp',
+        x: startup.x,
+        y: startup.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await Promise.race([
+        manuallyRecovered,
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Startup recovery button did not reload')),
+            5000,
+          );
+        }),
+      ]);
+      clearTimeout(timer);
+      if (
+        !(await win.webContents.executeJavaScript(
+          "document.querySelector('#root').textContent === 'ready'",
+        ))
+      )
+        throw new Error('Manual startup recovery did not restore the shell');
       const boundary = await win.webContents.executeJavaScript(
         `(${async function verifyBoundary(base) {
           const React = require(`${base}/node_modules/react`);
@@ -192,6 +330,11 @@ try {
         throw new Error('Native recovery button click failed');
       return {
         nativeRendererCrashRecovered: true,
+        incompleteStartupAutomaticallyRecovered: true,
+        startupFailureBeforeReactVisible: true,
+        lateStartupInitializedOnce: true,
+        startupErrorAndRejectionSanitized: true,
+        nativeStartupRecoveryButton: true,
         resumeRepaintWithoutReload: true,
         emptyRootDetected: true,
         originalStoragePreserved: true,

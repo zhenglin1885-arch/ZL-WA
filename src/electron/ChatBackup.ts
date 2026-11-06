@@ -34,6 +34,7 @@ interface Shard {
   accountId: string;
   ownerId: string;
   accountName: string;
+  accountPhone?: string;
   chatId: string;
   chatName: string;
   day: string;
@@ -74,6 +75,13 @@ export default class ChatBackup {
   private metas: Record<string, Meta> = {};
 
   private exported: Record<string, string> = {};
+
+  private folderNames: Record<string, string> = {};
+
+  private accountProfiles: Record<
+    string,
+    Pick<Shard, 'accountName' | 'accountPhone'>
+  > = {};
 
   private lastExport?: string;
 
@@ -147,6 +155,8 @@ export default class ChatBackup {
       this.metas = index.metas;
       this.exported = index.exported || {};
       this.lastExport = index.lastExport;
+      this.folderNames = index.folderNames || {};
+      this.accountProfiles = index.accountProfiles || {};
     }
     this.loaded = true;
   }
@@ -159,6 +169,8 @@ export default class ChatBackup {
           JSON.stringify({
             metas: this.metas,
             exported: this.exported,
+            folderNames: this.folderNames,
+            accountProfiles: this.accountProfiles,
             lastExport: this.lastExport,
           }),
         ),
@@ -217,6 +229,7 @@ export default class ChatBackup {
             accountId,
             ownerId: p.ownerId,
             accountName: p.accountName,
+            accountPhone: p.accountPhone,
             chatId: p.chatId,
             chatName: p.chatName,
             day,
@@ -259,10 +272,13 @@ export default class ChatBackup {
         changed ||
         shard.chatName !== p.chatName ||
         shard.accountName !== p.accountName ||
+        (p.accountPhone !== undefined &&
+          shard.accountPhone !== p.accountPhone) ||
         !this.metas[key]
       ) {
         shard.chatName = p.chatName;
         shard.accountName = p.accountName;
+        if (p.accountPhone) shard.accountPhone = p.accountPhone;
         shard.revision += 1;
         this.write(path, this.seal(Buffer.from(JSON.stringify(shard))));
         const values = Object.values(shard.messages);
@@ -281,6 +297,12 @@ export default class ChatBackup {
         };
       }
     }
+    const identity = digest(`${accountId}:${p.ownerId}`);
+    this.accountProfiles[identity] = {
+      accountName: p.accountName,
+      accountPhone:
+        p.accountPhone || this.accountProfiles[identity]?.accountPhone,
+    };
     this.error = '';
     this.prune();
     this.saveIndex();
@@ -366,6 +388,36 @@ export default class ChatBackup {
     return job;
   }
 
+  private accountFolder(target: string, shard: Shard): string {
+    const identity = digest(`${shard.accountId}:${shard.ownerId}`);
+    const slot = `${digest(target)}:${identity}`;
+    const phone =
+      shard.accountPhone || /^(\d{6,16})@c\.us$/.exec(shard.ownerId)?.[1];
+    const base = `${safeName(shard.accountName)}-${phone ? phone.slice(-6) : `号码未知-${identity.slice(0, 8)}`}`;
+    const previous = this.folderNames[slot];
+    // Keep different accounts separate even when their nickname and last six digits match.
+    const folder =
+      previous === base || !existsSync(join(target, base))
+        ? base
+        : `${base}-${identity.slice(0, 8)}`;
+    const old =
+      previous ||
+      readdirSync(target, { withFileTypes: true }).find(
+        entry =>
+          entry.isDirectory() &&
+          entry.name.endsWith(`-${identity.slice(0, 8)}`),
+      )?.name;
+    if (
+      old &&
+      old !== folder &&
+      existsSync(join(target, old)) &&
+      !existsSync(join(target, folder))
+    )
+      renameSync(join(target, old), join(target, folder));
+    this.folderNames[slot] = folder;
+    return folder;
+  }
+
   private async exportNow(
     selection: string,
     automatic = false,
@@ -394,15 +446,39 @@ export default class ChatBackup {
         `${shard.accountId}:${shard.ownerId}:${shard.chatId}`,
       );
       const saved = chats.get(chatKey) || { shard, messages: [] };
+      if (shard.day >= saved.shard.day) {
+        shard.accountPhone ||= saved.shard.accountPhone;
+        saved.shard = shard;
+      }
       saved.messages.push(...Object.values(shard.messages));
       chats.set(chatKey, saved);
     }
+    const profiles = new Map<string, Shard>();
+    for (const { shard } of chats.values()) {
+      const identity = `${shard.accountId}:${shard.ownerId}`;
+      const previous = profiles.get(identity);
+      if (!previous || shard.day >= previous.day) {
+        shard.accountPhone ||= previous?.accountPhone;
+        profiles.set(identity, shard);
+      } else previous.accountPhone ||= shard.accountPhone;
+    }
+    const foldersByAccount = new Map<string, string>();
+    for (const [identity, shard] of profiles) {
+      const current = this.accountProfiles[digest(identity)];
+      shard.accountName = current?.accountName || shard.accountName;
+      shard.accountPhone = current?.accountPhone || shard.accountPhone;
+      const folder = this.accountFolder(target, shard);
+      mkdirSync(join(target, folder), { recursive: true });
+      foldersByAccount.set(identity, folder);
+    }
     const accounts = new Map<string, { name: string; links: string[] }>();
     for (const [key, { shard, messages }] of chats) {
-      const folder = `${safeName(shard.accountName)}-${digest(`${shard.accountId}:${shard.ownerId}`).slice(0, 8)}`;
+      const folder = foldersByAccount.get(
+        `${shard.accountId}:${shard.ownerId}`,
+      )!;
       const name = `${safeName(shard.chatName)}-${key.slice(0, 8)}.html`;
       const account = accounts.get(folder) || {
-        name: shard.accountName,
+        name: profiles.get(`${shard.accountId}:${shard.ownerId}`)!.accountName,
         links: [],
       };
       accounts.set(folder, account);
@@ -430,7 +506,7 @@ export default class ChatBackup {
         join(target, folder, period, name),
         page(
           shard.chatName,
-          `<header><a href="目录.html">← 目录</a><h1>${escape(shard.chatName)}</h1><div>${escape(shard.accountName)} · ${escape(shard.chatId)} · ${messages.length} 条消息</div></header>${rows.join('')}`,
+          `<header><a href="目录.html">← 目录</a><h1>${escape(shard.chatName)}</h1><div>${escape(account.name)} · ${escape(shard.chatId)} · ${messages.length} 条消息</div></header>${rows.join('')}`,
         ),
       );
       account.links.push(
@@ -466,7 +542,7 @@ export default class ChatBackup {
     const folders = readdirSync(target, { withFileTypes: true }).filter(
       entry =>
         entry.isDirectory() &&
-        /-[\da-f]{8}$/.test(entry.name) &&
+        /-(?:[\da-f]{8}|\d{6})$/.test(entry.name) &&
         existsSync(join(target, entry.name, '目录.html')),
     );
     this.write(

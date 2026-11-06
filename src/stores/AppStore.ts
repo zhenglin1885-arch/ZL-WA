@@ -327,7 +327,6 @@ export default class AppStore extends TypedStore {
       online: () => this.isOnline,
       reload: () => {
         ipcRenderer.send('zl-window-reload-requested', 'system-resume');
-        window.location.reload();
       },
     });
     const suspended = () => {

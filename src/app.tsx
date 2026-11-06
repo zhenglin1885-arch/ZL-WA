@@ -16,11 +16,12 @@ import storeFactory from './stores';
 import I18N from './I18n';
 import FerdiumRoutes from './routes';
 import AppErrorBoundary from './components/util/AppErrorBoundary';
+import { startRendererWhenReady } from './electron/rendererStartup';
 
 // Basic electron Setup
 webFrame.setVisualZoomLevelLimits(1, 1);
 
-window.addEventListener('load', () => {
+startRendererWhenReady(() => {
   const serverApi = new ServerApi();
   const api = apiFactory(serverApi, new LocalApi());
   const history = createHashHistory();

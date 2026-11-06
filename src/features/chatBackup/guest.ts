@@ -4,6 +4,7 @@ import type { BackupPacket, BackupMessage } from './types';
 export async function captureChat(request: {
   ownerId: string;
   accountName: string;
+  accountPhone?: string;
   mode: 'opened' | 'list' | 'history' | 'ack';
   receipts?: { key: string; signature: string }[];
   chatId?: string;
@@ -265,6 +266,10 @@ export async function captureChat(request: {
     packet: {
       ownerId: request.ownerId,
       accountName: request.accountName,
+      accountPhone:
+        owners()
+          .find(id => /^\d{6,16}@c\.us$/.test(id))
+          ?.split('@')[0] || request.accountPhone,
       chatId,
       chatName: title,
       messages,

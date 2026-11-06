@@ -6,8 +6,9 @@ export function readWindowSurface() {
   const root = document.querySelector('#root');
   const bounds = root?.getBoundingClientRect();
   const style = root ? getComputedStyle(root) : null;
-  let state: 'root-missing' | 'root-empty' | 'root-hidden' | 'root-present' =
-    'root-missing';
+  let state:
+    | `root-${'missing' | 'empty' | 'hidden' | 'present'}`
+    | `startup-${'pending' | 'failed'}` = 'root-missing';
   if (root) {
     state =
       root.childElementCount === 0
@@ -19,6 +20,13 @@ export function readWindowSurface() {
             style?.opacity === '0'
           ? 'root-hidden'
           : 'root-present';
+  }
+  if (state === 'root-present') {
+    const startup = root
+      ?.querySelector('[data-zl-startup]')
+      ?.getAttribute('data-zl-startup');
+    if (startup === 'pending' || startup === 'failed')
+      state = `startup-${startup}`;
   }
   return { state, documentState: document.readyState };
 }
@@ -63,6 +71,8 @@ export async function inspectWindowSurface(
       'root-empty',
       'root-hidden',
       'root-present',
+      'startup-pending',
+      'startup-failed',
     ];
     if (
       states.includes(result?.state) &&
@@ -79,6 +89,27 @@ export async function inspectWindowSurface(
     contents.removeListener('did-start-loading', navigating);
   }
 }
+// Use the main-process reload path for both scheduled reloads and recovery.
+export function reloadWindowShell(
+  window: BrowserWindow,
+  record: (event: WindowHealthEvent) => void,
+  reason: string,
+): boolean {
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return false;
+  if (window.webContents.isLoadingMainFrame()) {
+    record({ event: 'renderer-reload-skipped', reason: 'already-loading' });
+    return false;
+  }
+  record({ event: 'renderer-reload-requested', reason });
+  try {
+    window.webContents.reload();
+    return true;
+  } catch {
+    record({ event: 'recovery-failed', reason });
+    return false;
+  }
+}
+
 export function readWindowHealth(path: string): unknown[] {
   try {
     if (statSync(path).size > 200_000) return [];
@@ -100,6 +131,11 @@ export function recordWindowHealth(path: string, details: WindowHealthEvent) {
     /* Diagnostic storage must never prevent recovery or startup. */
   }
 }
+const startupIncomplete = (surface: WindowSurface) =>
+  'documentState' in surface &&
+  surface.documentState === 'complete' &&
+  ['root-empty', 'startup-pending', 'startup-failed'].includes(surface.state);
+
 export function installWindowRecovery(
   window: BrowserWindow,
   hooks: {
@@ -121,6 +157,7 @@ export function installWindowRecovery(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let surfaceTimer: ReturnType<typeof setTimeout> | undefined;
   let repaintTimer: ReturnType<typeof setTimeout> | undefined;
+  let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
   let resumedAt = 0;
   let disposed = false;
   let inspectionGeneration = 0;
@@ -138,16 +175,52 @@ export function installWindowRecovery(
       hooks.record({ event: 'renderer-repaint-failed' });
     }
   };
+  const confirmStartup = (generation: number) => {
+    clearTimeout(confirmationTimer);
+    confirmationTimer = setTimeout(async () => {
+      confirmationTimer = undefined;
+      if (
+        !alive() ||
+        generation !== inspectionGeneration ||
+        !window.isVisible() ||
+        window.isMinimized()
+      )
+        return;
+      const surface = await inspectWindowSurface(window);
+      if (!alive() || generation !== inspectionGeneration) return;
+      hooks.record({ event: 'renderer-surface-confirmed', surface });
+      if (
+        !startupIncomplete(surface) ||
+        !window.isVisible() ||
+        window.isMinimized()
+      )
+        return;
+      if (lastRecovery !== undefined && Date.now() - lastRecovery < 120_000) {
+        hooks.record({
+          event: 'recovery-suppressed',
+          reason: 'startup-incomplete',
+        });
+        return;
+      }
+      if (contents.isLoadingMainFrame()) return;
+      lastRecovery = Date.now();
+      hooks.record({ event: 'renderer-reload', reason: 'startup-incomplete' });
+      reloadWindowShell(window, hooks.record, 'startup-incomplete');
+    }, 6000);
+  };
   const inspect = () => {
     inspectionGeneration += 1;
     const generation = inspectionGeneration;
     clearTimeout(surfaceTimer);
+    clearTimeout(confirmationTimer);
     surfaceTimer = setTimeout(() => {
       surfaceTimer = undefined;
       if (!alive()) return;
       inspectWindowSurface(window).then(surface => {
-        if (alive() && generation === inspectionGeneration)
+        if (alive() && generation === inspectionGeneration) {
           hooks.record({ event: 'renderer-surface', surface });
+          if (startupIncomplete(surface)) confirmStartup(generation);
+        }
       });
     }, 2000);
   };
@@ -161,10 +234,12 @@ export function installWindowRecovery(
     inspectionGeneration += 1;
     clearTimeout(repaintTimer);
     clearTimeout(surfaceTimer);
+    clearTimeout(confirmationTimer);
     resumedAt = 0;
   };
   const shown = () => {
     if (resumedAt && Date.now() - resumedAt < 60_000) repaint();
+    inspect();
   };
   const gone = (
     _event: unknown,
@@ -193,12 +268,16 @@ export function installWindowRecovery(
       }
     }, 1000);
   };
+  const loading = () => {
+    inspectionGeneration += 1;
+    clearTimeout(surfaceTimer);
+    clearTimeout(confirmationTimer);
+  };
   const unresponsive = () => hooks.record({ event: 'renderer-unresponsive' });
   const responsive = () => hooks.record({ event: 'renderer-responsive' });
   const loaded = () => {
     hooks.record({ event: 'renderer-loaded' });
     shown();
-    inspect();
   };
   const dispose = () => {
     disposed = true;
@@ -210,6 +289,7 @@ export function installWindowRecovery(
     window.removeListener('unresponsive', unresponsive);
     window.removeListener('responsive', responsive);
     contents.removeListener('did-finish-load', loaded);
+    contents.removeListener('did-start-loading', loading);
     window.removeListener('closed', dispose);
     window.removeListener('show', shown);
     window.removeListener('restore', shown);
@@ -218,6 +298,7 @@ export function installWindowRecovery(
   window.on('unresponsive', unresponsive);
   window.on('responsive', responsive);
   contents.on('did-finish-load', loaded);
+  contents.on('did-start-loading', loading);
   hooks.resumeEvents?.on('resume', resume);
   hooks.resumeEvents?.on('suspend', suspend);
   window.on('show', shown);

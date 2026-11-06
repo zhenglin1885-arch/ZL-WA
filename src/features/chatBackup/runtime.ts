@@ -42,7 +42,7 @@ export class BackupRuntime {
     try {
       const result = await Promise.race([
         view.executeJavaScript(
-          `(${captureChat.toString()})(${JSON.stringify({ ...input, ownerId, accountName: service.accountSnapshot.nickname || service.name })})`,
+          `(${captureChat.toString()})(${JSON.stringify({ ...input, ownerId, accountName: service.accountSnapshot.nickname || service.name, accountPhone: service.accountSnapshot.phone })})`,
         ),
         new Promise<never>((_, reject) => {
           timer = setTimeout(

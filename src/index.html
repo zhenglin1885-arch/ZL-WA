@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- ZL-WA modification: independent window title. -->
@@ -13,13 +13,46 @@
       media="(prefers-reduced-motion: no-preference)"
     />
     <script>
-      require("./app.js")
+      (() => {
+        const startup = require('./electron/rendererStartup');
+        startup.installRendererStartupGuard();
+        try {
+          require('./app.js');
+        } catch (error) {
+          startup.showRendererStartupFailure(error);
+        }
+      })();
     </script>
-
   </head>
   <body>
     <div class="dev-warning">DEV MODE</div>
-    <div id="root"></div>
+    <div id="root">
+      <section
+        data-zl-startup="pending"
+        role="status"
+        style="
+          padding: 48px;
+          min-height: 100vh;
+          box-sizing: border-box;
+          color-scheme: light dark;
+          background: Canvas;
+          color: CanvasText;
+          font:
+            16px/1.7 system-ui,
+            sans-serif;
+        "
+      >
+        <h1>正在载入界面</h1>
+        <p>若长时间停留在此页面，请重新载入界面。</p>
+        <button
+          type="button"
+          style="padding: 10px 20px; cursor: pointer"
+          onclick="window.location.reload()"
+        >
+          重新载入界面
+        </button>
+      </section>
+    </div>
     <div id="portalContainer"></div>
     <script>
       document

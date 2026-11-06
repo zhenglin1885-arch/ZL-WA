@@ -61,6 +61,7 @@ import { downloadWhatsAppPopup } from './electron/serviceDownloads';
 import {
   installWindowRecovery,
   recordWindowHealth,
+  reloadWindowShell,
 } from './electron/windowHealth';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
@@ -380,7 +381,8 @@ const createWindow = () => {
       reason !== 'system-resume'
     )
       return;
-    recordHealth({ event: 'renderer-reload-requested', reason });
+    if (willQuitApp || overrideAppQuitForUpdate) return;
+    reloadWindowShell(mainWindow!, recordHealth, reason);
   };
   const rendererError = (event: Electron.IpcMainEvent, details: unknown) => {
     if (

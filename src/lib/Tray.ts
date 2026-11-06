@@ -119,7 +119,7 @@ export default class TrayIcon {
         },
       },
       {
-        label: '重新载入界面',
+        label: 'Reload UI',
         click() {
           const window = tray.mainWindow;
           if (
@@ -140,7 +140,7 @@ export default class TrayIcon {
         },
       },
       {
-        label: '导出窗口诊断',
+        label: 'Export Diagnostics',
         async click() {
           try {
             const result = await dialog.showSaveDialog({

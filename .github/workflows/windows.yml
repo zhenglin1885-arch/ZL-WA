@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['test/7.3.7-20261105-1']
+    branches: ['test/7.3.7-20261106-2']
   workflow_dispatch:
 
 permissions:
@@ -82,10 +82,21 @@ jobs:
           }
       - name: Build Windows x64
         run: pnpm build:windows
+      - name: Verify packaged Windows startup and resume reload
+        shell: pwsh
+        run: |
+          node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content startup-test.log -Tail 80
+            exit 1
+          }
+          Get-Content startup-test.log
       - uses: actions/upload-artifact@v4
         with:
           name: ZL-WA-Windows-x64
-          path: out/*.exe
+          path: |
+            out/*.exe
+            out/windows-startup-verification.json
           if-no-files-found: error
       - name: Create checksums and publish test package
         shell: pwsh
@@ -101,5 +112,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create test-7.3.7-20261105-1 @files out/SHA256SUMS.txt --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 test-1 (2026-11-05)' --notes-file docs/releases/7.3.7-test-1.md
+          gh release create test-7.3.7-20261106-2 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 test-2 (2026-11-06)' --notes-file docs/releases/7.3.7-test-2.md
           if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }

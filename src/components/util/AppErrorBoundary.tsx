@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from 'react';
-import { ipcRenderer } from 'electron';
+import { reportRendererException } from '../../electron/rendererStartup';
 
 // The app shell needs a fallback outside providers/router as well as feature boundaries.
 export default class AppErrorBoundary extends Component<
@@ -19,26 +19,7 @@ export default class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error) {
-    // Send only code locations, never error messages, URLs or chat contents.
-    const frames = (error.stack || '')
-      .split('\n')
-      .slice(1)
-      .flatMap(line => line.match(/[\w.-]+\.(?:js|tsx?):\d+:\d+/g) || [])
-      .slice(0, 8);
-    const reason = [
-      'Error',
-      'TypeError',
-      'ReferenceError',
-      'RangeError',
-      'SyntaxError',
-    ].includes(error.name)
-      ? error.name
-      : 'Error';
-    try {
-      ipcRenderer.send('zl-window-renderer-error', { reason, frames });
-    } catch {
-      /* The fallback must remain usable even when IPC is unavailable. */
-    }
+    reportRendererException(error);
   }
 
   render() {
