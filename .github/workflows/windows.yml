@@ -8,8 +8,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: zl-wa-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Cancel obsolete test builds on the same branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/windows.yml/runs" -f branch="$GITHUB_REF_NAME" -f per_page=30 > runs.json
+          node -e 'for(const r of require("./runs.json").workflow_runs)if(r.id<Number(process.env.GITHUB_RUN_ID)&&r.head_branch===process.env.GITHUB_REF_NAME&&["queued","in_progress","waiting","pending"].includes(r.status))console.log(r.id)' > obsolete.txt
+          while read -r id; do gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" || true; done < obsolete.txt
   build:
+    needs: prepare
     permissions:
       contents: write
     runs-on: windows-2022

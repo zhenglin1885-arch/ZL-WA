@@ -88,7 +88,7 @@ try {
           );
         }),
       ]);
-      if (message.error || message.result?.exceptionDetails) return;
+      if (message.error || message.result?.exceptionDetails) return null;
       return message.result?.result?.value;
     } finally {
       clearTimeout(timer);
