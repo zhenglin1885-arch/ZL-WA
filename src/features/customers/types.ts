@@ -1,9 +1,9 @@
 /* eslint-disable sonar/max-union-size -- Customer actions use a finite protocol shared by host and guest. */
 export const customerFlagNames = {
-  priority: '重点',
-  follow: '跟票',
-  signup: '报名',
-  deposit: '入金',
+  priority: 'A',
+  follow: 'B',
+  signup: 'C',
+  deposit: 'D',
 } as const;
 export type CustomerFlag = keyof typeof customerFlagNames;
 export interface CustomerProfile {

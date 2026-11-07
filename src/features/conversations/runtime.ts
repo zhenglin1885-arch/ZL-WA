@@ -331,6 +331,7 @@ export class ConversationRuntime {
             prefs?.nickname || service.accountSnapshot.nickname || service.name,
           accountRemark: prefs?.remark || '',
           remark: summary?.remarkName || '',
+          flags: summary?.flags || [],
         };
       });
       if (

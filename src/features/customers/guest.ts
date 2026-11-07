@@ -1,5 +1,10 @@
 /* eslint-disable unicorn/consistent-function-scoping, no-continue, prefer-destructuring, unicorn/no-useless-undefined -- Serialized guest functions must be self-contained and skip unsupported native rows. */
-import type { CustomerBundle, CustomerContext, CustomerAction } from './types';
+import type {
+  CustomerBundle,
+  CustomerContext,
+  CustomerAction,
+  CustomerFlag,
+} from './types';
 
 export function readCustomerContext(): CustomerContext {
   const page = window as any;
@@ -233,6 +238,7 @@ export function readCustomerContext(): CustomerContext {
 export function customerTick(
   input?: CustomerBundle,
   activeChatId?: string,
+  renderFlag?: (flag: CustomerFlag) => string,
 ): CustomerAction[] {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return [];
   const page = window as any;
@@ -311,12 +317,17 @@ export function customerTick(
     const style = document.createElement('style');
     style.dataset.zlCustomers = 'style';
     style.textContent = `
+      html[data-zl-aggregate-view] [data-zl-customer-header-title]{display:none!important}
+      html[data-zl-aggregate-view] .zl-header-customer-private>.zl-customer-flags{display:none}
+      .zl-header-remark{display:none}
+      html[data-zl-aggregate-view] .zl-header-remark{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;text-align:start;padding:0;cursor:pointer}
+      html[data-zl-aggregate-view] .zl-header-remark.is-empty{color:#8a969c;font-size:13px;font-weight:normal}
       .zl-chat-note{position:absolute;box-sizing:border-box;font:11px/13px sans-serif!important;text-indent:0!important;text-align:start!important;letter-spacing:normal!important;appearance:none!important;transform:none!important;color:#ff6060;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:4;height:13px!important;min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;outline:none;cursor:text;pointer-events:auto!important;user-select:text!important;-webkit-user-select:text!important;-webkit-app-region:no-drag}
       .zl-chat-note::placeholder{color:#8a969c}
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
       .zl-chat-note[data-save-state="error"]{box-shadow:0 1px #ff6060}
       .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-left:5px}
-      .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px!important;border-radius:50%;font:12px sans-serif;color:white}
+      .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:24px!important;background:transparent;font:900 18px/1 sans-serif;-webkit-text-stroke:0.6px white;text-shadow:0 2px #142b46}.zl-customer-flag svg{display:block;width:100%;height:100%}
     `;
     document.head.append(style);
     state.nativePins = new Map();
@@ -598,6 +609,8 @@ export function customerTick(
   const state = page.__zlCustomers;
   if (input) {
     if (state.data?.owner !== input.owner) {
+      state.headerName?.removeAttribute('data-zl-customer-header-title');
+      state.headerName = undefined;
       document
         .querySelectorAll('[data-zl-customers]:not(style)')
         .forEach(n => n.remove());
@@ -639,16 +652,17 @@ export function customerTick(
     box.className = 'zl-customer-flags';
     box.dataset.zlCustomers = 'flags';
     const design = {
-      priority: ['⚑', '#ee9200', '重点'],
-      follow: ['↗', '#176aff', '跟票'],
-      signup: ['✓', '#8551e9', '报名'],
-      deposit: ['¥', '#df3b45', '入金'],
+      priority: ['A', '#d4af37', 'A'],
+      follow: ['B', '#3786d7', 'B'],
+      signup: ['C', '#37a56a', 'C'],
+      deposit: ['D', '#e45b68', 'D'],
     };
     for (const flag of summary(id)?.flags ?? []) {
       const item = document.createElement('span');
       item.className = 'zl-customer-flag';
-      item.textContent = design[flag][0];
-      item.style.background = design[flag][1];
+      if (renderFlag) item.innerHTML = renderFlag(flag);
+      else item.textContent = design[flag][0];
+      item.style.color = design[flag][1];
       item.title = design[flag][2];
       item.setAttribute('aria-label', design[flag][2]);
       box.append(item);
@@ -742,6 +756,8 @@ export function customerTick(
     state.rowGeometry.delete(row);
   };
   if (!state.pinOwnerMatches()) {
+    state.headerName?.removeAttribute('data-zl-customer-header-title');
+    state.headerName = undefined;
     for (const row of document.querySelectorAll<HTMLElement>(
       '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
     ))
@@ -1206,8 +1222,11 @@ export function customerTick(
     if (
       header &&
       (state.headerKey !== `${active}:${data.revision}` ||
-        !header.querySelector('[data-zl-customers=header]'))
+        !header.querySelector('[data-zl-customers=header]') ||
+        (state.headerName && !state.headerName.isConnected))
     ) {
+      state.headerName?.removeAttribute('data-zl-customer-header-title');
+      state.headerName = undefined;
       header.querySelectorAll('[data-zl-customers]').forEach(n => n.remove());
       const name =
         [...header.querySelectorAll<HTMLElement>('[title], [dir="auto"]')].find(
@@ -1222,10 +1241,32 @@ export function customerTick(
         const line = document.createElement('span');
         line.dataset.zlCustomers = 'header';
         const markers = flags(active);
-        if (markers.childNodes.length > 0) {
-          line.append(markers);
-          name.after(line);
+        if (!active.endsWith('@g.us')) {
+          line.className = 'zl-header-customer-private';
+          // Keep the native React-owned title intact for identity resolution.
+          // Only its aggregate-mode presentation is replaced by our own control.
+          const remark = summary(active)?.remarkName || '';
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `zl-header-remark${remark ? '' : ' is-empty'}`;
+          button.textContent = remark || '添加备注';
+          button.title = remark ? '点击编辑备注' : '点击添加备注';
+          button.setAttribute(
+            'aria-label',
+            remark ? `编辑备注 ${remark}` : '添加备注',
+          );
+          const owner = data.owner;
+          const chatId = active;
+          button.addEventListener('click', event => {
+            event.stopPropagation();
+            state.action(chatId, 'remark', undefined, owner);
+          });
+          (name as HTMLElement).dataset.zlCustomerHeaderTitle = 'true';
+          state.headerName = name;
+          line.append(button);
         }
+        if (markers.childNodes.length > 0) line.append(markers);
+        name.after(line);
       }
       state.headerKey = `${active}:${data.revision}`;
     }

@@ -682,6 +682,16 @@
   .customer-overview .customer-remark-name {
     color: #ff6060;
   }
+  .customer-letter-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 36px;
+  }
+  .customer-active-flags .customer-letter-icon {
+    width: 20px;
+    height: 24px;
+  }
   .customer-active-flags {
     display: inline-flex;
     gap: 4px;
@@ -698,48 +708,49 @@
     align-items: center;
     justify-content: center;
     padding: 8px;
+    min-height: 54px;
     margin: 0;
     background: transparent;
   }
   .customer-flag--priority {
-    color: #f5a018;
+    color: #d4af37;
   }
   .customer-flag--follow {
-    color: #428bff;
+    color: #3786d7;
   }
   .customer-flag--signup {
-    color: #aa6fff;
+    color: #37a56a;
   }
   .customer-flag--deposit {
-    color: #ff6269;
+    color: #e45b68;
   }
   .customer-flag-grid button.customer-flag--priority {
-    color: #f5a018;
+    color: #d4af37;
   }
   .customer-flag-grid button.customer-flag--follow {
-    color: #428bff;
+    color: #3786d7;
   }
   .customer-flag-grid button.customer-flag--signup {
-    color: #aa6fff;
+    color: #37a56a;
   }
   .customer-flag-grid button.customer-flag--deposit {
-    color: #ff6269;
+    color: #e45b68;
   }
   .customer-flag-grid button[aria-pressed='true'] {
     color: #fff;
     border-color: transparent;
   }
   .customer-flag-grid .customer-flag--priority[aria-pressed='true'] {
-    background: #cd8104;
+    background: #80631e;
   }
   .customer-flag-grid .customer-flag--follow[aria-pressed='true'] {
-    background: #176aff;
+    background: #174f8c;
   }
   .customer-flag-grid .customer-flag--signup[aria-pressed='true'] {
-    background: #8146cc;
+    background: #217348;
   }
   .customer-flag-grid .customer-flag--deposit[aria-pressed='true'] {
-    background: #c9353e;
+    background: #943443;
   }
   .customer-copy {
     display: flex;

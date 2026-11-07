@@ -723,19 +723,32 @@ body:not(.theme__dark) .account-sidebar {
     gap: 5px;
   }
   .conversation-row__title {
-    display: block;
-    position: relative;
-    padding-right: 58px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 18px;
+    font-size: 13px;
+    time {
+      flex-shrink: 0;
+      white-space: nowrap;
+      font-size: 10px;
+      color: #a6b2c3;
+    }
+  }
+  .conversation-row__name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 13px;
-    time {
-      position: absolute;
-      right: 0;
-      top: 1px;
-      font-size: 10px;
-      color: #a6b2c3;
+  }
+  .conversation-row__flags {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 2px;
+    .customer-letter-icon {
+      width: 14px;
+      height: 17px;
     }
   }
   .conversation-row__preview,

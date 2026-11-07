@@ -1,6 +1,7 @@
 /* eslint-disable no-void -- The runtime reports asynchronous errors in its own state. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
+import { customerFlagSvg } from './flagIcons';
 import { ensureBulkLibrary } from '../accountTools/bulkRuntime';
 import {
   customerTick,
@@ -376,7 +377,7 @@ export class CustomerRuntime {
         installed?.revision === bundle.revision;
       const actions: CustomerAction[] = await this.bounded(
         view.executeJavaScript(
-          `(${customerTick.toString()})(${synchronized ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)})`,
+          `(${customerTick.toString()})(${synchronized ? 'undefined' : JSON.stringify(bundle)},${JSON.stringify(context.chat?.id)},${customerFlagSvg.toString()})`,
         ),
       );
       if (!current()) return;

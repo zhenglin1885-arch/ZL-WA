@@ -7,6 +7,9 @@ try {
     const req = process
       .getBuiltinModule('module')
       .createRequire(`${process.cwd()}/package.json`);
+    const renderFlag = req(
+      `${process.cwd()}/build/features/customers/flagIcons.js`,
+    ).customerFlagSvg;
     const fs = req('node:fs');
     const vm = req('node:vm');
     const { BrowserWindow, session } = req('electron');
@@ -36,7 +39,8 @@ try {
     try {
       await win.loadURL('https://web.whatsapp.com/');
       const proof = await win.webContents.executeJavaScript(`(async()=>{
-        const tick=${module.exports.customerTick.toString()}, read=${module.exports.readCustomerContext.toString()};
+        const rawTick=${module.exports.customerTick.toString()}, read=${module.exports.readCustomerContext.toString()},drawFlag=${renderFlag.toString()};
+        const tick=(data,active)=>rawTick(data,active,drawFlag);
         const check=(condition,message)=>{if(!condition)throw Error(message)};
         const owner=read().owners[0], model=fixture.chats[1], id=model.id._serialized, other=fixture.chats[0].id._serialized;
         const data={owner,revision:1,summaries:{[id]:{remarkName:'saved original note',flags:['priority']}},aliases:{'20002@lid':id},pins:[],pinsInitialized:true};
@@ -47,7 +51,7 @@ try {
         row.setAttribute('aria-selected','true');
         row.__reactFiber$fixture={stateNode:row,memoizedProps:{},return:{stateNode:null,memoizedProps:{chatId:id},return:null}};
         const render=async()=>{read();tick(data,id);await new Promise(r=>setTimeout(r,180));tick(undefined,id);};
-        const valid=()=>row.querySelector('.zl-chat-note')?.value==='saved original note'&&!!row.querySelector('[aria-label="重点"]');
+        const valid=()=>row.querySelector('.zl-chat-note')?.value==='saved original note'&&!!row.querySelector('[aria-label="A"]');
         await render();check(valid(),'Composite Fiber chatId did not receive note/flag');
         check(window.__zlCustomers.rowIdentity.get(row)==='react-fiber','Row did not use the exact Fiber identity');
         delete row.__reactFiber$fixture;row.__reactProps$fixture={chat:'20002@lid'};await render();check(valid(),'String chat identity or PN/LID alias was not resolved');

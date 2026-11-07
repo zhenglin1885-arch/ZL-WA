@@ -18,6 +18,8 @@ import { Popover, Menu, MenuItem } from '@mui/material';
 import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import BulkSend from '../accountTools/BulkSend';
+import CustomerFlagIcon from '../customers/CustomerFlagIcon';
+import { customerFlagNames, type CustomerFlag } from '../customers/types';
 import { getConversationRuntime } from './runtime';
 import {
   normalizeConversationGroups,
@@ -403,8 +405,10 @@ const ConversationSidebar = observer(
                 );
               const { row } = entry;
               const avatar = runtime.avatars.get(row.key);
-              const title =
-                (!row.group && row.remark.trim()) || row.name || row.phone;
+              const title = row.name || row.phone;
+              const flags = (
+                Object.keys(customerFlagNames) as CustomerFlag[]
+              ).filter(flag => row.flags?.includes(flag));
               const isActive =
                 active === row.key &&
                 stores.services.active?.id === row.accountId;
@@ -445,7 +449,18 @@ const ConversationSidebar = observer(
                     </span>
                     <span className="conversation-row__content">
                       <span className="conversation-row__title">
-                        {title}
+                        <span className="conversation-row__name">{title}</span>
+                        {flags.length > 0 && (
+                          <span
+                            className="conversation-row__flags"
+                            role="img"
+                            aria-label={`客户标记 ${flags.map(flag => customerFlagNames[flag]).join('、')}`}
+                          >
+                            {flags.map(flag => (
+                              <CustomerFlagIcon key={flag} flag={flag} />
+                            ))}
+                          </span>
+                        )}
                         <time>{formatTime(row.timestamp)}</time>
                       </span>
                       <span className="conversation-row__preview">

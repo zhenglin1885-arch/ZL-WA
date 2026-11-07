@@ -1,3 +1,5 @@
+import type { CustomerFlag } from '../customers/types';
+
 export interface ConversationItem {
   id: string;
   aliases: string[];
@@ -20,6 +22,7 @@ export interface AggregateConversation extends ConversationItem {
   accountName: string;
   accountRemark: string;
   remark: string;
+  flags?: CustomerFlag[];
 }
 export interface ConversationGroups {
   groups: { id: string; name: string; collapsed: boolean }[];

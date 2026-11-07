@@ -9,6 +9,9 @@ try {
         const req = process
           .getBuiltinModule('module')
           .createRequire(`${process.cwd()}/package.json`);
+        const renderFlag = req(
+          `${process.cwd()}/build/features/customers/flagIcons.js`,
+        ).customerFlagSvg;
         const fs = req('node:fs');
         const vm = req('node:vm');
         const { BrowserWindow, session } = req('electron');
@@ -43,7 +46,8 @@ try {
         try {
           await win.loadURL('https://web.whatsapp.com/');
           const proof = await win.webContents.executeJavaScript(`(async()=>{
-          const read=${current.readCustomerContext.toString()},tick=${current.customerTick.toString()};
+          const read=${current.readCustomerContext.toString()},rawTick=${current.customerTick.toString()},drawFlag=${renderFlag.toString()};
+          const tick=(data,active)=>rawTick(data,active,drawFlag);
           const model=fixture.chats[1],id=model.id._serialized;
           model.name='10002';model.formattedTitle='10002';model.contact={verifiedName:'AUVP',pushname:'previous name'};
           const row=()=>document.querySelector('[data-id="'+id+'"]');
@@ -53,12 +57,12 @@ try {
           const data={owner,revision:1,summaries:{[id]:{remarkName:'1',flags:['priority']}},aliases:{},pins:[],pinsInitialized:true};
           const render=async()=>{read();tick(data,id);await new Promise(r=>setTimeout(r,180));tick(undefined,id);};
           const check=(condition,message)=>{if(!condition)throw Error(message)};
-          const valid=()=>row().querySelector('.zl-chat-note')?.value==='1'&&!!row().querySelector('[aria-label="重点"]');
+          const valid=()=>row().querySelector('.zl-chat-note')?.value==='1'&&!!row().querySelector('[aria-label="A"]');
           fixture.renderChats();name().title='AUVP';name().textContent='AUVP';
           row().querySelector('.fixture-preview').textContent='Waiting for this message. This may take a while.';
           document.querySelector('#main header span').removeAttribute('title');document.querySelector('#main header span').setAttribute('dir','auto');document.querySelector('#main header span').textContent='AUVP';
           await render();check(valid(),'Verified business title did not receive its saved note and flag');
-          check(!!document.querySelector('#main header [aria-label="重点"]'),'Business header flag missing');
+          check(!!document.querySelector('#main header [aria-label="A"]'),'Business header flag missing');
           name().removeAttribute('title');name().setAttribute('dir','auto');name().textContent='New presentation not in contact model';
           await render();check(valid(),'Exact native ID still depended on the displayed name');
           name().textContent='AUVP';delete row().__reactProps$fixture;row().removeAttribute('data-id');

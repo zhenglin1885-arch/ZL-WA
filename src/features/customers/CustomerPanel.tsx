@@ -8,14 +8,7 @@ import {
   DialogContent,
   DialogTitle,
 } from '@mui/material';
-import {
-  mdiFlagVariant,
-  mdiChartLine,
-  mdiClipboardCheckOutline,
-  mdiCashCheck,
-  mdiClose,
-  mdiAccountOutline,
-} from '@mdi/js';
+import { mdiClose, mdiAccountOutline } from '@mdi/js';
 import Icon from '../../components/ui/icon';
 import {
   customerFlagNames,
@@ -25,13 +18,8 @@ import {
   type CustomerFlag,
 } from './types';
 import type { CustomerRuntime } from './runtime';
+import CustomerFlagIcon from './CustomerFlagIcon';
 
-export const customerIcons: Record<CustomerFlag, string> = {
-  priority: mdiFlagVariant,
-  follow: mdiChartLine,
-  signup: mdiClipboardCheckOutline,
-  deposit: mdiCashCheck,
-};
 const genders = { male: '男', female: '女', unknown: '未知' };
 const stocks = { yes: '是', no: '否', unknown: '未知' };
 function CustomerEditor({
@@ -166,6 +154,8 @@ function CustomerEditor({
       className={`customer-flag customer-flag--${flag}`}
       key={flag}
       aria-pressed={profile.flags.includes(flag)}
+      aria-label={`标记 ${customerFlagNames[flag]}`}
+      title={`标记 ${customerFlagNames[flag]}`}
       onClick={() =>
         update(
           'flags',
@@ -175,8 +165,7 @@ function CustomerEditor({
         )
       }
     >
-      <Icon icon={customerIcons[flag]} size={0.7} />
-      {customerFlagNames[flag]}
+      <CustomerFlagIcon flag={flag} />
     </button>
   ));
   return (
@@ -192,7 +181,7 @@ function CustomerEditor({
                 title={customerFlagNames[flag]}
                 key={flag}
               >
-                <Icon icon={customerIcons[flag]} size={0.7} />
+                <CustomerFlagIcon flag={flag} />
               </span>
             ))}
           </span>

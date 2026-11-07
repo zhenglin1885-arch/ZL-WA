@@ -49,7 +49,9 @@ describe('aggregate account isolation and lifecycle', () => {
         owner: owners[0],
         ownerAliases: owners,
         aliases: {},
-        summaries: { '10001@c.us': { remarkName: 'VIP' } },
+        summaries: {
+          '10001@c.us': { remarkName: 'VIP', flags: ['priority', 'signup'] },
+        },
       }),
     );
     stores = {
@@ -291,6 +293,8 @@ describe('aggregate account isolation and lifecycle', () => {
       '蓝二号',
     );
     expect(runtime.rows[0].remark).toBe('VIP');
+    expect(runtime.rows[0].name).toBe('Alice');
+    expect(runtime.rows[0].flags).toEqual(['priority', 'signup']);
     expect(ensureBulkLibrary).not.toHaveBeenCalled();
     expect(stores.services._awake).not.toHaveBeenCalled();
     expect(runtime.errors.get('sleeping')).toContain('休眠');
