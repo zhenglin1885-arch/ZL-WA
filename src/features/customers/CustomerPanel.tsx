@@ -426,6 +426,15 @@ export function CustomerRemarkDialog({
     };
   }, [runtime]);
   const { editor } = runtime;
+  const compact = Boolean(editor?.anchor);
+  const left = Math.max(
+    8,
+    Math.min(editor?.anchor?.left || 0, window.innerWidth - 336),
+  );
+  const top = Math.max(
+    8,
+    Math.min(editor?.anchor?.top || 0, window.innerHeight - 160),
+  );
   const close = () => {
     if (!busy) {
       runtime.editor = undefined;
@@ -451,24 +460,42 @@ export function CustomerRemarkDialog({
       )}
       <Dialog
         open={Boolean(editor)}
-        className="account-tools-dialog"
-        fullWidth
-        maxWidth="sm"
+        className={`account-tools-dialog${compact ? ' customer-remark-popover' : ''}`}
+        fullWidth={!compact}
+        maxWidth={compact ? false : 'sm'}
+        hideBackdrop={compact}
+        PaperProps={
+          compact
+            ? {
+                style: {
+                  position: 'fixed',
+                  left,
+                  top,
+                  margin: 0,
+                  width: 320,
+                  maxWidth: 'calc(100vw - 16px)',
+                  maxHeight: `calc(100vh - ${top + 8}px)`,
+                },
+              }
+            : undefined
+        }
         onClose={close}
       >
         <DialogTitle>联系人备注名</DialogTitle>
         <DialogContent>
-          <p>{editor?.chatId}</p>
+          {!compact && <p>{editor?.chatId}</p>}
           <input
             aria-label="联系人备注名"
             maxLength={100}
             value={value}
             onChange={e => setValue(e.target.value)}
           />
-          <p className="tools-muted">
-            红色短备注显示在昵称或号码下方，与客户资料中的备注名同步。
-          </p>
-          <p role="alert">{error}</p>
+          {!compact && (
+            <p className="tools-muted">
+              红色短备注显示在昵称或号码下方，与客户资料中的备注名同步。
+            </p>
+          )}
+          {error && <p role="alert">{error}</p>}
         </DialogContent>
         <DialogActions>
           <Button disabled={busy} onClick={close}>
@@ -496,7 +523,7 @@ export function CustomerRemarkDialog({
               }
             }}
           >
-            保存备注名
+            {compact ? '保存' : '保存备注名'}
           </Button>
         </DialogActions>
       </Dialog>

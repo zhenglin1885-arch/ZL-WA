@@ -683,6 +683,8 @@
     color: #ff6060;
   }
   .customer-letter-icon {
+    filter: none;
+    text-shadow: none;
     display: inline-flex;
     flex: 0 0 auto;
     width: 30px;
@@ -713,28 +715,28 @@
     background: transparent;
   }
   .customer-flag--priority {
-    color: #d4af37;
+    color: #ffd43b;
   }
   .customer-flag--follow {
-    color: #3786d7;
+    color: #339dff;
   }
   .customer-flag--signup {
-    color: #37a56a;
+    color: #2ee86f;
   }
   .customer-flag--deposit {
-    color: #e45b68;
+    color: #ff4d5e;
   }
   .customer-flag-grid button.customer-flag--priority {
-    color: #d4af37;
+    color: #ffd43b;
   }
   .customer-flag-grid button.customer-flag--follow {
-    color: #3786d7;
+    color: #339dff;
   }
   .customer-flag-grid button.customer-flag--signup {
-    color: #37a56a;
+    color: #2ee86f;
   }
   .customer-flag-grid button.customer-flag--deposit {
-    color: #e45b68;
+    color: #ff4d5e;
   }
   .customer-flag-grid button[aria-pressed='true'] {
     color: #fff;
@@ -1129,5 +1131,29 @@ body:not(.theme__dark) .account-tools-rail button[aria-pressed='true'] {
     max-width: 100%;
     max-height: 190px;
     border-radius: 6px;
+  }
+}
+
+.customer-remark-popover {
+  .MuiDialogTitle-root {
+    padding: 10px 12px 6px;
+    font-size: 15px;
+  }
+  .MuiDialogContent-root {
+    padding: 6px 12px;
+    input {
+      margin: 0;
+      padding: 6px 9px;
+      height: 34px;
+      box-sizing: border-box;
+    }
+  }
+  .MuiDialogActions-root {
+    padding: 4px 12px 10px;
+    .MuiButton-root {
+      min-height: 28px;
+      padding: 3px 10px;
+      font-size: 13px;
+    }
   }
 }

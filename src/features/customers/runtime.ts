@@ -22,7 +22,12 @@ export class CustomerRuntime {
 
   error = '';
 
-  editor?: { owner: string; chatId: string; profile: CustomerProfile };
+  editor?: {
+    owner: string;
+    chatId: string;
+    profile: CustomerProfile;
+    anchor?: { left: number; top: number };
+  };
 
   listeners = new Set<() => void>();
 
@@ -230,7 +235,35 @@ export class CustomerRuntime {
       case 'remark': {
         const profile = await this.profile(owner, action.chatId);
         if (this.bundle?.owner === owner) {
-          this.editor = { owner, chatId: action.chatId, profile };
+          let anchor: { left: number; top: number } | undefined;
+          try {
+            const position = JSON.parse(action.value || 'null');
+            const bounds = view.getBoundingClientRect();
+            if (
+              position &&
+              ['left', 'top', 'viewportWidth', 'viewportHeight'].every(
+                key =>
+                  typeof position[key] === 'number' &&
+                  Number.isFinite(position[key]),
+              ) &&
+              position.viewportWidth > 0 &&
+              position.viewportHeight > 0 &&
+              bounds.width > 0 &&
+              bounds.height > 0
+            ) {
+              anchor = {
+                left:
+                  bounds.left +
+                  (position.left * bounds.width) / position.viewportWidth,
+                top:
+                  bounds.top +
+                  (position.top * bounds.height) / position.viewportHeight,
+              };
+            }
+          } catch {
+            // Other remark entry points retain their existing centered dialog.
+          }
+          this.editor = { owner, chatId: action.chatId, profile, anchor };
           this.notify();
         }
 

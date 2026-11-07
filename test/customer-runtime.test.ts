@@ -56,6 +56,41 @@ describe('customer initialization after a new login', () => {
       pins: [],
     });
   });
+  it('positions the aggregate remark editor below its guest header across scaled webviews', async () => {
+    context = ready;
+    await tick();
+    const profile = { remarkName: 'Existing remark' } as any;
+    jest.spyOn(runtime, 'profile').mockResolvedValue(profile);
+    view.getBoundingClientRect = () => ({
+      left: 360,
+      top: 32,
+      width: 450,
+      height: 400,
+    });
+    await (runtime as any).handle(
+      {
+        id: 91,
+        chatId: '10002@c.us',
+        action: 'remark',
+        value: JSON.stringify({
+          left: 20,
+          top: 84,
+          viewportWidth: 900,
+          viewportHeight: 800,
+        }),
+      },
+      view,
+      ready.owners[0],
+    );
+    expect(runtime.editor?.anchor).toEqual({ left: 370, top: 74 });
+    expect(runtime.editor?.profile).toBe(profile);
+    await (runtime as any).handle(
+      { id: 92, chatId: '10002@c.us', action: 'remark' },
+      view,
+      ready.owners[0],
+    );
+    expect(runtime.editor?.anchor).toBeUndefined();
+  });
   it('loads the adapter automatically, rereads live identity and binds before rendering', async () => {
     (ensureBulkLibrary as jest.Mock).mockImplementation(async () => {
       context = ready;

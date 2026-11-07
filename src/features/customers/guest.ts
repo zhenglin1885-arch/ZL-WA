@@ -327,7 +327,7 @@ export function customerTick(
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
       .zl-chat-note[data-save-state="error"]{box-shadow:0 1px #ff6060}
       .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-left:5px}
-      .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:24px!important;background:transparent;font:900 18px/1 sans-serif;-webkit-text-stroke:0.6px white;text-shadow:0 2px #142b46}.zl-customer-flag svg{display:block;width:100%;height:100%}
+      .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:24px!important;background:transparent;font:900 18px/1 sans-serif;text-shadow:none}.zl-customer-flag svg{display:block;width:100%;height:100%}
     `;
     document.head.append(style);
     state.nativePins = new Map();
@@ -652,10 +652,10 @@ export function customerTick(
     box.className = 'zl-customer-flags';
     box.dataset.zlCustomers = 'flags';
     const design = {
-      priority: ['A', '#d4af37', 'A'],
-      follow: ['B', '#3786d7', 'B'],
-      signup: ['C', '#37a56a', 'C'],
-      deposit: ['D', '#e45b68', 'D'],
+      priority: ['A', '#ffd43b', 'A'],
+      follow: ['B', '#339dff', 'B'],
+      signup: ['C', '#2ee86f', 'C'],
+      deposit: ['D', '#ff4d5e', 'D'],
     };
     for (const flag of summary(id)?.flags ?? []) {
       const item = document.createElement('span');
@@ -1259,7 +1259,18 @@ export function customerTick(
           const chatId = active;
           button.addEventListener('click', event => {
             event.stopPropagation();
-            state.action(chatId, 'remark', undefined, owner);
+            const bounds = header.getBoundingClientRect();
+            state.action(
+              chatId,
+              'remark',
+              JSON.stringify({
+                left: bounds.left + 20,
+                top: bounds.bottom + 4,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+              }),
+              owner,
+            );
           });
           (name as HTMLElement).dataset.zlCustomerHeaderTitle = 'true';
           state.headerName = name;
