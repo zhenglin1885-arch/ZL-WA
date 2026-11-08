@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['test/7.3.7-20261107-4']
+    branches: ['main']
   workflow_dispatch:
 
 permissions:
@@ -45,7 +45,7 @@ jobs:
           node-version-file: .nvmrc
       - uses: pnpm/action-setup@v4
       - name: Validate release version
-        run: node -e "if (require('./package.json').version !== '7.3.7') throw Error('Version mismatch')"
+        run: node -e "if (require('./package.json').version !== '7.3.8') throw Error('Version mismatch')"
       - name: Install dependencies and Electron
         run: |
           pnpm install --frozen-lockfile
@@ -117,12 +117,12 @@ jobs:
             out/*.exe
             out/windows-startup-verification.json
           if-no-files-found: error
-      - name: Create checksums and publish test package
+      - name: Create checksums and publish stable release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $expected = @('ZL-WA-win-AutoSetup-7.3.7-x64.exe', 'ZL-WA-win-Portable-7.3.7-x64.exe') | Sort-Object
+          $expected = @('ZL-WA-win-AutoSetup-7.3.8-x64.exe', 'ZL-WA-win-Portable-7.3.8-x64.exe') | Sort-Object
           $actual = @(Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty Name | Sort-Object)
           if (($actual -join ',') -ne ($expected -join ',')) { throw 'Unexpected package set.' }
           $lines = Get-ChildItem out -Filter *.exe | ForEach-Object {
@@ -131,5 +131,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create test-7.3.7-20261107-4 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.7 test-4 (2026-11-07)' --notes-file docs/releases/7.3.7-test-4.md
-          if ($LASTEXITCODE -ne 0) { throw 'Candidate upload failed.' }
+          gh release create v7.3.8 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --latest --title 'ZL-WA 7.3.8' --notes-file docs/releases/7.3.8.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }

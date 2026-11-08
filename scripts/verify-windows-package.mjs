@@ -9,6 +9,9 @@ import { dirname, join, resolve } from 'node:path';
 
 assert.equal(process.platform, 'win32');
 assert.equal(process.arch, 'x64');
+const expectedVersion = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 const executable = resolve(process.argv[2]);
 const profile = mkdtempSync(join(tmpdir(), 'zl-packaged-startup-'));
 const child = spawn(executable, ['--remote-debugging-port=9333'], {
@@ -110,7 +113,7 @@ try {
         !state.errorFallback &&
         (!requireReload || state.reloaded)
       ) {
-        assert.equal(state.version, '7.3.7');
+        assert.equal(state.version, expectedVersion);
         assert.equal(state.arch, 'x64');
         assert.equal(state.platform, 'win32');
         return state;
@@ -126,7 +129,7 @@ try {
   const afterResumeReload = await ready(true);
   const asar = join(dirname(executable), 'resources', 'app.asar');
   const report = {
-    version: '7.3.7',
+    version: expectedVersion,
     commit: process.env.GITHUB_SHA,
     nativePackagedStartup: true,
     mainProcessResumeReload: true,
