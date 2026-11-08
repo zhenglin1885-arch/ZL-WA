@@ -11,6 +11,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       actions: read
@@ -25,18 +26,22 @@ jobs:
           python3 <<'PY'
           import pathlib,re
           text=pathlib.Path('native-job.log').read_text()
-          lines=[l for l in text.splitlines() if any(x in l.lower() for x in ['error','mismatch','not found','http 4','http 5','permission denied','failed','shasum'])]
+          lines=[l for l in text.splitlines() if any(x in l.lower() for x in ['error','mismatch','not found','http 4','http 5','permission denied','failed','shasum','immutable','release is'])]
           for l in lines[-12:]:print('::notice::'+l[:1200].replace('%','%25'))
           PY
       - name: Download and validate completed native builds
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts" > artifacts.json
+          for attempt in {1..40}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts" > artifacts.json
+            if node -e 'const a=require("./artifacts.json").artifacts;process.exit(["ZL-WA-macOS-x64","ZL-WA-macOS-arm64"].every(n=>a.some(x=>x.name===n&&!x.expired))?0:1)'; then break; fi
+            sleep 15
+          done
           python3 <<'PY'
           import json,pathlib
           a=json.loads(pathlib.Path('artifacts.json').read_text())['artifacts']
           names=[x['name'] for x in a if x['name'] in ['ZL-WA-macOS-x64','ZL-WA-macOS-arm64'] and not x['expired']]
-          assert names,'No native Mac artifacts available'
+          assert set(names)=={'ZL-WA-macOS-x64','ZL-WA-macOS-arm64'},'Both native builds must be available'
           pathlib.Path('artifact-names.txt').write_text('\n'.join(names)+'\n')
           PY
           mkdir -p packages
@@ -59,37 +64,28 @@ jobs:
               sums=root/f'SHA256SUMS-macOS-7.3.8-{arch}.txt';sums.write_text('\n'.join(checks)+'\n');upload.append(sums.name)
           pathlib.Path('upload-files.txt').write_text('\n'.join(upload)+'\n')
           PY
-      - name: Upload exact verified packages without replacing existing assets
+      - name: Create independent stable Mac release from both verified builds
         run: |
           set -euo pipefail
-          gh release view v7.3.8 --repo "$GITHUB_REPOSITORY" --json assets > release-assets.json
-          mkdir existing
-          while read -r name; do
-            if node -e 'const a=require("./release-assets.json").assets;process.exit(a.some(x=>x.name===process.argv[1])?0:1)' "$name"; then
-              gh release download v7.3.8 --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir existing
-              cmp "packages/$name" "existing/$name"
-            else
-              gh release upload v7.3.8 "packages/$name" --repo "$GITHUB_REPOSITORY"
-            fi
-          done < upload-files.txt
-      - name: Update Mac download notes
-        run: |
-          set -euo pipefail
-          gh release view v7.3.8 --repo "$GITHUB_REPOSITORY" --json body,assets > release.json
-          mkdir reports
-          gh release download v7.3.8 --repo "$GITHUB_REPOSITORY" --pattern 'verification-macOS-7.3.8-*.json' --dir reports
           python3 <<'PY'
-          import json,pathlib
-          r=json.loads(pathlib.Path('release.json').read_text());names={a['name'] for a in r['assets']}
-          lines=['','<!-- zl-macos-7.3.8 -->','## macOS 7.3.8','']
-          for p in sorted(pathlib.Path('reports').glob('*.json')):
-              v=json.loads(p.read_text());arch=v['arch'];assert v['version']=='7.3.8' and v['commit']=='55ebaa290611a45e56fc55b33492309bd2b899e8' and v['startup']['nativePackagedStartup'] and v['signatureValid']
-              assert all(f'ZL-WA-macOS-7.3.8-{arch}.{ext}' in names for ext in ['dmg','zip'])
-              label='Intel' if arch=='x64' else 'Apple 芯片（M 系列）'
-              lines.append(f'- [{label} DMG](https://github.com/zhenglin1885-arch/ZL-WA/releases/download/v7.3.8/ZL-WA-macOS-7.3.8-{arch}.dmg)；已通过对应架构的原生启动检查。')
-              if not v['notarized']:lines.append(f'  {label}包尚未经过 Apple 公证；签名方式：'+('临时签名（ad-hoc）。' if v['signing']=='adhoc' else 'Developer ID。'))
-          lines+=['','Mac 与 Windows 使用相同的 7.3.8 正式版源码。首次打开若被 macOS 安全机制拦截，请在“系统设置 → 隐私与安全性”中查看并允许打开。']
-          body=r['body'].split('<!-- zl-macos-7.3.8 -->')[0].rstrip()+'\n'+'\n'.join(lines)+'\n'
-          pathlib.Path('notes.md').write_text(body)
+          import pathlib,json
+          lines=['ZL-WA 7.3.8（macOS 正式版）','','- 支持 Intel 与 Apple 芯片（M 系列），提供 DMG 与 ZIP。','- 包含明亮纯色 ABCD 标记、聚合会话中的备注小弹窗，以及当前 7.3.8 正式版的既有功能和修复。','- Mac 与 Windows 使用相同的正式版源码（55ebaa2）。','','下载：']
+          for arch,label in [('arm64','Apple 芯片（M 系列）'),('x64','Intel')]:
+              p=pathlib.Path(f'packages/verification-macOS-7.3.8-{arch}.json');v=json.loads(p.read_text())
+              lines.append(f'- [{label} DMG](https://github.com/zhenglin1885-arch/ZL-WA/releases/download/mac-v7.3.8/ZL-WA-macOS-7.3.8-{arch}.dmg)')
+              assert v['startup']['nativePackagedStartup'] and v['signatureValid']
+          lines+=['','两个架构均通过完整测试、DMG/ZIP 内容一致性校验、签名检查，以及从 /Applications 安装后的原生启动检查。']
+          reports=[json.loads(p.read_text()) for p in pathlib.Path('packages').glob('verification-macOS-*.json')]
+          if any(not v['notarized'] for v in reports):lines+=['','当前未经过 Apple 公证；临时签名（ad-hoc）的包首次打开可能被 macOS 安全机制拦截，可在“系统设置 → 隐私与安全性”中查看并允许打开。']
+          pathlib.Path('mac-release-notes.md').write_text('\n'.join(lines)+'\n')
           PY
-          gh release edit v7.3.8 --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          files=()
+          while read -r name; do files+=("packages/$name"); done < upload-files.txt
+          if ! gh release create mac-v7.3.8 "${files[@]}" --repo "$GITHUB_REPOSITORY" --target 55ebaa290611a45e56fc55b33492309bd2b899e8 --latest=false --title 'ZL-WA 7.3.8 macOS' --notes-file mac-release-notes.md > publish.log 2>&1; then
+            python3 <<'PY'
+          import pathlib
+          for line in pathlib.Path('publish.log').read_text().splitlines()[-20:]:print('::error::'+line[:1500].replace('%','%25'))
+          PY
+            exit 1
+          fi
+          cat publish.log
