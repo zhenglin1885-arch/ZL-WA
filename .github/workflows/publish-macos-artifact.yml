@@ -1,0 +1,95 @@
+name: Publish verified macOS 7.3.8 artifacts
+on:
+  push:
+    branches: ['publish/mac-7.3.8']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: zl-macos-738-artifact-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN: '42510670197'
+    steps:
+      - name: Diagnose native-runner upload failure
+        continue-on-error: true
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/128822842336/logs" > native-job.log
+          python3 <<'PY'
+          import pathlib,re
+          text=pathlib.Path('native-job.log').read_text()
+          lines=[l for l in text.splitlines() if any(x in l.lower() for x in ['error','mismatch','not found','http 4','http 5','permission denied','failed','shasum'])]
+          for l in lines[-12:]:print('::notice::'+l[:1200].replace('%','%25'))
+          PY
+      - name: Download and validate completed native builds
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/artifacts" > artifacts.json
+          python3 <<'PY'
+          import json,pathlib
+          a=json.loads(pathlib.Path('artifacts.json').read_text())['artifacts']
+          names=[x['name'] for x in a if x['name'] in ['ZL-WA-macOS-x64','ZL-WA-macOS-arm64'] and not x['expired']]
+          assert names,'No native Mac artifacts available'
+          pathlib.Path('artifact-names.txt').write_text('\n'.join(names)+'\n')
+          PY
+          mkdir -p packages
+          while read -r name; do gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "$name" --dir packages; done < artifact-names.txt
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v7.3.8" > tag.json
+          python3 <<'PY'
+          import pathlib,json,hashlib
+          root=pathlib.Path('packages');commit='55ebaa290611a45e56fc55b33492309bd2b899e8'
+          tag=json.loads(pathlib.Path('tag.json').read_text());assert tag['object']['type']=='commit' and tag['object']['sha']==commit
+          reports=list(root.glob('verification-*.json'));assert reports
+          upload=[]
+          for p in reports:
+              v=json.loads(p.read_text());arch=v['arch'];s=v['startup'];assert v['commit']==commit and v['version']=='7.3.8' and v['signatureValid'] and v['zipDmgPayloadIdentical'] and s['nativePackagedStartup']
+              assert s['version']=='7.3.8' and s['platform']=='darwin' and s['arch']==arch and s['localSessionReady'] and s['settingsLoaded'] and s['servicesLoaded'] and s['rootElements']>0 and not s['errorFallback']
+              assert {f['name'] for f in v['files']}=={f'ZL-WA-macOS-7.3.8-{arch}.{ext}' for ext in ['dmg','zip']}
+              checks=[]
+              for f in v['files']:
+                  q=root/f['name'];digest=hashlib.sha256(q.read_bytes()).hexdigest();assert q.stat().st_size==f['bytes'] and digest==f['sha256'];checks.append(f"{digest}  {q.name}");upload.append(q.name)
+              proof=root/f'verification-macOS-7.3.8-{arch}.json';proof.write_text(json.dumps(v,indent=2)+'\n');upload.append(proof.name)
+              sums=root/f'SHA256SUMS-macOS-7.3.8-{arch}.txt';sums.write_text('\n'.join(checks)+'\n');upload.append(sums.name)
+          pathlib.Path('upload-files.txt').write_text('\n'.join(upload)+'\n')
+          PY
+      - name: Upload exact verified packages without replacing existing assets
+        run: |
+          set -euo pipefail
+          gh release view v7.3.8 --repo "$GITHUB_REPOSITORY" --json assets > release-assets.json
+          mkdir existing
+          while read -r name; do
+            if node -e 'const a=require("./release-assets.json").assets;process.exit(a.some(x=>x.name===process.argv[1])?0:1)' "$name"; then
+              gh release download v7.3.8 --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir existing
+              cmp "packages/$name" "existing/$name"
+            else
+              gh release upload v7.3.8 "packages/$name" --repo "$GITHUB_REPOSITORY"
+            fi
+          done < upload-files.txt
+      - name: Update Mac download notes
+        run: |
+          set -euo pipefail
+          gh release view v7.3.8 --repo "$GITHUB_REPOSITORY" --json body,assets > release.json
+          mkdir reports
+          gh release download v7.3.8 --repo "$GITHUB_REPOSITORY" --pattern 'verification-macOS-7.3.8-*.json' --dir reports
+          python3 <<'PY'
+          import json,pathlib
+          r=json.loads(pathlib.Path('release.json').read_text());names={a['name'] for a in r['assets']}
+          lines=['','<!-- zl-macos-7.3.8 -->','## macOS 7.3.8','']
+          for p in sorted(pathlib.Path('reports').glob('*.json')):
+              v=json.loads(p.read_text());arch=v['arch'];assert v['version']=='7.3.8' and v['commit']=='55ebaa290611a45e56fc55b33492309bd2b899e8' and v['startup']['nativePackagedStartup'] and v['signatureValid']
+              assert all(f'ZL-WA-macOS-7.3.8-{arch}.{ext}' in names for ext in ['dmg','zip'])
+              label='Intel' if arch=='x64' else 'Apple 芯片（M 系列）'
+              lines.append(f'- [{label} DMG](https://github.com/zhenglin1885-arch/ZL-WA/releases/download/v7.3.8/ZL-WA-macOS-7.3.8-{arch}.dmg)；已通过对应架构的原生启动检查。')
+              if not v['notarized']:lines.append(f'  {label}包尚未经过 Apple 公证；签名方式：'+('临时签名（ad-hoc）。' if v['signing']=='adhoc' else 'Developer ID。'))
+          lines+=['','Mac 与 Windows 使用相同的 7.3.8 正式版源码。首次打开若被 macOS 安全机制拦截，请在“系统设置 → 隐私与安全性”中查看并允许打开。']
+          body=r['body'].split('<!-- zl-macos-7.3.8 -->')[0].rstrip()+'\n'+'\n'.join(lines)+'\n'
+          pathlib.Path('notes.md').write_text(body)
+          PY
+          gh release edit v7.3.8 --repo "$GITHUB_REPOSITORY" --notes-file notes.md
