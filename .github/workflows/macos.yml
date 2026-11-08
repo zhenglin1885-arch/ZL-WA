@@ -104,6 +104,8 @@ jobs:
           pnpm package
       - name: Check source
         run: |
+          # macOS aliases /var to /private/var; use its physical temporary path.
+          export TMPDIR="$(python3 -c 'import os,tempfile; print(os.path.realpath(tempfile.gettempdir()))')"
           pnpm typecheck > typecheck.log 2>&1 || { node ci-tools/scripts/report-macos-ci-failure.cjs typecheck.log; exit 1; }
           pnpm test --runInBand --coverage=false > tests.log 2>&1 || { node ci-tools/scripts/report-macos-ci-failure.cjs tests.log; exit 1; }
           tail -8 tests.log
