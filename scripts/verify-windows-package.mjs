@@ -173,7 +173,7 @@ try {
   console.log(JSON.stringify(report));
 } catch (error) {
   console.error(
-    `::error::${String(error instanceof Error ? error.message : error).replaceAll(/[\r\n]/g, ' ')}`,
+    `::error::${String(error instanceof Error ? error.message : error).replaceAll(/[\n\r]/g, ' ')}`,
   );
   try {
     const events = JSON.parse(
