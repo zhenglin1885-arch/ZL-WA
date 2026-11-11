@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import verifyMessageTranslation from './verify-message-translation-native.cjs';
+import verifyTranslationCache from './verify-translation-cache-native.cjs';
 
 assert.equal(process.platform, 'win32');
 assert.equal(process.arch, 'x64');
@@ -162,6 +163,19 @@ try {
     normalMessagesTranslated: 3,
     nonMessageCardsExcluded: 2,
   });
+  const translationCache = await evaluate(
+    `require('@electron/remote').require('node:vm').runInThisContext(${JSON.stringify(
+      `(${verifyTranslationCache.toString()})(${JSON.stringify(appPath)})`,
+    )})`,
+  );
+  assert.deepEqual(translationCache, {
+    warmCacheBeforeHostPoll: true,
+    buttonsBeforeHostPoll: true,
+    coldCacheWithoutProvider: true,
+    staleResultsRejected: true,
+    manualRefreshPreserved: true,
+    automaticCacheMissPreserved: true,
+  });
   await evaluate(
     `window.__zlPackagedBeforeReload=true;require('electron').ipcRenderer.send('zl-window-reload-requested','system-resume');true`,
   );
@@ -176,6 +190,7 @@ try {
     zeroFilledOriginalPreserved: true,
     explicitNetworkReviewRequired: true,
     normalMessageTranslationVerified: true,
+    translationCachePresentationVerified: true,
     asarSha256: createHash('sha256').update(readFileSync(asar)).digest('hex'),
     initial,
     afterResumeReload,

@@ -12,6 +12,12 @@ export interface TranslationRequest {
   sourceContext?: string;
   manual?: boolean;
 }
+export interface TranslationCacheBatch {
+  token: string;
+  signature: string;
+  chat: string;
+  items: { key: string; text: string; sourceContext?: string }[];
+}
 export function translationTick(
   config: TranslationConfig,
   drain = true,
@@ -23,7 +29,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 20;
+  const revision = 21;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -40,6 +46,7 @@ export function translationTick(
     previous.observer?.disconnect();
     previous.noticeResizeObserver?.disconnect();
     clearTimeout(previous.noticeTimer);
+    cancelAnimationFrame(previous.scanFrame);
     for (const listener of previous.listeners || [])
       listener.target.removeEventListener(
         listener.type,
@@ -79,6 +86,7 @@ export function translationTick(
       dirty: true,
       lastScan: 0,
       settleUntil: 0,
+      cacheChecked: new Set(),
     };
     page.__zlTranslation = state;
     while (state.memo.size > 800)
@@ -1073,6 +1081,16 @@ export function translationTick(
       },
       true,
     );
+    // Restore cached text and controls in the guest's next frame; the host poll
+    // only drains provider work, so it must not delay local cache presentation.
+    state.scheduleScan = () => {
+      if (state.scanFrame || !state.ready) return;
+      state.scanFrame = requestAnimationFrame(() => {
+        state.scanFrame = undefined;
+        if (page.__zlTranslation !== state || !state.ready) return;
+        translationTick(state.config, false);
+      });
+    };
     // Changing chats invalidates an approved composer, even if React reuses its node.
     state.observer = new MutationObserver(changes => {
       discardStaleOutgoing();
@@ -1104,9 +1122,11 @@ export function translationTick(
         state.approved = null;
         state.cancelPending();
         state.activeChat = next;
+        state.cacheChecked.clear();
         state.previewBlockedChat = undefined;
         state.settleUntil = Date.now() + 500;
       }
+      state.scheduleScan();
     });
     state.activeChat = chatKey();
     state.previewBlockedChat = config.preview ? state.activeChat : undefined;
@@ -1115,15 +1135,22 @@ export function translationTick(
       'scroll',
       () => {
         state.dirty = true;
+        state.scheduleScan();
       },
       { capture: true, passive: true },
     );
+    listen(document, 'visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        state.dirty = true;
+        state.scheduleScan();
+      }
+    });
     state.observer.observe(document.body, {
       childList: true,
       characterData: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['title', 'data-id'],
+      attributeFilter: ['title', 'data-id', 'aria-hidden'],
     });
     state.ready = true;
   }
@@ -1148,6 +1175,7 @@ export function translationTick(
     if (config.preview && (!state.config.preview || !state.config.incoming))
       state.previewBlockedChat = state.chatKey();
     state.signature = state.receiveKey(config);
+    state.cacheChecked.clear();
     state.dirty = true;
     state.notice('');
   }
@@ -1170,10 +1198,12 @@ export function translationTick(
   }
   const scan =
     config.incoming &&
-    Date.now() >= state.settleUntil &&
-    (state.dirty || Date.now() - state.lastScan > 1500);
+    (state.dirty ||
+      (state.autoDeferred && Date.now() >= state.settleUntil) ||
+      Date.now() - state.lastScan > 1500);
   if (scan) {
     state.dirty = false;
+    state.autoDeferred = false;
     state.lastScan = Date.now();
     // Prefer semantic body markers, not WhatsApp's changing generated classes.
     const bodies = new Set<HTMLElement>();
@@ -1462,8 +1492,14 @@ export function translationTick(
         state.previewBlockedChat !== state.chatKey() &&
         !record.autoAttempted &&
         record.status !== 'done'
-      )
-        record.request(false);
+      ) {
+        if (
+          Date.now() >= state.settleUntil &&
+          (!state.cacheLookupEnabled || state.cacheChecked.has(record.cacheKey))
+        )
+          record.request(false);
+        else state.autoDeferred = true;
+      }
     }
   } else if (
     !config.incoming &&
@@ -1475,6 +1511,95 @@ export function translationTick(
         .forEach(n => n.remove()),
     );
   return drain ? state.queue.splice(0, 4) : [];
+}
+
+// Read-only cache discovery: this never queues a provider request.
+export function translationCacheRequests(): TranslationCacheBatch | null {
+  if (globalThis.location.hostname !== 'web.whatsapp.com') return null;
+  const state = (window as any).__zlTranslation;
+  if (!state?.ready || !state.config.incoming) return null;
+  state.cacheLookupEnabled = true;
+  const chat = state.chatKey();
+  const items: TranslationCacheBatch['items'] = [];
+  const seen = new Set<string>();
+  for (const container of document.querySelectorAll<HTMLElement>(
+    '[data-zl-translation]',
+  )) {
+    const record = state.controls.get(container);
+    if (
+      !record ||
+      record.chat !== chat ||
+      record.status !== 'idle' ||
+      record.autoAttempted
+    )
+      continue;
+    const rect = container.getBoundingClientRect();
+    if (!rect.height || rect.bottom < 0 || rect.top > window.innerHeight + 80)
+      continue;
+    const sourceContext = state.incomingContext(record.input, record.text);
+    const key = state.incomingKey(record.text, record.input, sourceContext);
+    record.cacheKey = key;
+    if (
+      state.cacheChecked.has(key) ||
+      seen.has(key) ||
+      [...state.pending.values()].some((job: any) => job.cacheKey === key)
+    )
+      continue;
+    seen.add(key);
+    items.push({
+      key,
+      text: record.text,
+      ...(sourceContext ? { sourceContext } : {}),
+    });
+    if (items.length >= 24) break;
+  }
+  return { token: state.token, signature: state.signature, chat, items };
+}
+
+export function restoreTranslationCache(
+  batch: TranslationCacheBatch,
+  hits: { key: string; text: string }[],
+): boolean {
+  if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
+  const state = (window as any).__zlTranslation;
+  if (
+    !state?.config.incoming ||
+    state.token !== batch.token ||
+    state.signature !== batch.signature ||
+    state.chatKey() !== batch.chat
+  )
+    return false;
+  for (const item of batch.items) state.cacheChecked.add(item.key);
+  while (state.cacheChecked.size > 800)
+    state.cacheChecked.delete(state.cacheChecked.values().next().value);
+  const values = new Map(hits.map(hit => [hit.key, hit.text]));
+  for (const container of document.querySelectorAll<HTMLElement>(
+    '[data-zl-translation]',
+  )) {
+    const record = state.controls.get(container);
+    const text = values.get(record?.cacheKey);
+    if (
+      !record ||
+      !text ||
+      record.status !== 'idle' ||
+      record.autoAttempted ||
+      record.chat !== batch.chat ||
+      !record.input.isConnected
+    )
+      continue;
+    if (
+      [...state.pending.values()].some(
+        (job: any) => job.cacheKey === record.cacheKey,
+      )
+    )
+      continue;
+    if (state.readIncoming(record.input) !== record.text) continue;
+    state.remember(record.cacheKey, text);
+    state.restore(record, text);
+  }
+  state.dirty = true;
+  state.scheduleScan?.();
+  return true;
 }
 
 // Prepare a selection for Electron's native insertText, then verify the editor
@@ -1631,6 +1756,7 @@ export function translationResult(
   if (!result.error && result.text?.trim() && job.cacheKey)
     state.remember(job.cacheKey, result.text);
   state.dirty = true;
+  state.scheduleScan?.();
   if (
     !state.config.incoming ||
     (job.chat && state.chatKey() !== job.chat) ||

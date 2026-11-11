@@ -180,3 +180,60 @@ it('stops before native draft insertion if the runtime unmounts during outgoing 
     else Reflect.deleteProperty(globalThis, 'document');
   }
 });
+
+it.each([false, true])(
+  'restores a cache batch without submitting a translation even when lookup fails=%s',
+  async failure => {
+    const config = defaultTools();
+    config.translation.incoming = true;
+    const batch = {
+      token: 'cache-document',
+      signature: 'language',
+      chat: 'chat',
+      items: [{ key: 'key', text: 'original' }],
+    };
+    ipcRenderer.invoke.mockImplementation((name: string) => {
+      if (name === 'account-tools-get') return Promise.resolve(config);
+      if (name === 'account-tools-translation-cache')
+        return failure
+          ? Promise.reject(new Error('cache unavailable'))
+          : Promise.resolve([{ key: 'key', text: 'cached translation' }]);
+      throw new Error('Unexpected provider call');
+    });
+    const view = {
+      executeJavaScript: jest
+        .fn()
+        .mockResolvedValueOnce({ jobs: [], cache: batch })
+        .mockResolvedValue(true),
+    };
+    const service = {
+      id: 'cache-account',
+      recipe: { id: 'whatsapp' },
+      webview: view,
+      isHibernating: false,
+      isLoading: false,
+    };
+    const stop = startTranslations({
+      services: { all: [service], active: service },
+      settings: { app: {} },
+    } as any);
+    await jest.advanceTimersByTimeAsync(400);
+    stop();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
+      'account-tools-translation-cache',
+      'cache-account',
+      batch,
+    );
+    expect(
+      ipcRenderer.invoke.mock.calls.some(
+        ([name]: [string]) => name === 'account-tools-translate',
+      ),
+    ).toBe(false);
+    expect(view.executeJavaScript).toHaveBeenCalledTimes(2);
+    expect(
+      view.executeJavaScript.mock.calls[1]?.[0].includes(
+        'cached translation',
+      ) ?? false,
+    ).toBe(!failure);
+  },
+);

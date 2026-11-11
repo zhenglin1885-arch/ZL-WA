@@ -352,6 +352,65 @@ describe('privileged account tools IPC', () => {
     await invoke('translate', 'account-2', 'cache source', 'incoming');
     expect(translate).toHaveBeenCalledTimes(3);
   });
+  it('restores persistent cached messages in a read-only batch without preparing a network session or submitting misses', async () => {
+    const config = defaultTools();
+    config.translation.incoming = true;
+    await invoke('save', 'cache-reader', config);
+    await invoke('translate', 'cache-reader', 'cached body', 'incoming');
+    const translate =
+      require('../src/electron/accountTranslation').translateAccount;
+    translate.mockClear();
+    for (const session of sessions.values()) {
+      session.setProxy.mockClear();
+      session.fetch.mockClear();
+    }
+    const current = invoke('get', 'cache-reader').translation;
+    const batch = {
+      token: 'document',
+      chat: 'chat',
+      signature: JSON.stringify([
+        current.receiveEngine,
+        current.receiveSource,
+        current.receiveTarget,
+        current.cacheRevision,
+      ]),
+      items: [
+        { key: 'hit', text: 'cached body' },
+        { key: 'miss', text: 'uncached body' },
+      ],
+    };
+    expect(invoke('translation-cache', 'cache-reader', batch)).toEqual([
+      { key: 'hit', text: 'translated' },
+    ]);
+    expect(invoke('translation-cache', 'other-account', batch)).toEqual([]);
+    expect(
+      invoke('translation-cache', 'cache-reader', {
+        ...batch,
+        signature: 'old target',
+      }),
+    ).toEqual([]);
+    expect(() =>
+      invoke('translation-cache', 'cache-reader', {
+        ...batch,
+        items: Array.from({ length: 25 }, () => batch.items[0]),
+      }),
+    ).toThrow('无效');
+    expect(() =>
+      handlers['account-tools-translation-cache'](
+        { ...event, senderFrame: {} },
+        'cache-reader',
+        batch,
+      ),
+    ).toThrow('禁止');
+    config.translation.receiveTarget = 'en';
+    await invoke('save', 'cache-reader', config);
+    expect(invoke('translation-cache', 'cache-reader', batch)).toEqual([]);
+    expect(translate).not.toHaveBeenCalled();
+    for (const session of sessions.values()) {
+      expect(session.setProxy).not.toHaveBeenCalled();
+      expect(session.fetch).not.toHaveBeenCalled();
+    }
+  });
   it('shares identical pending translation requests instead of calling Google twice', async () => {
     const Queue =
       require('../src/features/accountTools/TranslationQueue').default;

@@ -45,6 +45,7 @@ import initGroupTools from './groupTools';
 import initReactions from './reactions';
 import AccountToolsFile, { AccountToolsFileError } from '../AccountToolsFile';
 import { recordWindowHealth } from '../windowHealth';
+import type { TranslationCacheBatch } from '../../features/accountTools/guest';
 
 type StoredConfig = ToolsConfig & {
   recoveryProxyConfirmed?: boolean;
@@ -585,6 +586,91 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       }
     },
   );
+  const cacheIdentity = (
+    id: string,
+    text: string,
+    direction: 'incoming' | 'outgoing',
+    sourceContext?: string,
+  ) => {
+    const t = get(id).translation;
+    const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
+    const savedConfig = get(id);
+    const configuredSource =
+      direction === 'incoming' ? t.receiveSource : t.source;
+    const contextualSource =
+      engine === 'Google' &&
+      direction === 'incoming' &&
+      configuredSource === 'auto' &&
+      sourceContext
+        ? myMemorySource(text, 'auto', sourceContext)
+        : '';
+    const sourceHint =
+      contextualSource &&
+      contextualSource !== myMemorySource(text, configuredSource)
+        ? contextualSource
+        : '';
+    const key = TranslationCache.key([
+      id,
+      engine,
+      direction === 'incoming' ? t.receiveSource : t.source,
+      direction === 'incoming' ? t.receiveTarget : t.sendTarget,
+      savedConfig.providers?.[engine]?.model,
+      savedConfig.encryptedKeys?.[engine],
+      text,
+      ...(sourceHint ? ['fallback-source', sourceHint] : []),
+    ]);
+    return { t, engine, savedConfig, sourceHint, key };
+  };
+  ipcMain.handle(
+    'account-tools-translation-cache',
+    (event, id: string, batch: TranslationCacheBatch) => {
+      check(event, id);
+      if (
+        !batch ||
+        typeof batch.signature !== 'string' ||
+        !Array.isArray(batch.items) ||
+        batch.items.length > 24
+      )
+        throw new Error('无效缓存读取请求');
+      const config = get(id);
+      if (!config.translation.incoming) return [];
+      const signature = JSON.stringify([
+        config.translation.receiveEngine,
+        config.translation.receiveSource,
+        config.translation.receiveTarget,
+        TranslationCache.key([config.providers, config.encryptedKeys]),
+      ]);
+      if (signature !== batch.signature) return [];
+      const hits: { key: string; text: string }[] = [];
+      for (const item of batch.items) {
+        if (
+          !item ||
+          typeof item.key !== 'string' ||
+          item.key.length > 30_000 ||
+          typeof item.text !== 'string' ||
+          !item.text.trim() ||
+          item.text.length > 12_000 ||
+          (item.sourceContext !== undefined &&
+            (typeof item.sourceContext !== 'string' ||
+              item.sourceContext.length > 1000))
+        )
+          throw new Error('无效缓存消息');
+        const { key, engine } = cacheIdentity(
+          id,
+          item.text,
+          'incoming',
+          item.sourceContext,
+        );
+        const cached =
+          translationCache.get(key) ??
+          (engine === 'Google'
+            ? translationCache.get(TranslationCache.key([key, 'MyMemory']))
+            : undefined);
+        if (cached !== undefined) hits.push({ key: item.key, text: cached });
+      }
+      return hits;
+    },
+  );
   ipcMain.handle(
     'account-tools-translate',
     async (
@@ -608,34 +694,13 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       )
         throw new Error('翻译内容为空或超过 12000 字符');
       requireReviewedProxy(id);
-      const t = get(id).translation;
-      if (!t[direction]) throw new Error('当前账号未启用此方向翻译');
-      const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
-      const savedConfig = get(id);
-      const configuredSource =
-        direction === 'incoming' ? t.receiveSource : t.source;
-      const contextualSource =
-        engine === 'Google' &&
-        direction === 'incoming' &&
-        configuredSource === 'auto' &&
-        sourceContext
-          ? myMemorySource(text, 'auto', sourceContext)
-          : '';
-      const sourceHint =
-        contextualSource &&
-        contextualSource !== myMemorySource(text, configuredSource)
-          ? contextualSource
-          : '';
-      const key = TranslationCache.key([
+      const { t, engine, savedConfig, sourceHint, key } = cacheIdentity(
         id,
-        engine,
-        direction === 'incoming' ? t.receiveSource : t.source,
-        direction === 'incoming' ? t.receiveTarget : t.sendTarget,
-        savedConfig.providers?.[engine]?.model,
-        savedConfig.encryptedKeys?.[engine],
         text,
-        ...(sourceHint ? ['fallback-source', sourceHint] : []),
-      ]);
+        direction,
+        sourceContext,
+      );
+      if (!t[direction]) throw new Error('当前账号未启用此方向翻译');
       const cached = translationCache.get(key);
       if (!force && cached !== undefined) return { text: cached, error: false };
       const pendingKey = `${key}:${direction}:${force ? 'fresh' : 'cached'}`;

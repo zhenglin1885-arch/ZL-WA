@@ -7,7 +7,10 @@ import { type ToolsConfig } from './config';
 import {
   translationTick,
   translationResult,
+  translationCacheRequests,
+  restoreTranslationCache,
   type TranslationRequest,
+  type TranslationCacheBatch,
 } from './guest';
 
 type TranslationView = NonNullable<
@@ -88,9 +91,31 @@ export function startTranslations(stores: RealStores): () => void {
     try {
       const c = await getTools(service.id);
       if (stopped || service.webview !== view) return;
-      const jobs: TranslationRequest[] = await view.executeJavaScript(
-        `(${translationTick.toString()})(${JSON.stringify({ ...c.translation, textColor: stores.settings.app.translationTextColor })})`,
-      );
+      const frame:
+        | TranslationRequest[]
+        | { jobs: TranslationRequest[]; cache: TranslationCacheBatch | null } =
+        await view.executeJavaScript(
+          `(()=>{const jobs=(${translationTick.toString()})(${JSON.stringify({ ...c.translation, textColor: stores.settings.app.translationTextColor })});return {jobs,cache:(${translationCacheRequests.toString()})()};})()`,
+        );
+      const jobs = Array.isArray(frame) ? frame : frame.jobs;
+      if (stopped || service.webview !== view) {
+        for (const job of jobs) cancelGuest(view, job);
+        return;
+      }
+      const cache = Array.isArray(frame) ? null : frame.cache;
+      if (cache?.items.length) {
+        try {
+          const hits = await ipcRenderer
+            .invoke('account-tools-translation-cache', service.id, cache)
+            .catch(() => []);
+          if (!stopped && service.webview === view)
+            await view.executeJavaScript(
+              `(${restoreTranslationCache.toString()})(${JSON.stringify(cache)},${JSON.stringify(hits)})`,
+            );
+        } catch {
+          /* Cache misses/read errors never invoke a provider or stop manual jobs. */
+        }
+      }
       if (stopped || service.webview !== view) {
         for (const job of jobs) cancelGuest(view, job);
         return;
