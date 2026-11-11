@@ -1541,7 +1541,11 @@ export function translationResult(
       result.error ||
       !result.text?.trim()
     ) {
-      if (valid && state.readText(job.input) !== job.text)
+      if (
+        valid &&
+        job.insertionStarted &&
+        state.readText(job.input) !== job.text
+      )
         state.failedReplacement = {
           input: job.input,
           chat: job.chat,
@@ -1587,6 +1591,7 @@ export function translationResult(
         state.notice('未完整选中输入内容，已停止替换，原文未发送');
         return false;
       }
+      job.insertionStarted = true;
       return true;
     }
     job.input.focus();

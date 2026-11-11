@@ -78,6 +78,7 @@ describe('two-phase native editor replacement guards', () => {
     expect(input.focus).not.toHaveBeenCalled();
     expect(input.innerText).toBe('new draft');
     expect(state.approved).toBeUndefined();
+    expect(state.failedReplacement).toBeUndefined();
   });
   it('rejects a caption result after the media selection changes while the editor remains connected', () => {
     state.pending.get(1).context = 'image-A';
