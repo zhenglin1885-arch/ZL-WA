@@ -113,7 +113,7 @@ try {
           models.set('false_10001@g.us_join',{type:'gp2'});
           models.set('false_10001@g.us_notice',{type:'group_notification'});
           models.set('false_10001@g.us_system',{type:'chat',isNotification:true});
-          main.innerHTML='<div role="row"><section><span class="selectable-text">Joined via invite link</span><span class="selectable-text">Group description in Portuguese</span></section></div>'+message('join',name)+message('notice',name)+message('system',name);
+          main.innerHTML='<div role="row"><section data-testid="group-info-card"><span class="selectable-text">Joined via invite link</span><span class="selectable-text">Group description in Portuguese</span></section></div>'+message('join',name)+message('notice',name)+message('system',name);
           if(scan().length||count())throw Error('Group welcome panels or native system notifications retained a translation control');
           main.innerHTML='<div role="row"><section data-testid="group-info-card"><span class="selectable-text">Group description in Portuguese</span></section></div>'+message('reply','<blockquote data-testid="group-description">'+name+'</blockquote><span class="selectable-text">Normal reply mentioning a group</span>');
           scan();if(count()!==1)throw Error('Group information card was translated or a normal reply was excluded');
@@ -141,7 +141,27 @@ try {
           scan();if(window.__zlTranslation.pending.size||burst.some(button=>button.disabled))throw Error('Manual-only queue remained busy after pending jobs expired');
           burst[12].click();const recovered=scan();if(recovered.length!==1||!recovered[0].manual)throw Error('Manual-only Google translation could not resume after timeout');
           window.__zlTranslation.cancelPending();
-          return {manualGoogleBurstRecovered:true,automaticPreviewDisabled:true,incomingTimeoutReleasesSlot:true,lateTimedOutResultIgnored:true,manualRequestPriorityMarked:true,groupInformationCardsExcluded:true,groupNotificationsExcluded:true,quotedGroupInformationExcluded:true,lateGroupMetadataCancelsTranslation:true,contactCardsExcluded:true,multipleContactsExcluded:true,lateCardMetadataCancelsQueuedTranslation:true,quotedCardReplyPreserved:true,ordinaryTextPreserved:true,sameIdDomCopiesDeduplicated:true,distinctIdenticalMessagesPreserved:true,oneAutomaticCaptionRequest:true,nestedCaptionDeduplicated:true,fullCaptionPreserved:true,pendingWholeMessageRebound:true,rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
+          const fallbackMessages=[
+            '<div role="row"><div class="modern-bubble"><div data-pre-plain-text="text"><span class="selectable-text">Ordinary private message in a modern row</span></div></div></div>',
+            '<div data-testid="msg-container"><div data-pre-plain-text="text"><span dir="auto">Ordinary private message in a native container</span></div></div>',
+            '<div data-id="new-message-identity"><span class="selectable-text">Ordinary private message with a new identity format</span></div>',
+            '<div data-pre-plain-text="text"><span class="selectable-text">Ordinary private message without old wrapper classes</span></div>',
+          ];
+          for(const html of fallbackMessages){
+            main.innerHTML=html;scan();
+            if(count()!==1)throw Error('Fallback normal message lost its manual translation button');
+            document.querySelector('[data-zl-translate]').click();const jobs=scan();
+            if(jobs.length!==1||!jobs[0].text.startsWith('Ordinary private message'))throw Error('Fallback normal message did not queue translation');
+            result(jobs[0].id,jobs[0].token,{text:'普通消息译文',error:false});
+            if(document.querySelector('[data-zl-translation-text]').textContent!=='普通消息译文')throw Error('Fallback normal message did not display its translation');
+          }
+          main.innerHTML='<div role="row"><div data-pre-plain-text="text"><span class="selectable-text">New automatic message without legacy classes</span></div></div>';
+          tick({...config,preview:true});window.__zlTranslation.previewBlockedChat=undefined;window.__zlTranslation.dirty=true;
+          const restoredAuto=tick({...config,preview:true});
+          if(restoredAuto.length!==1)throw Error('Automatic translation of a modern message row was disabled');
+          result(restoredAuto[0].id,restoredAuto[0].token,{text:'自动消息译文',error:false});
+          if(document.querySelector('[data-zl-translation-text]').textContent!=='自动消息译文')throw Error('Modern message auto translation was not rendered');
+          return {modernMessageManualTranslationRestored:true,modernMessageAutomaticTranslationRestored:true,fallbackMessageShapes:4,manualGoogleBurstRecovered:true,automaticPreviewDisabled:true,incomingTimeoutReleasesSlot:true,lateTimedOutResultIgnored:true,manualRequestPriorityMarked:true,groupInformationCardsExcluded:true,groupNotificationsExcluded:true,quotedGroupInformationExcluded:true,lateGroupMetadataCancelsTranslation:true,contactCardsExcluded:true,multipleContactsExcluded:true,lateCardMetadataCancelsQueuedTranslation:true,quotedCardReplyPreserved:true,ordinaryTextPreserved:true,sameIdDomCopiesDeduplicated:true,distinctIdenticalMessagesPreserved:true,oneAutomaticCaptionRequest:true,nestedCaptionDeduplicated:true,fullCaptionPreserved:true,pendingWholeMessageRebound:true,rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
         })()`);
         } finally {
           win.destroy();

@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import verifyMessageTranslation from './verify-message-translation-native.cjs';
 
 assert.equal(process.platform, 'win32');
 assert.equal(process.arch, 'x64');
@@ -149,6 +150,18 @@ try {
     confirmed: true,
     otherStillBlocked: true,
   });
+  const appPath = await evaluate(
+    "require('@electron/remote').app.getAppPath()",
+  );
+  const normalMessages = await evaluate(
+    `require('@electron/remote').require('node:vm').runInThisContext(${JSON.stringify(
+      `(${verifyMessageTranslation.toString()})(${JSON.stringify(appPath)})`,
+    )})`,
+  );
+  assert.deepEqual(normalMessages, {
+    normalMessagesTranslated: 3,
+    nonMessageCardsExcluded: 2,
+  });
   await evaluate(
     `window.__zlPackagedBeforeReload=true;require('electron').ipcRenderer.send('zl-window-reload-requested','system-resume');true`,
   );
@@ -162,6 +175,7 @@ try {
     zeroFilledConfigurationRebuilt: true,
     zeroFilledOriginalPreserved: true,
     explicitNetworkReviewRequired: true,
+    normalMessageTranslationVerified: true,
     asarSha256: createHash('sha256').update(readFileSync(asar)).digest('hex'),
     initial,
     afterResumeReload,

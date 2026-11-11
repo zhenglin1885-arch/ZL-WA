@@ -23,7 +23,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 19;
+  const revision = 20;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -193,10 +193,8 @@ export function translationTick(
       );
     };
     state.isNonTranslatableBubble = (bubble: HTMLElement): boolean => {
-      // Group welcome/description panels can use selectable text too. Require
-      // a native message identity or message bubble before decorating any text.
-      if (!bubble.matches(`${nativeMessage}, .message-in, .message-out`))
-        return true;
+      // Exclude positively identified cards only. Modern WhatsApp can render
+      // ordinary messages without the older message classes or native data-id.
       if (bubble.matches(groupInformation)) return true;
       try {
         const message = page.WPP?.whatsapp?.MsgStore?.get?.(bubble.dataset.id);
