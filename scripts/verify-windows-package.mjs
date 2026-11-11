@@ -82,7 +82,7 @@ try {
         JSON.stringify({
           id,
           method: 'Runtime.evaluate',
-          params: { expression, returnByValue: true },
+          params: { expression, returnByValue: true, awaitPromise: true },
         }),
       );
       const message = await Promise.race([
@@ -172,6 +172,9 @@ try {
   );
   console.log(JSON.stringify(report));
 } catch (error) {
+  console.error(
+    `::error::${String(error instanceof Error ? error.message : error).replaceAll(/[\r\n]/g, ' ')}`,
+  );
   try {
     const events = JSON.parse(
       readFileSync(join(profile, 'window-health.json'), 'utf8'),
