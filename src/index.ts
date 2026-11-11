@@ -615,6 +615,10 @@ const createWindow = () => {
           .find(item => item.label === 'Export Diagnostics')
           ?.click(),
       quit: () => app.exit(1),
+      restart: () => {
+        app.relaunch();
+        app.exit(0);
+      },
     }).catch(() => app.exit(1));
     return;
   }

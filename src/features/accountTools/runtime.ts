@@ -19,13 +19,17 @@ export async function getTools(id: string): Promise<ToolsConfig> {
 export async function saveTools(
   id: string,
   config: ToolsConfig,
+  confirmRecovery = false,
 ): Promise<ToolsConfig> {
   const previous = configs.get(id);
-  const saved = await ipcRenderer.invoke('account-tools-save', id, config);
+  const saved = confirmRecovery
+    ? await ipcRenderer.invoke('account-tools-save', id, config, true)
+    : await ipcRenderer.invoke('account-tools-save', id, config);
   configs.set(id, saved);
   if (
     JSON.stringify(previous?.proxy) !== JSON.stringify(saved.proxy) ||
-    config.proxy.password !== undefined
+    config.proxy.password !== undefined ||
+    previous?.requiresProxyReview !== saved.requiresProxyReview
   )
     window.dispatchEvent(
       new CustomEvent('zl-account-network-changed', { detail: id }),

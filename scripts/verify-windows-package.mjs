@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -14,6 +14,9 @@ const expectedVersion = JSON.parse(
 ).version;
 const executable = resolve(process.argv[2]);
 const profile = mkdtempSync(join(tmpdir(), 'zl-packaged-startup-'));
+// Reproduce the actual startup blocker with synthetic bytes, never a user profile.
+const zeroFilledConfig = Buffer.alloc(1_350_233);
+writeFileSync(join(profile, 'account-tools.json'), zeroFilledConfig);
 const child = spawn(executable, ['--remote-debugging-port=9333'], {
   env: { ...process.env, ZL_WA_APPDATA_DIR: profile },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -123,6 +126,29 @@ try {
     throw new Error(`Packaged UI did not initialize: ${JSON.stringify(state)}`);
   };
   const initial = await ready(false);
+  const rebuilt = JSON.parse(
+    readFileSync(join(profile, 'account-tools.json'), 'utf8'),
+  );
+  assert.equal(rebuilt.recoveryRequiresProxyReview, true);
+  const preserved = readdirSync(profile).find(name =>
+    name.startsWith('account-tools.json.preserved-'),
+  );
+  assert(preserved, 'Original zero-filled config was not preserved');
+  assert(readFileSync(join(profile, preserved)).equals(zeroFilledConfig));
+  const recoveryGuard = await evaluate(`(async()=>{
+    const {ipcRenderer}=require('electron');
+    const config=await ipcRenderer.invoke('account-tools-get','recovery-verification');
+    let blocked=false;try{await ipcRenderer.invoke('account-tools-prepare','recovery-verification');}catch{blocked=true;}
+    const saved=await ipcRenderer.invoke('account-tools-save','recovery-verification',config,true);
+    const other=await ipcRenderer.invoke('account-tools-get','other-unreviewed-account');
+    return {blocked,reviewRequired:config.requiresProxyReview===true,confirmed:!saved.requiresProxyReview,otherStillBlocked:other.requiresProxyReview===true};
+  })()`);
+  assert.deepEqual(recoveryGuard, {
+    blocked: true,
+    reviewRequired: true,
+    confirmed: true,
+    otherStillBlocked: true,
+  });
   await evaluate(
     `window.__zlPackagedBeforeReload=true;require('electron').ipcRenderer.send('zl-window-reload-requested','system-resume');true`,
   );
@@ -133,6 +159,9 @@ try {
     commit: process.env.GITHUB_SHA,
     nativePackagedStartup: true,
     mainProcessResumeReload: true,
+    zeroFilledConfigurationRebuilt: true,
+    zeroFilledOriginalPreserved: true,
+    explicitNetworkReviewRequired: true,
     asarSha256: createHash('sha256').update(readFileSync(asar)).digest('hex'),
     initial,
     afterResumeReload,

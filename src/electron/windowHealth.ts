@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import type { App, BrowserWindow } from 'electron';
+import type { AccountToolsFileDiagnostic } from './AccountToolsFile';
 
 // Inspect only the application shell, never embedded WhatsApp documents/text.
 export function readWindowSurface() {
@@ -44,6 +45,7 @@ export interface WindowHealthEvent {
   processType?: string;
   frames?: string[];
   surface?: WindowSurface;
+  configuration?: AccountToolsFileDiagnostic;
 }
 
 export async function inspectWindowSurface(

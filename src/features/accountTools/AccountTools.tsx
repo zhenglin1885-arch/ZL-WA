@@ -196,7 +196,11 @@ const SettingsPanel = observer(
       setNotice('');
       try {
         const old = await getTools(service.id);
-        const saved = await saveTools(service.id, input);
+        const saved = await saveTools(
+          service.id,
+          input,
+          panel === 'proxy' && old.requiresProxyReview === true,
+        );
         setConfig(saved);
         if (panel === 'translation')
           await configureTranslation(service, textColor);
@@ -231,7 +235,9 @@ const SettingsPanel = observer(
           setNotice(
             panel === 'translation'
               ? `已应用到此账号 · ${await pageStatus()}`
-              : '已应用到此账号',
+              : old.requiresProxyReview
+                ? '网络配置已确认，请点击“重试加载会话”连接账号'
+                : '已应用到此账号',
           );
       } catch (error) {
         if (input !== config) {
@@ -263,6 +269,11 @@ const SettingsPanel = observer(
         <p className="tools-current">
           当前账号：{service.accountSnapshot.nickname || service.name}
         </p>
+        {config.requiresProxyReview && (
+          <p role="status" className="tools-info">
+            原设置文件已损坏，已重新建立。账号暂未连接，请先核对右侧代理设置并点击应用；不使用代理也需要确认后应用。
+          </p>
+        )}
         {loaded ? (
           <fieldset disabled={busy}>
             {panel === 'proxy' ? (
@@ -641,7 +652,11 @@ const SettingsPanel = observer(
                 void apply();
               }}
             >
-              {busy ? '正在应用…' : '应用'}
+              {busy
+                ? '正在应用…'
+                : config.requiresProxyReview && panel === 'proxy'
+                  ? '确认网络配置并应用'
+                  : '应用'}
             </button>
           </fieldset>
         ) : (

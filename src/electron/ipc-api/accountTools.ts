@@ -6,7 +6,6 @@ import {
   session,
   type BrowserWindow,
 } from 'electron';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   defaultTools,
@@ -44,8 +43,11 @@ import {
 
 import initGroupTools from './groupTools';
 import initReactions from './reactions';
+import AccountToolsFile, { AccountToolsFileError } from '../AccountToolsFile';
+import { recordWindowHealth } from '../windowHealth';
 
 type StoredConfig = ToolsConfig & {
+  recoveryProxyConfirmed?: boolean;
   encryptedPassword?: string;
   encryptedKeys?: Partial<Record<TranslationEngine, string>>;
 };
@@ -73,23 +75,38 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   const translationCache = new TranslationCache(
     join(app.getPath('userData'), 'translation-cache.json'),
   );
-  let data: {
+  type AccountToolsData = {
+    recoveryRequiresProxyReview?: boolean;
     accounts: Record<string, StoredConfig>;
     history: SendRecord[];
     bulkPreferences?: BulkPreferences;
     replyPreferences?: ReplyPreferences;
     accountProfiles?: Record<string, AccountIdentity>;
-  } = { accounts: {}, history: [] };
-  if (existsSync(path)) {
-    try {
-      data = JSON.parse(readFileSync(path, 'utf8'));
-    } catch {
-      throw new Error('账号工具配置损坏，请备份并检查 account-tools.json');
-    }
+  };
+  const configuration = new AccountToolsFile<AccountToolsData>(path);
+  let data: AccountToolsData;
+  try {
+    data = configuration.load({ accounts: {}, history: [] });
+  } catch (error) {
+    if (
+      !(
+        error instanceof AccountToolsFileError &&
+        error.diagnostic.code === 'ZERO_FILLED'
+      )
+    )
+      throw error;
+    // An intact backup takes priority over rebuilding lost settings.
+    if (configuration.backups().length > 0) throw error;
+    data = { accounts: {}, history: [], recoveryRequiresProxyReview: true };
+    configuration.rebuildZeroFilled(data);
+    recordWindowHealth(join(app.getPath('userData'), 'window-health.json'), {
+      event: 'account-tools-config-rebuilt',
+      reason: 'ZERO_FILLED',
+      configuration: error.diagnostic,
+    });
   }
   const save = () => {
-    writeFileSync(`${path}.tmp`, JSON.stringify(data), { mode: 0o600 });
-    renameSync(`${path}.tmp`, path);
+    configuration.save(data);
   };
   const check = (event: Electron.IpcMainInvokeEvent, id?: string) => {
     if (
@@ -119,9 +136,13 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       translation: { ...defaults.translation, ...saved?.translation },
     };
   };
+  const requiresProxyReview = (id: string) =>
+    data.recoveryRequiresProxyReview === true &&
+    data.accounts[id]?.recoveryProxyConfirmed !== true;
   const publicConfig = (id: string): ToolsConfig => {
     const c = get(id);
     return {
+      ...(requiresProxyReview(id) ? { requiresProxyReview: true } : {}),
       proxy: {
         ...c.proxy,
         password: undefined,
@@ -151,6 +172,12 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       ),
     };
   };
+  const requireReviewedProxy = (id: string) => {
+    if (requiresProxyReview(id))
+      throw new Error(
+        '原账号设置已重建，请先到右侧代理设置核对网络配置并点击应用，再重试加载会话',
+      );
+  };
   const bridges = new Map<
     string,
     Awaited<ReturnType<typeof createSocksBridge>>
@@ -167,6 +194,11 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   const networkPending = new Map<string, Promise<AccountNetworkStatus>>();
   const prepared = new Map<string, Promise<void>>();
   const apply = (id: string, config: StoredConfig) => {
+    try {
+      requireReviewedProxy(id);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     networkCache.delete(id);
     networkVersions.set(id, (networkVersions.get(id) || 0) + 1);
     const pending = (prepared.get(id) ?? Promise.resolve())
@@ -266,7 +298,11 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       data.accountProfiles = Object.fromEntries(
         Object.entries(data.accountProfiles).filter(([key]) => key !== id),
       );
-    await apply(id, defaultTools());
+    if (requiresProxyReview(id)) {
+      prepared.delete(id);
+      bridges.get(id)?.close();
+      bridges.delete(id);
+    } else await apply(id, defaultTools());
     save();
   });
   ipcMain.handle(
@@ -322,6 +358,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   });
   ipcMain.handle('account-tools-prepare', async (event, id: string) => {
     check(event, id);
+    requireReviewedProxy(id);
     attachAuth(id);
     try {
       await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
@@ -333,8 +370,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   });
   ipcMain.handle(
     'account-tools-save',
-    async (event, id: string, input: ToolsConfig) => {
+    async (event, id: string, input: ToolsConfig, confirmRecovery = false) => {
       check(event, id);
+      if (typeof confirmRecovery !== 'boolean')
+        throw new Error('无效的配置确认参数');
       const previous = get(id);
       proxyRules(input.proxy);
       if (
@@ -384,6 +423,12 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       }
       // Build an explicit allow-list: no plaintext credential can enter persistent JSON.
       const config: StoredConfig = {
+        ...(data.recoveryRequiresProxyReview
+          ? {
+              recoveryProxyConfirmed:
+                previous.recoveryProxyConfirmed === true || confirmRecovery,
+            }
+          : {}),
         proxy: {
           enabled: Boolean(input.proxy.enabled),
           mode: input.proxy.mode,
@@ -411,7 +456,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       const old = previous;
       data.accounts[id] = config;
       try {
-        attachAuth(id);
+        if (!requiresProxyReview(id)) attachAuth(id);
         if (
           JSON.stringify(previous.proxy) !== JSON.stringify(config.proxy) ||
           previous.encryptedPassword !== config.encryptedPassword
@@ -420,7 +465,8 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         save();
       } catch (error) {
         data.accounts[id] = old;
-        await apply(id, old);
+        if (requiresProxyReview(id)) prepared.delete(id);
+        else await apply(id, old);
         throw error;
       }
       return publicConfig(id);
@@ -430,6 +476,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     'account-tools-network-status',
     async (event, id: string, force = false) => {
       check(event, id);
+      requireReviewedProxy(id);
       attachAuth(id);
       await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
       const cached = networkCache.get(id);
@@ -500,6 +547,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     'account-tools-test-proxy',
     async (event, id: string, repair = true) => {
       check(event, id);
+      requireReviewedProxy(id);
       attachAuth(id);
       if (typeof repair !== 'boolean') throw new Error('无效代理测试参数');
       // An explicit repair can rebuild an unchanged bridge. A just-applied
@@ -557,6 +605,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           (typeof sourceContext !== 'string' || sourceContext.length > 1000))
       )
         throw new Error('翻译内容为空或超过 12000 字符');
+      requireReviewedProxy(id);
       const t = get(id).translation;
       if (!t[direction]) throw new Error('当前账号未启用此方向翻译');
       const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
@@ -681,6 +730,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     'account-tools-test-translation',
     async (event, id: string, direction: 'incoming' | 'outgoing') => {
       check(event, id);
+      requireReviewedProxy(id);
       if (!['incoming', 'outgoing'].includes(direction))
         throw new Error('无效翻译方向');
       const config = get(id);

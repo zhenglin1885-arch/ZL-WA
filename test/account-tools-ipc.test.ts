@@ -1,5 +1,11 @@
 /* eslint-disable global-require -- Load modules after installing fresh privileged Electron mocks. */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultTools } from '../src/features/accountTools/config';
@@ -17,6 +23,10 @@ describe('privileged account tools IPC', () => {
   let beforeQuit: () => void;
   const invoke = (name: string, ...args: any[]) =>
     handlers[`account-tools-${name}`](event, ...args);
+  const rebuildZeroConfig = () => {
+    writeFileSync(join(root, 'account-tools.json'), Buffer.alloc(256));
+    require('../src/electron/ipc-api/accountTools').default({ mainWindow });
+  };
   beforeEach(() => {
     jest.resetModules();
     root = mkdtempSync(join(tmpdir(), 'zl-tools-'));
@@ -1258,5 +1268,104 @@ describe('privileged account tools IPC', () => {
       JSON.parse(readFileSync(join(root, 'account-tools.json'), 'utf8'))
         .accounts,
     ).toEqual({});
+  });
+  it('opens the local app with reconstructed config while preserving the original and blocking account networking', async () => {
+    rebuildZeroConfig();
+    const config = invoke('get', 'account-1');
+    expect(config.requiresProxyReview).toBe(true);
+    const preserved = readdirSync(root).find(name =>
+      name.startsWith('account-tools.json.preserved-'),
+    );
+    expect(readFileSync(join(root, preserved!)).equals(Buffer.alloc(256))).toBe(
+      true,
+    );
+    await expect(invoke('prepare', 'account-1')).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    await expect(invoke('network-status', 'account-1', true)).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    await expect(invoke('test-proxy', 'account-1')).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    await expect(
+      invoke('test-translation', 'account-1', 'incoming'),
+    ).rejects.toThrow('请先到右侧代理设置');
+    expect(sessions.size).toBe(0);
+  });
+  it('does not unlock a rebuilt account when saving translation settings or forging the public review field', async () => {
+    rebuildZeroConfig();
+    const input = { ...defaultTools(), requiresProxyReview: false };
+    const saved = await invoke('save', 'account-1', input);
+    expect(saved.requiresProxyReview).toBe(true);
+    await expect(invoke('prepare', 'account-1')).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    expect(sessions.size).toBe(0);
+  });
+  it('connects only the account whose network settings were explicitly confirmed and retains this state across restart', async () => {
+    rebuildZeroConfig();
+    const saved = await invoke('save', 'account-1', defaultTools(), true);
+    expect(saved.requiresProxyReview).toBeUndefined();
+    await invoke('prepare', 'account-1');
+    expect(
+      sessions.get('persist:service-account-1').setProxy,
+    ).toHaveBeenCalledWith({ mode: 'system' });
+    await expect(invoke('prepare', 'account-2')).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    require('../src/electron/ipc-api/accountTools').default({ mainWindow });
+    expect(invoke('get', 'account-1').requiresProxyReview).toBeUndefined();
+    expect(invoke('get', 'account-2').requiresProxyReview).toBe(true);
+  });
+  it('keeps a reconstructed account blocked if applying the newly confirmed proxy fails', async () => {
+    rebuildZeroConfig();
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'proxy.example',
+      port: '8888',
+    };
+    await invoke('save', 'account-1', defaultTools());
+    const sessionMock = jest
+      .requireMock('electron')
+      .session.fromPartition('persist:service-account-1');
+    sessionMock.setProxy.mockRejectedValue(new Error('proxy apply failed'));
+    await expect(invoke('save', 'account-1', config, true)).rejects.toThrow(
+      'proxy apply failed',
+    );
+    expect(invoke('get', 'account-1').requiresProxyReview).toBe(true);
+    await expect(invoke('prepare', 'account-1')).rejects.toThrow(
+      '请先到右侧代理设置',
+    );
+    expect(sessionMock.fetch).not.toHaveBeenCalled();
+  });
+  it('does not silently rebuild a nonzero malformed configuration', () => {
+    const path = join(root, 'account-tools.json');
+    writeFileSync(path, '{"accounts":');
+    expect(() =>
+      require('../src/electron/ipc-api/accountTools').default({ mainWindow }),
+    ).toThrow('账号工具配置无法读取');
+    expect(readFileSync(path, 'utf8')).toBe('{"accounts":');
+    expect(
+      readdirSync(root).some(name =>
+        name.startsWith('account-tools.json.preserved-'),
+      ),
+    ).toBe(false);
+  });
+  it('offers an intact backup before rebuilding a zero-filled file', () => {
+    const path = join(root, 'account-tools.json');
+    const backup = JSON.stringify({
+      accounts: { 'account-1': defaultTools() },
+      history: [],
+    });
+    writeFileSync(path, Buffer.alloc(256));
+    writeFileSync(`${path}.bak`, backup);
+    expect(() =>
+      require('../src/electron/ipc-api/accountTools').default({ mainWindow }),
+    ).toThrow('账号工具配置无法读取');
+    expect(readFileSync(path).equals(Buffer.alloc(256))).toBe(true);
+    expect(readFileSync(`${path}.bak`, 'utf8')).toBe(backup);
   });
 });

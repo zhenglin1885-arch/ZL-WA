@@ -38,6 +38,7 @@ export interface TranslationConfig {
   receiveTarget: string;
 }
 export interface ToolsConfig {
+  requiresProxyReview?: boolean;
   proxy: ProxyConfig;
   translation: TranslationConfig;
   providers?: Partial<Record<TranslationEngine, ProviderCredential>>;
