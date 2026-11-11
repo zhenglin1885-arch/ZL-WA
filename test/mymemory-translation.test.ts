@@ -121,3 +121,49 @@ it('does not send invalid or undetectable language pairs', async () => {
   ).toMatchObject({ error: true, text: '' });
   expect(transport).not.toHaveBeenCalled();
 });
+
+it('uses a confident local private-chat sample only when the short source is undetectable', async () => {
+  const sample = 'não abaixei essa sua plataforma';
+  expect(myMemorySource('manda link', 'auto')).toBe('');
+  expect(myMemorySource('manda link', 'auto', sample)).toBe('pt');
+  expect(myMemorySource('me manda o link', 'auto', sample)).toBe('pt');
+  expect(myMemorySource('manda link', 'es', sample)).toBe('es');
+  expect(myMemorySource('manda link', 'auto', 'link')).toBe('');
+  expect(
+    myMemorySource(
+      'manda link',
+      'auto',
+      '这是中文说明，不是葡萄牙语，请不要用中文猜测这条短消息',
+    ),
+  ).toBe('');
+});
+it.each([
+  [new Response('', { status: 429 }), '请求过于频繁'],
+  [
+    new Response(
+      JSON.stringify({
+        responseStatus: 200,
+        quotaFinished: true,
+        responseData: { translatedText: 'quota warning' },
+      }),
+    ),
+    '额度已用完',
+  ],
+  [new Response('', { status: 403 }), '拒绝请求'],
+])(
+  'explains backup provider failures without exposing response bodies',
+  async (response, reason) => {
+    const result = await translateMyMemory(
+      async () => response,
+      'hello',
+      'zh-CN',
+      'en',
+    );
+    expect(result).toMatchObject({
+      error: true,
+      text: '',
+      message: expect.stringContaining(reason),
+    });
+    expect(result.message).not.toContain('quota warning');
+  },
+);

@@ -17,6 +17,7 @@ import {
 import macosVersion from 'macos-version';
 import {
   inspectWindowSurface,
+  loadWindowShell,
   readWindowHealth,
   recordWindowHealth,
 } from '../electron/windowHealth';
@@ -48,6 +49,8 @@ export default class TrayIcon {
   mainWindow: BrowserWindow | null = null;
 
   currentLocale: string = 'en-US';
+
+  onReloadUI?: () => void;
 
   constructor() {
     ipcMain.on('initialAppSettings', (_, appSettings) => {
@@ -121,6 +124,10 @@ export default class TrayIcon {
       {
         label: 'Reload UI',
         click() {
+          if (tray.onReloadUI) {
+            tray.onReloadUI();
+            return;
+          }
           const window = tray.mainWindow;
           if (
             !window ||
@@ -135,7 +142,13 @@ export default class TrayIcon {
               reason: 'manual-tray',
             },
           );
-          window.webContents.reload();
+          window.webContents.stop();
+          loadWindowShell(window, join(__dirname, '../index.html'), details =>
+            recordWindowHealth(
+              join(app.getPath('userData'), 'window-health.json'),
+              details,
+            ),
+          );
           window.show();
         },
       },

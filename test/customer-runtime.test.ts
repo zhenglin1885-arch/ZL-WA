@@ -132,6 +132,16 @@ describe('customer initialization after a new login', () => {
     await tick();
     expect(ensureBulkLibrary).toHaveBeenCalledTimes(2);
   });
+  it('waits for native main-frame loading without queuing guest work, then initializes when navigation finishes', async () => {
+    view.isLoadingMainFrame = jest.fn(() => true);
+    context = ready;
+    await tick();
+    expect(view.executeJavaScript).not.toHaveBeenCalled();
+    expect(runtime.error).toBe('');
+    view.isLoadingMainFrame.mockReturnValue(false);
+    await tick();
+    expect(runtime.current).toEqual(ready);
+  });
   it('initializes from live page readiness while outer loading/status is stale', async () => {
     stores.services.active.isLoading = true;
     stores.services.active.accountSnapshot.status = 'loading';
@@ -258,7 +268,7 @@ describe('customer initialization after a new login', () => {
       const stalled = tick();
       await jest.advanceTimersByTimeAsync(8000);
       await stalled;
-      expect(runtime.error).toContain('自动恢复');
+      expect(runtime.error).toContain('自动重试');
       context = ready;
       await tick();
       expect(runtime.current).toEqual(ready);

@@ -328,7 +328,86 @@ try {
         ))
       )
         throw new Error('Native recovery button click failed');
+      const path = req('node:path');
+      const directory = fs.mkdtempSync(
+        path.join(req('node:os').tmpdir(), 'zl-shell-path-'),
+      );
+      const install = path.join(directory, 'ZL-WA #测试 %20');
+      fs.mkdirSync(install);
+      const shell = path.join(install, 'index.html');
+      fs.writeFileSync(shell, readyPage);
+      const fileWindow = new BrowserWindow({ show: false });
+      let cleanup;
+      try {
+        let oldFailed = false;
+        try {
+          await fileWindow.loadURL(`file://${shell}`);
+        } catch {
+          oldFailed = true;
+        }
+        if (!oldFailed)
+          throw new Error(
+            'Expected the unescaped installation path to reproduce a startup failure',
+          );
+        if (
+          !(await module.exports.loadWindowShell(fileWindow, shell, row =>
+            records.push(row),
+          ))
+        )
+          throw new Error('Encoded installation path did not load');
+        await fileWindow.webContents.executeJavaScript(
+          "localStorage.setItem('startup-profile','preserved')",
+        );
+        fileWindow.show();
+        cleanup = module.exports.installWindowRecovery(fileWindow, {
+          record: row => records.push(row),
+          quitting: () => false,
+          loadShell: () => {
+            module.exports.loadWindowShell(fileWindow, shell, row =>
+              records.push(row),
+            );
+          },
+        });
+        const expected = req('node:url').pathToFileURL(shell).href;
+        const reloaded = new Promise(resolve => {
+          fileWindow.webContents.on('did-finish-load', () => {
+            if (fileWindow.webContents.getURL() === expected) resolve();
+          });
+        });
+        await module.exports.loadWindowShell(
+          fileWindow,
+          path.join(directory, 'missing.html'),
+          row => records.push(row),
+        );
+        await Promise.race([
+          reloaded,
+          new Promise((_resolve, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    'Failed document did not recover to the original shell',
+                  ),
+                ),
+              15_000,
+            );
+          }),
+        ]);
+        clearTimeout(timer);
+        if (
+          !(await fileWindow.webContents.executeJavaScript(
+            "document.querySelector('#root').textContent==='ready'&&localStorage.getItem('startup-profile')==='preserved'",
+          ))
+        )
+          throw new Error('Failed document recovery lost the shell or profile');
+      } finally {
+        cleanup?.();
+        fileWindow.destroy();
+        fs.rmSync(directory, { recursive: true, force: true });
+      }
       return {
+        specialInstallationPathRecovered: true,
+        failedDocumentRecoveredToApplicationShell: true,
         nativeRendererCrashRecovered: true,
         incompleteStartupAutomaticallyRecovered: true,
         startupFailureBeforeReactVisible: true,

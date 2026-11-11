@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, statSync } from 'node:fs';
-import type { BrowserWindow } from 'electron';
+import { pathToFileURL } from 'node:url';
+import type { App, BrowserWindow } from 'electron';
 
 // Inspect only the application shell, never embedded WhatsApp documents/text.
 export function readWindowSurface() {
@@ -94,6 +95,7 @@ export function reloadWindowShell(
   window: BrowserWindow,
   record: (event: WindowHealthEvent) => void,
   reason: string,
+  loadShell?: () => void,
 ): boolean {
   if (window.isDestroyed() || window.webContents.isDestroyed()) return false;
   if (window.webContents.isLoadingMainFrame()) {
@@ -102,12 +104,55 @@ export function reloadWindowShell(
   }
   record({ event: 'renderer-reload-requested', reason });
   try {
-    window.webContents.reload();
+    if (loadShell) loadShell();
+    else window.webContents.reload();
     return true;
   } catch {
     record({ event: 'recovery-failed', reason });
     return false;
   }
+}
+
+// Build the URL from a filesystem path: #, % and non-ASCII installation paths
+// must not become URL fragments or escapes. Recovery always targets this shell,
+// rather than reloading an error document or about:blank.
+export async function loadWindowShell(
+  window: BrowserWindow,
+  file: string,
+  record: (event: WindowHealthEvent) => void,
+): Promise<boolean> {
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return false;
+  try {
+    await window.loadURL(pathToFileURL(file).href);
+    return true;
+  } catch (error) {
+    const code = (error as { errno?: unknown })?.errno;
+    record({
+      event: 'renderer-shell-load-rejected',
+      ...(typeof code === 'number' ? { exitCode: code } : {}),
+    });
+    return false;
+  }
+}
+
+// A user-requested, single-launch graphics fallback. Keep profile/session paths
+// and other launch arguments; do not change their saved acceleration preference.
+export function restartWithoutGPU(
+  app: Pick<App, 'relaunch' | 'quit'>,
+  args: string[],
+) {
+  app.relaunch({
+    args: [
+      ...args.filter(
+        argument =>
+          !['--restart-without-gpu', '--reload-ui', '--disable-gpu'].includes(
+            argument,
+          ),
+      ),
+      '--disable-gpu',
+    ],
+  });
+  app.quit();
 }
 
 export function readWindowHealth(path: string): unknown[] {
@@ -134,13 +179,20 @@ export function recordWindowHealth(path: string, details: WindowHealthEvent) {
 const startupIncomplete = (surface: WindowSurface) =>
   'documentState' in surface &&
   surface.documentState === 'complete' &&
-  ['root-empty', 'startup-pending', 'startup-failed'].includes(surface.state);
+  [
+    'root-missing',
+    'root-empty',
+    'root-hidden',
+    'startup-pending',
+    'startup-failed',
+  ].includes(surface.state);
 
 export function installWindowRecovery(
   window: BrowserWindow,
   hooks: {
     record: (event: WindowHealthEvent) => void;
     quitting: () => boolean;
+    loadShell?: () => void;
     resumeEvents?: {
       on(event: 'resume', listener: () => void): unknown;
       // Electron PowerMonitor exposes literal overloads; a union parameter is incompatible.
@@ -205,7 +257,12 @@ export function installWindowRecovery(
       if (contents.isLoadingMainFrame()) return;
       lastRecovery = Date.now();
       hooks.record({ event: 'renderer-reload', reason: 'startup-incomplete' });
-      reloadWindowShell(window, hooks.record, 'startup-incomplete');
+      reloadWindowShell(
+        window,
+        hooks.record,
+        'startup-incomplete',
+        hooks.loadShell,
+      );
     }, 6000);
   };
   const inspect = () => {
@@ -279,6 +336,18 @@ export function installWindowRecovery(
     hooks.record({ event: 'renderer-loaded' });
     shown();
   };
+  const failed = (
+    _event: unknown,
+    code: number,
+    _description: string,
+    _url: string,
+    isMainFrame: boolean,
+  ) => {
+    // ERR_ABORTED is expected when the user reloads or replaces a navigation.
+    if (!isMainFrame || code === -3) return;
+    hooks.record({ event: 'renderer-load-failed', exitCode: code });
+    inspect();
+  };
   const dispose = () => {
     disposed = true;
     clearTimeout(timer);
@@ -289,6 +358,7 @@ export function installWindowRecovery(
     window.removeListener('unresponsive', unresponsive);
     window.removeListener('responsive', responsive);
     contents.removeListener('did-finish-load', loaded);
+    contents.removeListener('did-fail-load', failed);
     contents.removeListener('did-start-loading', loading);
     window.removeListener('closed', dispose);
     window.removeListener('show', shown);
@@ -298,6 +368,7 @@ export function installWindowRecovery(
   window.on('unresponsive', unresponsive);
   window.on('responsive', responsive);
   contents.on('did-finish-load', loaded);
+  contents.on('did-fail-load', failed);
   contents.on('did-start-loading', loading);
   hooks.resumeEvents?.on('resume', resume);
   hooks.resumeEvents?.on('suspend', suspend);

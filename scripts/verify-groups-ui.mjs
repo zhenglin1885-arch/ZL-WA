@@ -110,6 +110,24 @@ export async function verifyGroups({
     `document.querySelectorAll('.group-tools-group input').forEach(n=>n.click())`,
   );
   await clickText('全员禁言');
+  await finish(1);
+  assert.equal(
+    await evaluate(
+      `document.querySelectorAll('.group-tools-log [data-task-status="uncertain"]').length`,
+    ),
+    1,
+  );
+  const firstPass = await guest(
+    first,
+    `fixture.groupCalls.filter(c=>c.operation==='mute')`,
+  );
+  assert.equal(
+    firstPass.length,
+    2,
+    'an acknowledged but unchanged result is not resubmitted automatically',
+  );
+  assert(firstPass[1].at - firstPass[0].at >= 2900);
+  await clickText('重试失败 / 核验未确认');
   await finish(2);
   const muteCalls = await guest(
     first,
@@ -118,13 +136,16 @@ export async function verifyGroups({
   assert.equal(
     muteCalls.length,
     3,
-    'one lost response is accepted; one unchanged group is retried once',
+    'explicit retry verifies the unconfirmed group before submitting again',
   );
-  assert(muteCalls[1].at - muteCalls[0].at >= 2900);
-  assert(muteCalls[2].at - muteCalls[1].at >= 2900);
+  assert.equal(
+    muteCalls.filter(c => c.id === '10001@g.us').length,
+    1,
+    'an applied request with a lost response is not repeated',
+  );
   await wait(
     `document.querySelectorAll('.group-tools-group').length===2 && !document.querySelector('.group-tools-group input:checked')`,
-    'inventory refreshed after operation',
+    'confirmed inventory display updated without refreshing all groups',
   );
   await evaluate(
     `document.querySelectorAll('.group-tools-group input').forEach(n=>n.click())`,

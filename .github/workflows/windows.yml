@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['main']
+    branches: ['test/7.3.8-20261110-1']
   workflow_dispatch:
 
 permissions:
@@ -117,7 +117,7 @@ jobs:
             out/*.exe
             out/windows-startup-verification.json
           if-no-files-found: error
-      - name: Create checksums and publish stable release
+      - name: Create checksums and publish test release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -131,5 +131,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create v7.3.8 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --latest --title 'ZL-WA 7.3.8' --notes-file docs/releases/7.3.8.md
+          gh release create test-7.3.8-20261110-1 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.8 Windows 测试版 1' --notes-file docs/releases/7.3.8-test-1.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }

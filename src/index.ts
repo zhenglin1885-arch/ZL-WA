@@ -57,11 +57,14 @@ import './electron/exception';
 import ipcApi from './electron/ipc-api';
 import CacheLocation from './electron/CacheLocation';
 import { recoverCacheLocation } from './electron/cacheStartup';
+import { showMainStartupFailure } from './electron/startupFailure';
 import { downloadWhatsAppPopup } from './electron/serviceDownloads';
 import {
   installWindowRecovery,
+  loadWindowShell,
   recordWindowHealth,
   reloadWindowShell,
+  restartWithoutGPU,
 } from './electron/windowHealth';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
@@ -95,6 +98,8 @@ let cacheLocation: CacheLocation;
 let cacheLocationError: unknown;
 let willQuitApp = false;
 let overrideAppQuitForUpdate = false;
+let restartingWithoutGPU = false;
+let mainInitializationFailed = false;
 
 // eslint-disable-next-line unicorn/prefer-event-target
 export const appEvents = new EventEmitter();
@@ -214,6 +219,15 @@ if (gotTheLock) {
       app.quit();
       return;
     }
+    if (isWindows && argv.includes('--restart-without-gpu')) {
+      restartingWithoutGPU = true;
+      restartWithoutGPU(app, process.argv.slice(1));
+      return;
+    }
+    if (isWindows && argv.includes('--quit')) {
+      app.quit();
+      return;
+    }
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (!mainWindow.isVisible()) {
@@ -225,33 +239,40 @@ if (gotTheLock) {
       mainWindow.focus();
 
       if (isWindows) {
+        // Recovery must not wait for onDidLoad: that event is precisely what a
+        // failed application document may never reach.
+        if (argv.includes('--reload-ui')) {
+          if (mainInitializationFailed) return;
+          const record = (details: Parameters<typeof recordWindowHealth>[1]) =>
+            recordWindowHealth(
+              join(app.getPath('userData'), 'window-health.json'),
+              details,
+            );
+          record({
+            event: 'renderer-reload-requested',
+            reason: 'manual-taskbar',
+          });
+          mainWindow.webContents.stop();
+          loadWindowShell(mainWindow, join(__dirname, 'index.html'), record);
+          return;
+        }
+        if (argv.includes('--reset-window')) {
+          mainWindow.setPosition(
+            DEFAULT_WINDOW_OPTIONS.x + 100,
+            DEFAULT_WINDOW_OPTIONS.y + 100,
+          );
+          mainWindow.setSize(
+            DEFAULT_WINDOW_OPTIONS.width,
+            DEFAULT_WINDOW_OPTIONS.height,
+          );
+          return;
+        }
         onDidLoad((window: BrowserWindow) => {
           // Keep only command line / deep linked arguments
           const deepLink = getDeepLinkFromArgs(argv);
 
           if (deepLink) {
             handleDeepLink(window, deepLink);
-          }
-
-          if (argv.includes('--reset-window')) {
-            // Needs to be delayed to not interfere with mainWindow.restore();
-            setTimeout(() => {
-              debug('Resetting windows via Task');
-              window.setPosition(
-                DEFAULT_WINDOW_OPTIONS.x + 100,
-                DEFAULT_WINDOW_OPTIONS.y + 100,
-              );
-              window.setSize(
-                DEFAULT_WINDOW_OPTIONS.width,
-                DEFAULT_WINDOW_OPTIONS.height,
-              );
-            }, 1);
-          } else if (argv.includes('--quit')) {
-            // Needs to be delayed to not interfere with mainWindow.restore();
-            setTimeout(() => {
-              debug('Quitting Ferdium via Task');
-              app.quit();
-            }, 1);
           }
         });
       }
@@ -263,6 +284,8 @@ if (gotTheLock) {
 
 // Disable GPU acceleration
 if (
+  process.argv.includes('--restart-without-gpu') ||
+  process.argv.includes('--disable-gpu') ||
   !retrieveSettingValue(
     'enableGPUAcceleration',
     DEFAULT_APP_SETTINGS.enableGPUAcceleration,
@@ -358,10 +381,15 @@ const createWindow = () => {
   const recordHealth = (details: Parameters<typeof recordWindowHealth>[1]) =>
     recordWindowHealth(healthPath, details);
   recordHealth({ event: 'window-created' });
-  installWindowRecovery(mainWindow, {
+  const shellWindow = mainWindow;
+  const loadShell = () => {
+    loadWindowShell(shellWindow, join(__dirname, 'index.html'), recordHealth);
+  };
+  const stopWindowRecovery = installWindowRecovery(mainWindow, {
     record: recordHealth,
     quitting: () => willQuitApp || overrideAppQuitForUpdate,
     resumeEvents: powerMonitor,
+    loadShell,
   });
   const processGone = (_event: unknown, details: Electron.Details) => {
     if (details.type === 'GPU')
@@ -413,13 +441,6 @@ const createWindow = () => {
       : [];
     recordHealth({ event: 'renderer-exception', reason, frames });
   };
-  mainWindow.webContents.on(
-    'did-fail-load',
-    (_event, code, _description, _url, isMainFrame) => {
-      if (isMainFrame)
-        recordHealth({ event: 'renderer-load-failed', exitCode: code });
-    },
-  );
   app.on('child-process-gone', processGone);
   powerMonitor.on('suspend', suspended);
   powerMonitor.on('resume', resumed);
@@ -566,16 +587,37 @@ const createWindow = () => {
   const dbus = new DBus(trayIcon);
 
   // Initialize ipcApi
-  ipcApi({
-    mainWindow,
-    cacheLocation,
-    settings: {
-      app: settings,
-      proxy: proxySettings,
-      shortcuts: shortcutSettings,
-    },
-    trayIcon,
-  });
+  try {
+    ipcApi({
+      mainWindow,
+      cacheLocation,
+      settings: {
+        app: settings,
+        proxy: proxySettings,
+        shortcuts: shortcutSettings,
+      },
+      trayIcon,
+    });
+  } catch (error) {
+    mainInitializationFailed = true;
+    stopWindowRecovery();
+    trayIcon.onReloadUI = () => shellWindow.show();
+    try {
+      trayIcon.show();
+    } catch {
+      recordHealth({ event: 'tray-create-failed' });
+    }
+    showMainStartupFailure(shellWindow, error, {
+      record: recordHealth,
+      exportDiagnostics: () =>
+        trayIcon
+          .trayMenuTemplate(trayIcon)
+          .find(item => item.label === 'Export Diagnostics')
+          ?.click(),
+      quit: () => app.exit(1),
+    }).catch(() => app.exit(1));
+    return;
+  }
 
   // Connect to the DBus after ipcApi took care of the System Tray
   dbus.start();
@@ -584,7 +626,7 @@ const createWindow = () => {
   mainWindowState.manage(mainWindow);
 
   // and load the index.html of the app.
-  mainWindow.loadURL(`file://${__dirname}/index.html`);
+  loadShell();
 
   // Open the DevTools.
   if (isDevMode || process.argv.includes('--devtools')) {
@@ -804,6 +846,22 @@ app.on('ready', async () => {
       ),
     );
     app.setUserTasks([
+      {
+        program: process.execPath,
+        arguments: `${extraArgs}--reload-ui`,
+        iconPath,
+        iconIndex: 0,
+        title: 'Reload UI',
+        description: 'Reload the ZL-WA interface without clearing account data',
+      },
+      {
+        program: process.execPath,
+        arguments: `${extraArgs}--restart-without-gpu`,
+        iconPath,
+        iconIndex: 0,
+        title: 'Restart without GPU',
+        description: 'Restart ZL-WA with software rendering for this launch',
+      },
       {
         program: process.execPath,
         arguments: `${extraArgs}--reset-window`,
@@ -1089,6 +1147,10 @@ appEvents.on('install-update', () => {
 });
 
 app.on('before-quit', event => {
+  if (restartingWithoutGPU) {
+    willQuitApp = true;
+    return;
+  }
   if (isUpdateShutdown()) {
     willQuitApp = true;
     overrideAppQuitForUpdate = true;

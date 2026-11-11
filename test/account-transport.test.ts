@@ -98,3 +98,32 @@ it('aborts the underlying account request on timeout/cancellation', async () => 
   await expect(promise).rejects.toThrow('已取消');
   expect(request.abort).toHaveBeenCalledTimes(1);
 });
+
+it('answers an authenticated proxy challenge whose DNS hostname casing differs', async () => {
+  const transport = accountTransport(
+    {} as any,
+    {
+      ...defaultTools().proxy,
+      enabled: true,
+      host: 'PROXY.EXAMPLE.',
+      port: '8080',
+      username: 'user',
+    },
+    () => 'secret',
+  );
+  const result = transport('https://provider.invalid', { method: 'GET' });
+  const callback = jest.fn();
+  request.emit(
+    'login',
+    { isProxy: true, host: 'proxy.example', port: 8080 },
+    callback,
+  );
+  expect(callback).toHaveBeenCalledWith('user', 'secret');
+  const response: any = new EventEmitter();
+  response.statusCode = 200;
+  response.headers = {};
+  request.emit('response', response);
+  response.emit('end');
+  const received = await result;
+  expect(received.status).toBe(200);
+});

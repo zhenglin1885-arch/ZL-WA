@@ -385,6 +385,72 @@ describe('privileged account tools IPC', () => {
     expect(translate).toHaveBeenCalledTimes(1);
     enqueued.mockRestore();
   });
+  it('uses a private-chat language hint locally, sends only the short message, and separates caches by inferred source', async () => {
+    jest.useFakeTimers();
+    try {
+      const config = defaultTools();
+      config.translation.incoming = true;
+      await invoke('save', 'account-1', config);
+      const google =
+        require('../src/electron/accountTranslation').translateAccount;
+      google.mockResolvedValue({ text: '', error: true, unavailable: true });
+      const s = sessions.get('persist:service-account-1');
+      s.fetch.mockImplementation(
+        async url =>
+          new Response(
+            JSON.stringify({
+              responseStatus: 200,
+              quotaFinished: false,
+              responseData: {
+                translatedText: new URL(url).searchParams.get('langpair'),
+              },
+            }),
+          ),
+      );
+      const pt = 'não abaixei essa sua plataforma';
+      const en =
+        'Please send the application download address so I can install it on my computer';
+      const first = invoke(
+        'translate',
+        'account-1',
+        'manda link',
+        'incoming',
+        false,
+        pt,
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      expect(await first).toMatchObject({ error: false, text: 'pt|zh-CN' });
+      const second = invoke(
+        'translate',
+        'account-1',
+        'manda link',
+        'incoming',
+        false,
+        en,
+      );
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(await second).toMatchObject({ error: false, text: 'en|zh-CN' });
+      for (const [url] of s.fetch.mock.calls) {
+        expect(new URL(url).searchParams.get('q')).toBe('manda link');
+        expect(url).not.toContain('plataforma');
+        expect(url).not.toContain('computer');
+      }
+      const calls = s.fetch.mock.calls.length;
+      expect(
+        await invoke(
+          'translate',
+          'account-1',
+          'manda link',
+          'incoming',
+          false,
+          pt,
+        ),
+      ).toMatchObject({ error: false, text: 'pt|zh-CN' });
+      expect(s.fetch).toHaveBeenCalledTimes(calls);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('persists successful MyMemory results across cooldown and restart; uses Google for new content and supports explicit refresh', async () => {
     jest.useFakeTimers();
     try {
@@ -658,6 +724,9 @@ describe('privileged account tools IPC', () => {
     expect(first.fetch).toHaveBeenCalledTimes(2);
     await invoke('network-status', 'account-1', true);
     expect(first.fetch).toHaveBeenCalledTimes(4);
+    expect(first.setProxy).toHaveBeenCalledTimes(1);
+    expect(first.closeAllConnections).toHaveBeenCalledTimes(1);
+    expect(first.clearAuthCache).toHaveBeenCalledTimes(1);
     event.senderFrame = {};
     await expect(invoke('network-status', 'account-1')).rejects.toThrow('禁止');
   });
@@ -833,6 +902,110 @@ describe('privileged account tools IPC', () => {
     expect(
       readFileSync(join(root, 'account-tools.json'), 'utf8'),
     ).not.toContain('replacement-secret');
+  });
+  it('does not reencrypt unchanged proxy passwords or disconnect a live account on a repeated save', async () => {
+    let nonce = 0;
+    safeStorage.encryptString = (text: string) => {
+      nonce += 1;
+      return Buffer.from(`nonce-${nonce}:${text}`);
+    };
+    safeStorage.decryptString = (buffer: Buffer) =>
+      buffer.toString().replace(/^nonce-\d+:/, '');
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'localhost',
+      port: '8888',
+      username: 'tester',
+      password: 'same-secret',
+    };
+    const first = await invoke('save', 'account-1', config);
+    const s = sessions.get('persist:service-account-1');
+    s.setProxy.mockClear();
+    s.closeAllConnections.mockClear();
+    s.clearAuthCache.mockClear();
+    config.translation.incoming = true;
+    const second = await invoke('save', 'account-1', config);
+    expect(second.proxy.connectionRevision).toBe(
+      first.proxy.connectionRevision,
+    );
+    expect(nonce).toBe(1);
+    expect(s.setProxy).not.toHaveBeenCalled();
+    expect(s.closeAllConnections).not.toHaveBeenCalled();
+    expect(s.clearAuthCache).not.toHaveBeenCalled();
+    config.proxy.password = 'new-secret';
+    const third = await invoke('save', 'account-1', config);
+    expect(third.proxy.connectionRevision).not.toBe(
+      second.proxy.connectionRevision,
+    );
+    expect(s.setProxy).toHaveBeenCalledTimes(1);
+    expect(
+      readFileSync(join(root, 'account-tools.json'), 'utf8'),
+    ).not.toContain('new-secret');
+  });
+  it('probes a just-applied configuration without closing its new connections again', async () => {
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'localhost',
+      port: '8888',
+    };
+    await invoke('save', 'account-1', config);
+    const s = sessions.get('persist:service-account-1');
+    s.resolveProxy.mockResolvedValue('PROXY localhost:8888');
+    s.fetch.mockResolvedValue(
+      new Response('<!doctype html><html></html>', {
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    s.setProxy.mockClear();
+    s.closeAllConnections.mockClear();
+    s.clearAuthCache.mockClear();
+    const result = await invoke('test-proxy', 'account-1', false);
+    expect(result.documentChecked).toBe(true);
+    expect(s.setProxy).not.toHaveBeenCalled();
+    expect(s.closeAllConnections).not.toHaveBeenCalled();
+    expect(s.clearAuthCache).not.toHaveBeenCalled();
+  });
+  it('normalizes the configured proxy host and cancels a rejected Basic credential retry with redacted diagnostics', async () => {
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'PROXY.EXAMPLE.',
+      port: '8888',
+      username: 'tester',
+      password: 'private-secret',
+    };
+    await invoke('save', 'account-1', config);
+    const s = sessions.get('persist:service-account-1');
+    const callback = jest.fn();
+    login(
+      { preventDefault: jest.fn() },
+      { session: s },
+      { firstAuthAttempt: true },
+      { isProxy: true, host: 'proxy.example', port: 8888, scheme: 'basic' },
+      callback,
+    );
+    expect(callback).toHaveBeenLastCalledWith('tester', 'private-secret');
+    login(
+      { preventDefault: jest.fn() },
+      { session: s },
+      { firstAuthAttempt: false },
+      { isProxy: true, host: 'proxy.example', port: 8888, scheme: 'basic' },
+      callback,
+    );
+    expect(callback).toHaveBeenLastCalledWith();
+    const diagnostics = await invoke('proxy-diagnostics', 'account-1');
+    expect(diagnostics.lastAuthenticationFailure).toEqual({
+      code: 'AUTH_REJECTED',
+      at: expect.any(Number),
+    });
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /private-secret|proxy\.example|tester/i,
+    );
   });
   it('rebuilds unchanged proxy settings on explicit test without touching another account or stored chat data', async () => {
     await invoke('prepare', 'account-1');

@@ -76,6 +76,7 @@ export default observer(function GroupTools({
   const [confirm, setConfirm] = useState<GroupTarget[]>();
   const [recordId, setRecordId] = useState('');
   const wasActive = useRef(Boolean(queue.active));
+  const lastActiveBatch = useRef(queue.active);
   const config = normalizeAccountConfig(stores.settings.app.accountSidebar);
   const online = stores.services.all.filter(
     s =>
@@ -107,7 +108,29 @@ export default observer(function GroupTools({
         queue.state.batches.find(b => b.id === queue.active)?.mode === mode
       )
         setRecordId(queue.active);
-      if (wasActive.current && !queue.active) setRefresh(n => n + 1);
+      if (queue.active) lastActiveBatch.current = queue.active;
+      if (wasActive.current && !queue.active) {
+        const completed = queue.state.batches.find(
+          b => b.id === lastActiveBatch.current,
+        );
+        if (completed?.mode === 'speech') {
+          setGroups(current =>
+            current.map(group => {
+              const task = completed.tasks.find(
+                t =>
+                  t.accountId === group.accountId &&
+                  t.ownerId === group.ownerId &&
+                  t.target === group.target &&
+                  t.status === 'success',
+              );
+              return task
+                ? { ...group, announce: task.operation === 'mute' }
+                : group;
+            }),
+          );
+          setSelected([]);
+        } else setRefresh(n => n + 1);
+      }
       wasActive.current = Boolean(queue.active);
     };
     queue.listeners.add(change);
@@ -625,7 +648,9 @@ export default observer(function GroupTools({
             <p>
               {mode === 'join'
                 ? '全部群先执行一次，首轮结束后再将确认未加入的失败项重试一次。等待管理员审批的申请不重复提交。'
-                : '逐个执行并核验，每项最多自动执行 3 次。'}
+                : mode === 'speech'
+                  ? '逐群读取并修改发言权限；已提交但未确认的结果先核验，遇限流会暂停该账号，冷却后可重试。'
+                  : '逐个执行并核验，每项最多自动执行 3 次。'}
             </p>
             {batch && (
               <label htmlFor={`${uid}-history`}>
@@ -651,16 +676,18 @@ export default observer(function GroupTools({
             {batch && (
               <>
                 <div
-                  className={`group-tools-counts ${mode === 'join' ? 'has-approval' : ''}`}
+                  className={`group-tools-counts ${mode === 'leave' ? '' : 'has-approval'}`}
                 >
                   {(
                     (mode === 'join'
                       ? ['success', 'failed', 'uncertain', 'approval']
-                      : [
-                          'success',
-                          'failed',
-                          'uncertain',
-                        ]) as (keyof typeof statuses)[]
+                      : mode === 'speech'
+                        ? ['success', 'failed', 'uncertain', 'stopped']
+                        : [
+                            'success',
+                            'failed',
+                            'uncertain',
+                          ]) as (keyof typeof statuses)[]
                   ).map(status => (
                     <span key={status} className={`group-tools-${status}`}>
                       {statuses[status]}

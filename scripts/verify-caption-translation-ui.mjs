@@ -91,7 +91,26 @@ try {
           for(let i=0;i<3;i++){window.__zlTranslation.dirty=true;if(tick(preview).length)throw Error('A pending preview was queued twice');}
           result(auto[0].id,auto[0].token,{text:'自动译文只显示一次',error:false});window.__zlTranslation.dirty=true;tick(preview);
           if(count()!==1||document.querySelector('[data-zl-translation-text]').textContent!=='自动译文只显示一次')throw Error('Auto preview translated its own generated result');
-          return {sameIdDomCopiesDeduplicated:true,distinctIdenticalMessagesPreserved:true,oneAutomaticCaptionRequest:true,nestedCaptionDeduplicated:true,fullCaptionPreserved:true,pendingWholeMessageRebound:true,rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
+          const models=new Map();window.WPP={whatsapp:{MsgStore:{get:id=>models.get(id)}}};
+          const main=document.querySelector('#main');
+          const message=(id,content)=>'<div class="message-in" data-id="false_10001@g.us_'+id+'"><div class="copyable-text">'+content+'</div></div>';
+          const name='<span class="selectable-text">Oravion Capital</span>';
+          models.set('false_10001@g.us_card',{type:'vcard'});
+          models.set('false_10001@g.us_cards',{type:'multi_vcard'});
+          main.innerHTML=message('card',name)+message('cards',name)+message('dom',name+'<span data-testid="contact-card"></span>')+message('text',name)+message('quote','<blockquote><span data-icon="contact"></span>'+name+'</blockquote><span class="selectable-text">Regular reply to a contact card</span>');
+          scan();if(count()!==2||main.children[0].querySelector('[data-zl-translate]')||main.children[1].querySelector('[data-zl-translate]')||main.children[2].querySelector('[data-zl-translate]'))throw Error('Contact cards were translated or normal/quoted messages were excluded');
+          document.querySelectorAll('[data-zl-translate]').forEach(b=>b.click());
+          const ordinary=scan();if(ordinary.length!==2)throw Error('Ordinary text translations were affected by card filtering');
+          ordinary.forEach(job=>result(job.id,job.token,{text:'普通消息译文',error:false}));
+          const automatic=tick({...preview,preview:true});
+          if(automatic.length)throw Error('Contact card queued an automatic translation');
+          main.innerHTML=message('late',name);scan();document.querySelector('[data-zl-translate]').click();
+          if(!window.__zlTranslation.queue.length)throw Error('Expected a queued request before late card metadata');
+          models.set('false_10001@g.us_late',{type:'vcard'});
+          const late=scan();if(late.length||count()||window.__zlTranslation.pending.size)throw Error('Late card metadata retained a button or queued translation');
+          main.innerHTML=message('icon',name+'<span data-icon="contact"></span>');scan();
+          if(count())throw Error('Native contact icon fallback did not suppress the translation button');
+          return {contactCardsExcluded:true,multipleContactsExcluded:true,lateCardMetadataCancelsQueuedTranslation:true,quotedCardReplyPreserved:true,ordinaryTextPreserved:true,sameIdDomCopiesDeduplicated:true,distinctIdenticalMessagesPreserved:true,oneAutomaticCaptionRequest:true,nestedCaptionDeduplicated:true,fullCaptionPreserved:true,pendingWholeMessageRebound:true,rebuilds:4,oneTranslationPerMessage:true,pendingRebound:true,sourceUnchanged:true,cacheEntries:window.__zlTranslation.memo.size};
         })()`);
         } finally {
           win.destroy();

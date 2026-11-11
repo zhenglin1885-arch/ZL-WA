@@ -200,11 +200,12 @@ const SettingsPanel = observer(
         setConfig(saved);
         if (panel === 'translation')
           await configureTranslation(service, textColor);
-        if (
-          test !== true &&
-          proxyNeedsReload(old.proxy, saved.proxy, input.proxy)
-        )
-          service.webview?.reload();
+        const proxyChanged = proxyNeedsReload(
+          old.proxy,
+          saved.proxy,
+          input.proxy,
+        );
+        if (test !== true && proxyChanged) service.webview?.reload();
         if (typeof test === 'string') {
           const result = await ipcRenderer.invoke(
             'account-tools-test-translation',
@@ -220,6 +221,7 @@ const SettingsPanel = observer(
           const result = await ipcRenderer.invoke(
             'account-tools-test-proxy',
             service.id,
+            !proxyChanged,
           );
           service.webview?.reload();
           setNotice(

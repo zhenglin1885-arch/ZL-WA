@@ -74,12 +74,63 @@ try {
           details.pending=widths();
           const retry=tick(config);retry.forEach(job=>result(job.id,job.token,{text:'',error:true,message:'Synthetic provider failure'}));
           details.failed=widths();
-          details.visibleFailure=labels[0].textContent.includes('Synthetic provider failure');
+          details.visibleFailure=labels.every(n=>n.textContent==='翻译失败'&&n.title.includes('Synthetic provider failure'));
+          details.singleLineErrors=labels.every(n=>getComputedStyle(n).whiteSpace==='nowrap');
           document.querySelector('#main').style.width='280px';
           containers.forEach(n=>n.style.display='none');
           details.narrowOriginal=widths();
           containers.forEach(n=>n.style.display='');
           details.narrowTranslated=widths();
+          const tailCases=[
+            {text:'我承认',font:16,width:48},
+            {text:'赌博',font:18,width:50},
+            {text:'桑德罗',font:28,width:60},
+            {text:'我花2000',font:18,width:80},
+            {text:'这是多行译文，按钮跟随最后一个字。',font:18,width:140},
+            {text:'PortfolioRiskManagementWithoutSpaces',font:18,width:130},
+            {text:'保留段落'+String.fromCharCode(10)+'最后一行'+String.fromCharCode(10,10),font:18,width:100},
+            {text:'好的🙂',font:20,width:70},
+          ];
+          details.inlineRefresh=[];
+          for(const [index,item]of tailCases.entries()){
+            const root=document.querySelector('#main');
+            root.innerHTML='<div class="message-in" data-id="false_10001@c.us_tail'+index+'" style="width:'+item.width+'px;padding:8px"><div class="copyable-text" style="font-size:'+item.font+'px;line-height:1.5"><span class="selectable-text">Confesso '+index+'</span></div></div>';
+            window.__zlTranslation.dirty=true;tick(config);
+            root.querySelector('[data-zl-translate]').click();const job=tick(config).find(j=>j.text==='Confesso '+index);
+            if(!job)throw Error('Missing tail layout job');
+            result(job.id,job.token,{text:item.text,error:false});
+            await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+            const label=root.querySelector('[data-zl-translation-text]'),icon=root.querySelector('[data-zl-retranslate]');
+            const walker=document.createTreeWalker(label,NodeFilter.SHOW_TEXT);let textNode;for(let node=walker.nextNode();node;node=walker.nextNode())if(node.textContent.trim()&&!node.parentElement.closest('button'))textNode=node;
+            const segment=[...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(textNode.textContent)].at(-1);
+            const range=document.createRange();range.setStart(textNode,segment.index);range.setEnd(textNode,textNode.textContent.length);
+            const glyph=range.getBoundingClientRect(),button=icon.getBoundingClientRect();
+            if(button.left<glyph.right-1||Math.abs((button.top+button.height/2)-(glyph.top+glyph.height/2))>Math.max(8,item.font*0.3))throw Error('Refresh separated from last translated glyph: '+JSON.stringify({item,glyph:glyph.toJSON(),button:button.toJSON()}));
+            if(label.textContent!==item.text.trimEnd())throw Error('Refresh glyph contaminated translation text');
+            details.inlineRefresh.push({font:item.font,width:item.width,inline:true});
+          }
+          const contextChat=async(id,sample)=>{
+            const root=document.querySelector('#main');
+            root.innerHTML='<div class="message-in" data-id="false_'+id+'_context"><div class="copyable-text"><span class="selectable-text">'+sample+'</span></div></div><div class="message-in" data-id="false_'+id+'_short"><div class="copyable-text"><span class="selectable-text">manda link</span></div></div>';
+            window.__zlTranslation.dirty=true;tick(config);
+            await new Promise(r=>setTimeout(r,650));window.__zlTranslation.dirty=true;tick(config);
+            const button=root.querySelector('[data-id$="_short"] [data-zl-translate]');
+            if(!button||button.hidden)throw Error('A different conversation reused a short-message cache');
+            button.click();return tick(config).find(job=>job.text==='manda link');
+          };
+          const pt='não abaixei essa sua plataforma';
+          const shortPt=await contextChat('10001@c.us',pt);
+          if(shortPt?.sourceContext!==pt)throw Error('Private source sample missing or contaminated by injected translations');
+          result(shortPt.id,shortPt.token,{text:'发链接',error:false,provider:'MyMemory'});
+          const en='Please send the application download address so I can install it on my computer';
+          const shortEn=await contextChat('10002@c.us',en);
+          if(shortEn?.sourceContext!==en)throw Error('Private-chat source sample leaked across conversations');
+          result(shortEn.id,shortEn.token,{text:'',error:true,message:'Short source needs configuration'});
+          const shortGroup=await contextChat('10003@g.us',pt);
+          if(!shortGroup||shortGroup.sourceContext!==undefined)throw Error('Group participants must not share a private-chat hint');
+          details.privateContextScoped=true;
+          details.groupContextExcluded=true;
+          details.shortCacheIsolated=true;
           return details;
         })()`);
         } finally {
@@ -103,7 +154,7 @@ try {
         Math.abs(
           width -
             (phase === 'after'
-              ? Math.max(result.before[index], 48)
+              ? Math.max(result.before[index], 68)
               : Math.max(result.before[index], 92)),
         ) < 1,
         `${phase}: translation widened bubble ${index}`,
@@ -127,6 +178,10 @@ try {
     'noOverflow',
     'originalUntouched',
     'visibleFailure',
+    'singleLineErrors',
+    'privateContextScoped',
+    'groupContextExcluded',
+    'shortCacheIsolated',
   ])
     assert.equal(result[flag], true, flag);
   console.log(

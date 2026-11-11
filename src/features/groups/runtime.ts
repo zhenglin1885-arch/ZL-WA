@@ -107,6 +107,9 @@ export class GroupRuntime {
   async list(
     target: Pick<GroupTarget, 'accountId' | 'accountName' | 'ownerId'>,
   ): Promise<GroupChoice[]> {
+    await this.queue.load();
+    if (this.queue.speechCooldown(target.ownerId))
+      throw new Error(this.queue.speechCooldownMessage(target.ownerId));
     const view = this.viewFor(target);
     await this.withTimeout(
       ensureBulkLibrary(view),
@@ -120,8 +123,11 @@ export class GroupRuntime {
       ),
       '读取群组超时，请点击刷新群组重试',
     );
-    if (!Array.isArray(result.groups))
+    if (!Array.isArray(result.groups)) {
+      if (result.rateLimited)
+        await this.queue.noteSpeechRateLimit(target.ownerId);
       throw new Error(result.message || '读取群组失败');
+    }
     return result.groups.map((g: any) => ({
       ...target,
       target: g.id,

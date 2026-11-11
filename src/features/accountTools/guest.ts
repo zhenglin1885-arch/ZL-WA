@@ -9,6 +9,7 @@ export interface TranslationRequest {
   text: string;
   direction: 'incoming' | 'outgoing';
   force?: boolean;
+  sourceContext?: string;
 }
 export function translationTick(
   config: TranslationConfig,
@@ -21,7 +22,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 14;
+  const revision = 17;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -189,7 +190,26 @@ export function translationTick(
         node
       );
     };
+    state.isContactCard = (bubble: HTMLElement): boolean => {
+      try {
+        const message = page.WPP?.whatsapp?.MsgStore?.get?.(bubble.dataset.id);
+        if (['vcard', 'multi_vcard'].includes(message?.type)) return true;
+      } catch {
+        // The SDK may still be starting; native card markers remain usable.
+      }
+      const marker =
+        '[data-testid="contact-card"], [data-testid="contact-card-container"], [data-testid="vcard"], [data-testid="msg-vcard"], [data-icon="vcard"], [data-icon="contact"], [data-icon="contact-group"]';
+      return [
+        ...(bubble.matches(marker) ? [bubble] : []),
+        ...bubble.querySelectorAll<HTMLElement>(marker),
+      ].some(
+        node =>
+          !node.closest(incomingExcluded) &&
+          state.messageBubble(node) === bubble,
+      );
+    };
     state.incomingNodes = (bubble: HTMLElement): HTMLElement[] => {
+      if (state.isContactCard(bubble)) return [];
       const owned = (node: HTMLElement) =>
         !node.closest(incomingExcluded) &&
         node.getClientRects().length > 0 &&
@@ -590,6 +610,50 @@ export function translationTick(
     state.notice = notice;
     state.composer = composer;
     state.chatKey = chatKey;
+    state.incomingContext = (bubble: HTMLElement, text: string): string => {
+      const chat = state.chatKey();
+      let sourceContext = '';
+      if (
+        state.config.receiveSource === 'auto' &&
+        text.length <= 80 &&
+        /^\d+@(c\.us|lid)$/.test(chat)
+      ) {
+        const candidates = [
+          ...document.querySelectorAll<HTMLElement>(
+            '#main [data-id^="false_"]',
+          ),
+        ].filter(
+          node =>
+            node.dataset.id?.startsWith(`false_${chat}_`) &&
+            !node.contains(bubble) &&
+            !bubble.contains(node) &&
+            node.compareDocumentPosition(bubble) ===
+              Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+        for (const candidate of candidates.slice(-8).reverse()) {
+          const sample = state
+            .readIncoming(state.messageBubble(candidate))
+            .trim();
+          if (
+            sample.length <= 1000 &&
+            (sample.match(/\p{L}/gu) || []).length >= 20
+          ) {
+            sourceContext = sample;
+            break;
+          }
+        }
+      }
+      return sourceContext;
+    };
+    state.incomingKey = (text: string, bubble: HTMLElement, sample?: string) =>
+      JSON.stringify([
+        state.signature,
+        text,
+        ...(state.config.receiveSource === 'auto' && text.length <= 80
+          ? [state.chatKey(), sample ?? state.incomingContext(bubble, text)]
+          : []),
+      ]);
+
     // Adjust only for our own added/removed translation height. Never force a
     // chat to the bottom if WhatsApp/user has selected an unread/history anchor.
     state.withScroll = (node: Element | null, mutate: () => void) => {
@@ -635,16 +699,45 @@ export function translationTick(
       if (state.memo.size > 800)
         state.memo.delete(state.memo.keys().next().value);
     };
+    state.renderTranslation = (record: any, text: string) => {
+      const current = record;
+      const value = text.trimEnd();
+      if (!current.refresh) {
+        current.label.textContent = value;
+        return;
+      }
+      const last = [
+        ...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
+          value,
+        ),
+      ].at(-1);
+      const index = last?.index || 0;
+      current.label.textContent = value.slice(0, index);
+      const tail = document.createElement('span');
+      tail.dataset.zlTranslationTail = 'true';
+      tail.style.cssText =
+        'white-space:nowrap;overflow-wrap:normal;word-break:normal';
+      tail.append(document.createTextNode(value.slice(index)), current.refresh);
+      current.label.append(tail);
+      current.refresh.style.color = state.color;
+    };
     state.restore = (record: any, text: string) => {
       const current = record;
       state.withScroll(current.container, () => {
         current.status = 'done';
-        current.label.textContent = text;
+        state.renderTranslation(current, text);
+        current.label.title = '';
+        current.label.style.display = '';
+        current.label.style.whiteSpace = 'pre-wrap';
+        current.label.style.fontSize = '';
+        current.label.style.overflow = '';
+        current.label.style.textOverflow = '';
+        current.button.title = '';
         current.container.style.borderTop = `1px dashed ${state.color || '#ffe45c'}`;
         current.button.disabled = false;
         current.button.hidden = true;
         current.button.style.display = 'none';
-        current.container.style.minWidth = '32px';
+        current.container.style.minWidth = 'calc(1em + 34px)';
         if (current.refresh) {
           current.refresh.hidden = false;
           current.refresh.disabled = false;
@@ -1090,6 +1183,22 @@ export function translationTick(
       const bubble = state.messageBubble(candidate) as HTMLElement;
       if (seenBubbles.has(bubble)) continue;
       seenBubbles.add(bubble);
+      if (state.isContactCard(bubble)) {
+        for (const decoration of bubble.querySelectorAll(
+          '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate]',
+        ))
+          decoration.remove();
+        for (const [id, job] of state.pending)
+          if (job.direction === 'incoming' && job.input === bubble) {
+            state.pending.delete(id);
+            state.queue = state.queue.filter(
+              (request: TranslationRequest) => request.id !== id,
+            );
+          }
+        state.incoming.delete(bubble);
+        state.incomingByBubble.delete(bubble);
+        continue;
+      }
       const sourceNodes = state.incomingNodes(bubble) as HTMLElement[];
       const textNode = sourceNodes[0];
       if (!textNode) continue;
@@ -1160,18 +1269,20 @@ export function translationTick(
         refresh.setAttribute('aria-label', '重新翻译');
         refresh.title = '重新翻译（重新请求，不使用缓存）';
         refresh.innerHTML =
-          '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 7a9 9 0 1 0 1 8M20 3v5h-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="12" y="15.5" text-anchor="middle" fill="currentColor" font-size="10" stroke="none">文</text></svg>';
+          '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 7a9 9 0 1 0 1 8M20 3v5h-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.7 7.5l.8 1M8.4 10h7.2M14 10c-.9 2.8-2.6 4.6-5.8 6M10.2 10.8c1 2.2 2.9 4 5.9 5.2" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>';
         refresh.hidden = true;
         refresh.style.cssText =
           'border:0;background:transparent;color:inherit;vertical-align:middle;width:28px;height:28px;padding:2px;margin-left:4px;cursor:pointer;white-space:normal';
         refresh.style.color = state.color;
+        // The refresh control moves into an unbreakable text tail on success.
+        // Its SVG uses paths only, keeping label.textContent cache-safe.
         container.append(label, refresh, button);
         record = {
           input: bubble,
           text,
           identity,
           chat: state.chatKey(),
-          cacheKey: JSON.stringify([state.signature, text]),
+          cacheKey: state.incomingKey(text, bubble),
           container,
           label,
           button,
@@ -1208,9 +1319,28 @@ export function translationTick(
             return;
           }
           current.text = latestText;
-          current.cacheKey = JSON.stringify([state.signature, latestText]);
+          const sourceContext = state.incomingContext(
+            current.input,
+            latestText,
+          );
+          current.cacheKey = state.incomingKey(
+            latestText,
+            current.input,
+            sourceContext,
+          );
           if (force) state.memo.delete(current.cacheKey);
+          const wasError = current.status === 'error';
           current.status = 'pending';
+          if (wasError) {
+            label.textContent = '';
+            label.title = '';
+            label.style.display = '';
+            label.style.whiteSpace = 'pre-wrap';
+            label.style.fontSize = '';
+            label.style.overflow = '';
+            label.style.textOverflow = '';
+            button.title = '';
+          }
           refresh.disabled = true;
           refresh.setAttribute('aria-busy', 'true');
           refresh.title = '正在重新翻译…';
@@ -1237,6 +1367,7 @@ export function translationTick(
             token: state.token,
             text: current.text,
             direction: 'incoming',
+            ...(sourceContext ? { sourceContext } : {}),
             ...(force ? { force: true } : {}),
           };
           if (manual) state.queue.unshift(request);
@@ -1461,7 +1592,15 @@ export function translationResult(
       record.button.disabled = false;
       record.button.textContent = '点击翻译';
       record.status = 'error';
-      record.label.textContent = `${result.message || '翻译失败'}；可点击重试`;
+      const detail = `${result.message || '翻译失败'}；可点击重试`;
+      record.label.textContent = '翻译失败';
+      record.label.title = detail;
+      record.label.style.display = 'block';
+      record.label.style.whiteSpace = 'nowrap';
+      record.label.style.fontSize = '12px';
+      record.label.style.overflow = 'hidden';
+      record.label.style.textOverflow = 'ellipsis';
+      record.button.title = detail;
       record.button.hidden = false;
       record.button.style.display = 'inline-flex';
       record.container.style.minWidth = '76px';
@@ -1471,13 +1610,21 @@ export function translationResult(
   } else if (state.restore) state.restore(record, result.text);
   else {
     record.status = 'done';
-    record.label.textContent = result.text;
+    if (state.renderTranslation) state.renderTranslation(record, result.text);
+    else record.label.textContent = result.text.trimEnd();
+    record.label.title = '';
+    record.label.style.display = '';
+    record.label.style.whiteSpace = 'pre-wrap';
+    record.label.style.fontSize = '';
+    record.label.style.overflow = '';
+    record.label.style.textOverflow = '';
+    record.button.title = '';
     record.container.style.borderTop = `1px dashed ${state.color || '#ffe45c'}`;
     record.button.disabled = false;
     record.button.textContent = '点击翻译';
     record.button.hidden = true;
     record.button.style.display = 'none';
-    record.container.style.minWidth = '32px';
+    record.container.style.minWidth = 'calc(1em + 34px)';
   }
   return false;
 }

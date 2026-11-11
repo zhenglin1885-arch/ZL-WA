@@ -67,7 +67,7 @@ export class CustomerRuntime {
         work,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(
-            () => reject(new Error('客户功能响应超时，正在自动恢复，请稍候')),
+            () => reject(new Error('客户资料暂未响应，正在自动重试，请稍候')),
             limit,
           );
         }),
@@ -301,6 +301,13 @@ export class CustomerRuntime {
       this.busyViews.has(view)
     )
       return;
+    // Only native main-frame navigation blocks execution. The account card's
+    // broader loading flag can remain stale after the page is already usable.
+    try {
+      if (view.isLoadingMainFrame?.()) return;
+    } catch {
+      return; /* The guest has not attached yet. */
+    }
     const { busyViews } = this;
     busyViews.add(view);
     const { generation } = this;

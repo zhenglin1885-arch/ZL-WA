@@ -107,6 +107,135 @@ describe('native group adapter verification', () => {
       wpp.whatsapp.functions.queryAllGroups.mock.calls.length,
     ).toBeGreaterThanOrEqual(2);
   });
+  it('runs eight speech changes with two targeted server reads each and no full-list query', async () => {
+    groups = Array.from({ length: 8 }, (_, n) => ({
+      id: `${10_001 + n}@g.us`,
+      announce: false,
+    }));
+    wpp.whatsapp.GroupMetadataStore = {
+      update: jest.fn(async id =>
+        structuredClone(groups.find(g => g.id === id)),
+      ),
+    };
+    wpp.whatsapp.functions.queryAllGroups.mockRejectedValue(
+      new Error('rate-overlimit'),
+    );
+    const { queue } = realQueue();
+    await queue.start(
+      'mute',
+      groups.map(g => ({
+        accountId: 'account-a',
+        accountName: 'A',
+        ownerId,
+        target: g.id,
+        name: g.id,
+      })),
+      3,
+    );
+    expect(
+      queue.state.batches[0].tasks.every(
+        t => t.status === 'success' && t.attempts === 1,
+      ),
+    ).toBe(true);
+    expect(wpp.group.setProperty).toHaveBeenCalledTimes(8);
+    expect(wpp.whatsapp.GroupMetadataStore.update).toHaveBeenCalledTimes(16);
+    expect(wpp.whatsapp.functions.queryAllGroups).not.toHaveBeenCalled();
+  });
+  it('keeps an acknowledged speech change unconfirmed while state is delayed, then reconciles without a second mutation', async () => {
+    wpp.whatsapp.GroupMetadataStore = {
+      update: jest.fn(async () => structuredClone(groups[0])),
+    };
+    wpp.group.setProperty.mockResolvedValue(true);
+    const { queue } = realQueue();
+    await queue.start(
+      'mute',
+      [
+        {
+          accountId: 'account-a',
+          accountName: 'A',
+          ownerId,
+          target: groupId,
+          name: 'Group',
+        },
+      ],
+      3,
+    );
+    expect(queue.state.batches[0].tasks[0]).toMatchObject({
+      status: 'uncertain',
+      attempts: 1,
+    });
+    expect(wpp.group.setProperty).toHaveBeenCalledTimes(1);
+    groups[0].announce = true;
+    await queue.reconcile(queue.state.batches[0].id);
+    expect(queue.state.batches[0].tasks[0].status).toBe('success');
+    expect(wpp.group.setProperty).toHaveBeenCalledTimes(1);
+    expect(wpp.whatsapp.functions.queryAllGroups).not.toHaveBeenCalled();
+  });
+  it('does not fall back to reading all groups when a targeted metadata read is rate-limited', async () => {
+    wpp.whatsapp.GroupMetadataStore = {
+      update: jest.fn(async () => {
+        throw new Error('ServerStatusCodeError: rate-overlimit');
+      }),
+    };
+    const { queue } = realQueue();
+    await queue.start(
+      'mute',
+      [groupId, '10002@g.us'].map(id => ({
+        accountId: 'account-a',
+        accountName: 'A',
+        ownerId,
+        target: id,
+        name: id,
+      })),
+      3,
+    );
+    expect(queue.state.batches[0].tasks.map(t => t.status)).toEqual([
+      'uncertain',
+      'stopped',
+    ]);
+    expect(queue.state.batches[0].tasks.every(t => t.attempts === 0)).toBe(
+      true,
+    );
+    expect(wpp.whatsapp.GroupMetadataStore.update).toHaveBeenCalledTimes(1);
+    expect(wpp.whatsapp.functions.queryAllGroups).not.toHaveBeenCalled();
+    expect(wpp.group.setProperty).not.toHaveBeenCalled();
+    await queue.retry(queue.state.batches[0].id);
+    expect(wpp.whatsapp.GroupMetadataStore.update).toHaveBeenCalledTimes(1);
+  });
+  it('returns a readable inventory rate-limit result instead of a rejected remote object', async () => {
+    wpp.whatsapp.functions.queryAllGroups.mockRejectedValue(
+      new Error('ServerStatusCodeError: rate-overlimit'),
+    );
+    await expect(groupGuest({ ownerId })).resolves.toMatchObject({
+      status: 'uncertain',
+      rateLimited: true,
+      message: expect.stringContaining('服务器限流'),
+    });
+  });
+  it('also serializes a metadata limit encountered while listing member or admin roles', async () => {
+    wpp.group.iAmMember.mockRejectedValue(
+      new Error('ServerStatusCodeError: rate-overlimit'),
+    );
+    await expect(groupGuest({ ownerId })).resolves.toMatchObject({
+      status: 'uncertain',
+      rateLimited: true,
+      message: expect.stringContaining('服务器限流'),
+    });
+  });
+  it('does not change a group after the account changes during its targeted server read', async () => {
+    wpp.whatsapp.GroupMetadataStore = {
+      update: jest.fn(async () => {
+        wpp.conn.getMyUserWid = () => '8613800000002@c.us';
+        return structuredClone(groups[0]);
+      }),
+    };
+    const result = await groupGuest({ ownerId, task: task(), execute: true });
+    expect(result).toMatchObject({
+      status: 'uncertain',
+      message: expect.stringContaining('账号身份已变化'),
+    });
+    expect(wpp.group.setProperty).not.toHaveBeenCalled();
+  });
   it('loads groups from the packaged WA-JS functions namespace without a flat alias', async () => {
     expect(wpp.whatsapp.queryAllGroups).toBeUndefined();
     expect(await groupGuest({ ownerId })).toMatchObject({

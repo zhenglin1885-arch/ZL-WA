@@ -1,7 +1,10 @@
 // Session.fetch does not expose the proxy login event for main-process requests.
 // net.request lets authenticated HTTP(S) proxies answer challenges per account.
 import { net, type Session } from 'electron';
-import type { ProxyConfig } from '../features/accountTools/config';
+import {
+  proxyHostMatches,
+  type ProxyConfig,
+} from '../features/accountTools/config';
 
 export function accountTransport(
   s: Session,
@@ -37,7 +40,7 @@ export function accountTransport(
         if (
           attempted ||
           !auth.isProxy ||
-          auth.host !== proxy.host.replaceAll(/^\[|]$/g, '') ||
+          !proxyHostMatches(auth.host, proxy.host) ||
           auth.port !== Number(proxy.port)
         ) {
           callback();

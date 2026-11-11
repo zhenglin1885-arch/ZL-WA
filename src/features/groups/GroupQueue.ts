@@ -69,6 +69,41 @@ export default class GroupQueue {
     this.notify();
   }
 
+  speechCooldown(ownerId: string): number {
+    const until = this.state.speechCooldowns?.[ownerId]?.until || 0;
+    return until > Date.now() ? until : 0;
+  }
+
+  speechCooldownMessage(ownerId: string): string {
+    return `WhatsApp 限流，已暂停此账号的群组请求；请在 ${new Date(this.state.speechCooldowns?.[ownerId]?.until || Date.now()).toLocaleTimeString()} 后重试，若仍受限需继续等待`;
+  }
+
+  private markSpeechRateLimit(ownerId: string) {
+    this.state.speechCooldowns ??= {};
+    const records = this.state.speechCooldowns;
+    const previous = records[ownerId];
+    const strikes =
+      previous && Date.now() - previous.until < 15 * 60_000
+        ? Math.min(10, previous.strikes + 1)
+        : 1;
+    records[ownerId] = {
+      until: Date.now() + Math.min(15 * 60_000, 60_000 * 2 ** (strikes - 1)),
+      strikes,
+    };
+    if (Object.keys(records).length > 1000) {
+      const oldest = Object.keys(records)
+        .filter(id => id !== ownerId)
+        .sort((a, b) => records[a].until - records[b].until)[0];
+      Reflect.deleteProperty(records, oldest);
+    }
+  }
+
+  async noteSpeechRateLimit(ownerId: string) {
+    await this.load();
+    this.markSpeechRateLimit(ownerId);
+    await this.persist();
+  }
+
   async setInterval(mode: GroupBatch['mode'], interval: number) {
     await this.load();
     const previous = this.state.intervals[mode];
@@ -116,7 +151,14 @@ export default class GroupQueue {
         }),
       ]);
     } catch (error) {
-      return { status: 'uncertain', message: String(error).slice(0, 1000) };
+      const message = String(error).slice(0, 1000);
+      return {
+        status: 'uncertain',
+        message,
+        rateLimited: /rate[ _-]?overlimit|too many requests|\b429\b/i.test(
+          message,
+        ),
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -161,6 +203,9 @@ export default class GroupQueue {
     this.state = {
       intervals: { ...previous.intervals, [mode]: interval },
       batches: [batch, ...previous.batches].slice(0, 12),
+      ...(previous.speechCooldowns
+        ? { speechCooldowns: previous.speechCooldowns }
+        : {}),
     };
     // Keep at most 10,000 target checkpoints in the local history.
     while (this.state.batches.reduce((n, b) => n + b.tasks.length, 0) > 10_000)
@@ -208,6 +253,11 @@ export default class GroupQueue {
         if (this.stopped) break;
         if (!['uncertain', 'approval', 'failed'].includes(task.status))
           continue;
+        if (batch.mode === 'speech' && this.speechCooldown(task.ownerId)) {
+          task.message = this.speechCooldownMessage(task.ownerId);
+          await this.persist();
+          continue;
+        }
         if (limited.has(task.accountId)) {
           task.message = `${task.message.slice(0, 1000)}；WhatsApp 核验限流，暂未再次查询；请稍后刷新执行结果`;
           await this.persist();
@@ -221,7 +271,10 @@ export default class GroupQueue {
         task.message = '正在核验结果（不重复执行）';
         this.notify();
         const result = await this.bounded(this.adapter.check({ ...task }));
-        if (result.rateLimited) limited.add(task.accountId);
+        if (result.rateLimited) {
+          limited.add(task.accountId);
+          if (batch.mode === 'speech') this.markSpeechRateLimit(task.ownerId);
+        }
         task.groupId = result.groupId || task.groupId;
         if (result.submitted) task.joinSubmitted = true;
         task.status =
@@ -237,6 +290,8 @@ export default class GroupQueue {
                 2000,
               )
             : result.message;
+        if (batch.mode === 'speech' && result.rateLimited)
+          task.message += `；${this.speechCooldownMessage(task.ownerId)}`;
         await this.persist();
         if (result.inFlight) break;
       }
@@ -261,6 +316,12 @@ export default class GroupQueue {
       const limited = new Set<string>();
       for (const task of work) {
         if (this.stopped) break;
+        if (batch.mode === 'speech' && this.speechCooldown(task.ownerId)) {
+          if (task.status === 'queued') task.status = 'stopped';
+          task.message = this.speechCooldownMessage(task.ownerId);
+          await this.persist();
+          continue;
+        }
         if (paced) await this.pause(batch.interval * 1000);
         if (this.stopped) break;
         paced = true;
@@ -270,6 +331,12 @@ export default class GroupQueue {
           attempt += 1
         ) {
           if (this.stopped) break;
+          if (batch.mode === 'speech' && this.speechCooldown(task.ownerId)) {
+            task.status = 'stopped';
+            task.message = this.speechCooldownMessage(task.ownerId);
+            await this.persist();
+            break;
+          }
           const direct =
             (task.operation === 'join' || task.operation === 'leave') &&
             !task.joinSubmitted &&
@@ -281,9 +348,14 @@ export default class GroupQueue {
             ? { status: 'not-done', message: '准备执行' }
             : await this.bounded(this.adapter.check({ ...task }));
           if (result.status === 'not-done') {
-            if (this.stopped) {
+            if (
+              this.stopped ||
+              (batch.mode === 'speech' && this.speechCooldown(task.ownerId))
+            ) {
               task.status = 'stopped';
-              task.message = '已停止，未执行新操作';
+              task.message = this.stopped
+                ? '已停止，未执行新操作'
+                : this.speechCooldownMessage(task.ownerId);
               await this.persist();
               break;
             }
@@ -295,10 +367,15 @@ export default class GroupQueue {
             result = await this.bounded(this.adapter.execute({ ...task }));
           }
           task.groupId = result.groupId || task.groupId;
-          if (result.rateLimited) limited.add(task.accountId);
+          if (result.rateLimited) {
+            limited.add(task.accountId);
+            if (batch.mode === 'speech') this.markSpeechRateLimit(task.ownerId);
+          }
           if (result.submitted) task.joinSubmitted = true;
           task.status = result.status === 'not-done' ? 'failed' : result.status;
           task.message = result.message;
+          if (batch.mode === 'speech' && result.rateLimited)
+            task.message += `；${this.speechCooldownMessage(task.ownerId)}`;
           await this.persist();
           if (result.inFlight) {
             this.stopped = true;

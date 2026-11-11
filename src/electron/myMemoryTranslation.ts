@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop, no-continue -- Translate chunks sequentially, preserve line order and abort the entire caption on failure. */
-import { detect } from 'tinyld';
+import { detect, detectAll } from 'tinyld';
 
 type Transport = (url: string, init: RequestInit) => Promise<Response>;
 export interface MyMemoryResult {
@@ -57,7 +57,11 @@ const common: Record<string, string> = {
 };
 // MyMemory requires an explicit source language. Detect locally; never send an
 // invalid auto|target pair or ask the user for another provider configuration.
-export function myMemorySource(text: string, source: string): string {
+export function myMemorySource(
+  text: string,
+  source: string,
+  context = '',
+): string {
   if (source !== 'auto') return source;
   const word = text
     .trim()
@@ -74,7 +78,36 @@ export function myMemorySource(text: string, source: string): string {
       ? { only: latinLanguages }
       : undefined,
   );
-  return language;
+  if (language) {
+    if (!context || text.length > 80) return language;
+    const [best, second] = detectAll(text, { only: latinLanguages });
+    if (
+      best &&
+      best.accuracy >= 0.5 &&
+      best.accuracy - (second?.accuracy || 0) >= 0.2
+    )
+      return language;
+  }
+  // Short Latin messages can have no usable n-grams. Only use a confident
+  // local sample from the same private conversation; never guess globally.
+  const latin = (context.match(/\p{Script=Latin}/gu) || []).length;
+  const letters = (context.match(/\p{L}/gu) || []).length;
+  if (
+    text.length > 80 ||
+    !/\p{Script=Latin}/u.test(text) ||
+    /[\p{Script=Han}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Devanagari}]/u.test(
+      text,
+    ) ||
+    latin < 20 ||
+    latin < letters * 0.8
+  )
+    return language;
+  const [best, second] = detectAll(context, { only: latinLanguages });
+  return best &&
+    best.accuracy >= 0.5 &&
+    best.accuracy - (second?.accuracy || 0) >= 0.2
+    ? best.lang
+    : language;
 }
 function chunks(line: string): string[] {
   const out: string[] = [];
@@ -128,6 +161,8 @@ export async function translateMyMemory(
   target: string,
   source: string,
 ): Promise<MyMemoryResult> {
+  let failureMessage =
+    'Google 和备用翻译暂时不可用，请检查账号网络、代理，或稍后重试';
   try {
     const from = myMemorySource(text, source);
     if (
@@ -138,7 +173,7 @@ export async function translateMyMemory(
         text: '',
         error: true,
         provider: 'MyMemory',
-        message: '备用翻译暂时无法识别源语言，请稍后重试',
+        message: '短消息无法自动识别语言，请在翻译设置中指定源语言后重试',
       };
     if (from.toLowerCase() === target.toLowerCase())
       return { text, error: false, provider: 'MyMemory' };
@@ -177,8 +212,25 @@ export async function translateMyMemory(
           signal: AbortSignal.timeout(remaining),
           cache: 'no-store',
         });
-        if (!response.ok) throw new Error('Provider unavailable');
+        if (!response.ok) {
+          if (response.status === 429)
+            failureMessage =
+              '备用翻译请求过于频繁或额度已用完，请稍后重试或切换翻译通道';
+          else if (response.status === 401 || response.status === 403)
+            failureMessage =
+              '备用翻译服务拒绝请求，请检查账号网络或切换翻译通道';
+          throw new Error('Provider unavailable');
+        }
         const data = await response.json();
+        if (
+          data?.quotaFinished === true ||
+          Number(data?.responseStatus) === 429
+        )
+          failureMessage =
+            '备用翻译额度已用完或请求过于频繁，请稍后重试或切换翻译通道';
+        else if (Number(data?.responseStatus) === 400)
+          failureMessage =
+            '备用翻译不支持当前语言组合，请检查源语言和目标语言或切换通道';
         if (
           Number(data?.responseStatus) !== 200 ||
           data?.quotaFinished === true ||
@@ -202,7 +254,7 @@ export async function translateMyMemory(
       text: '',
       error: true,
       provider: 'MyMemory',
-      message: 'Google 暂时不可用，MyMemory 备用翻译也未成功，请稍后重试',
+      message: failureMessage,
     };
   }
 }

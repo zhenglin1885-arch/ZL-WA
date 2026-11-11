@@ -27,6 +27,27 @@ describe('per-account proxy configuration', () => {
       true,
     );
   });
+  it('uses privileged connection revisions to avoid reloading for an unchanged password', () => {
+    const proxy = {
+      ...defaultTools().proxy,
+      hasPassword: true,
+      connectionRevision: 'same-revision',
+    };
+    expect(
+      proxyNeedsReload(
+        proxy,
+        { ...proxy },
+        { ...proxy, password: 'same-secret' },
+      ),
+    ).toBe(false);
+    expect(
+      proxyNeedsReload(
+        proxy,
+        { ...proxy, connectionRevision: 'changed-revision' },
+        proxy,
+      ),
+    ).toBe(true);
+  });
   it('disabling a proxy follows the system network without validating unused manual fields', () => {
     expect(proxyRules(defaultTools().proxy)).toEqual({ mode: 'system' });
     expect(

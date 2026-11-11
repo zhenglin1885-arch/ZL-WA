@@ -9,6 +9,8 @@ import {
   readWindowHealth,
   inspectWindowSurface,
   reloadWindowShell,
+  loadWindowShell,
+  restartWithoutGPU,
 } from '../src/electron/windowHealth';
 
 function fixture() {
@@ -188,7 +190,13 @@ it('keeps bounded diagnostics across restart and tolerates missing/corrupt stora
   }
 });
 
-it.each(['root-empty', 'startup-pending', 'startup-failed'])(
+it.each([
+  'root-missing',
+  'root-hidden',
+  'root-empty',
+  'startup-pending',
+  'startup-failed',
+])(
   'rechecks a completed %s shell and recovers once without a reload loop',
   async state => {
     const { contents, hooks, dispose } = fixture();
@@ -216,6 +224,85 @@ it.each(['root-empty', 'startup-pending', 'startup-failed'])(
     dispose();
   },
 );
+it('recovers a failed main document from the application file even if did-finish-load never fires', async () => {
+  const { window, contents, hooks, dispose } = fixture();
+  dispose();
+  const loadShell = jest.fn();
+  const cleanup = installWindowRecovery(window, { ...hooks, loadShell });
+  contents.executeJavaScript.mockResolvedValue({
+    state: 'root-missing',
+    documentState: 'complete',
+  });
+  contents.emit(
+    'did-fail-load',
+    {},
+    -6,
+    'private error',
+    'file:///private',
+    true,
+  );
+  await jest.advanceTimersByTimeAsync(8000);
+  expect(loadShell).toHaveBeenCalledTimes(1);
+  expect(contents.reload).not.toHaveBeenCalled();
+  expect(hooks.record).toHaveBeenCalledWith({
+    event: 'renderer-load-failed',
+    exitCode: -6,
+  });
+  expect(JSON.stringify(hooks.record.mock.calls)).not.toContain('private');
+  cleanup();
+});
+it('does not recover aborted navigations or failed child frames', async () => {
+  const { contents, dispose } = fixture();
+  contents.emit('did-fail-load', {}, -3, '', '', true);
+  contents.emit('did-fail-load', {}, -6, '', '', false);
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(contents.executeJavaScript).not.toHaveBeenCalled();
+  expect(contents.reload).not.toHaveBeenCalled();
+  dispose();
+});
+it('encodes filesystem installation paths and catches document load rejection without exposing paths', async () => {
+  const { window, hooks, dispose } = fixture();
+  window.loadURL = jest.fn(async () => {});
+  expect(
+    await loadWindowShell(
+      window,
+      join(tmpdir(), 'ZL-WA #测试 %20', 'index.html'),
+      hooks.record,
+    ),
+  ).toBe(true);
+  expect(window.loadURL.mock.calls[0][0]).toContain(
+    'ZL-WA%20%23%E6%B5%8B%E8%AF%95%20%2520/index.html',
+  );
+  window.loadURL.mockRejectedValue(
+    Object.assign(new Error('private path'), { errno: -6 }),
+  );
+  expect(
+    await loadWindowShell(
+      window,
+      join(tmpdir(), 'private', 'index.html'),
+      hooks.record,
+    ),
+  ).toBe(false);
+  expect(hooks.record).toHaveBeenCalledWith({
+    event: 'renderer-shell-load-rejected',
+    exitCode: -6,
+  });
+  expect(JSON.stringify(hooks.record.mock.calls)).not.toContain('private');
+  dispose();
+});
+it('restarts with software rendering for one launch while preserving the selected profile', () => {
+  const app = { relaunch: jest.fn(), quit: jest.fn() };
+  restartWithoutGPU(app, [
+    '--user-data-dir=C:\\profile path',
+    '--restart-without-gpu',
+    '--reload-ui',
+    '--disable-gpu',
+  ]);
+  expect(app.relaunch).toHaveBeenCalledWith({
+    args: ['--user-data-dir=C:\\profile path', '--disable-gpu'],
+  });
+  expect(app.quit).toHaveBeenCalledTimes(1);
+});
 it('lets a transiently empty root finish mounting instead of interrupting startup', async () => {
   const { contents, dispose } = fixture();
   contents.executeJavaScript.mockResolvedValueOnce({

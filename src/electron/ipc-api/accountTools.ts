@@ -13,11 +13,12 @@ import {
   translationEngines,
   type TranslationEngine,
   proxyRules,
+  proxyHostMatches,
   type ToolsConfig,
   type SendRecord,
 } from '../../features/accountTools/config';
 import { translateAccount } from '../accountTranslation';
-import { translateMyMemory } from '../myMemoryTranslation';
+import { translateMyMemory, myMemorySource } from '../myMemoryTranslation';
 import { createSocksBridge } from '../socksProxy';
 import { probeProxyDocument } from '../proxyProbe';
 import { accountTransport } from '../accountTransport';
@@ -125,6 +126,15 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         ...c.proxy,
         password: undefined,
         hasPassword: Boolean(c.encryptedPassword),
+        connectionRevision: TranslationCache.key([
+          c.proxy.enabled,
+          c.proxy.mode,
+          c.proxy.protocol,
+          c.proxy.host,
+          c.proxy.port,
+          c.proxy.username,
+          c.encryptedPassword,
+        ]),
       },
       translation: {
         ...c.translation,
@@ -151,6 +161,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     for (const bridge of bridges.values()) bridge.close();
     bridges.clear();
   });
+  const authFailures = new Map<string, { code: string; at: number }>();
   const networkCache = new Map<string, AccountNetworkStatus>();
   const networkVersions = new Map<string, number>();
   const networkPending = new Map<string, Promise<AccountNetworkStatus>>();
@@ -196,6 +207,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         bridges.get(id)?.close();
         bridges.delete(id);
         if (bridge) bridges.set(id, bridge);
+        authFailures.delete(id);
       });
     prepared.set(id, pending);
     return pending;
@@ -206,18 +218,26 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     if (authenticated.has(id)) return;
     authenticated.add(id);
     const s = session.fromPartition(`persist:service-${id}`);
-    app.on('login', (event, contents, _details, auth, callback) => {
+    app.on('login', (event, contents, details, auth, callback) => {
       if (contents?.session !== s) return;
       const c = get(id);
       if (
         !auth.isProxy ||
         !c.proxy.enabled ||
         c.proxy.mode !== 'manual' ||
-        auth.host !== c.proxy.host.replaceAll(/^\[|]$/g, '') ||
+        !proxyHostMatches(auth.host, c.proxy.host) ||
         auth.port !== Number(c.proxy.port)
       )
         return;
       event.preventDefault();
+      if (
+        details.firstAuthAttempt === false &&
+        auth.scheme?.toLowerCase() === 'basic'
+      ) {
+        authFailures.set(id, { code: 'AUTH_REJECTED', at: Date.now() });
+        callback();
+        return;
+      }
       try {
         callback(
           c.proxy.username,
@@ -228,6 +248,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
             : '',
         );
       } catch {
+        authFailures.set(id, {
+          code: 'CREDENTIAL_UNAVAILABLE',
+          at: Date.now(),
+        });
         callback();
       }
     });
@@ -325,10 +349,21 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       )
         throw new Error('无效的翻译配置');
       let { encryptedPassword } = previous;
-      if (input.proxy.password !== undefined)
-        encryptedPassword = input.proxy.password
-          ? encrypt(input.proxy.password)
-          : undefined;
+      if (input.proxy.password !== undefined) {
+        let unchanged = !previous.encryptedPassword && !input.proxy.password;
+        if (previous.encryptedPassword) {
+          try {
+            unchanged =
+              decrypt(previous.encryptedPassword) === input.proxy.password;
+          } catch {
+            /* A supplied password can replace an unreadable saved credential. */
+          }
+        }
+        if (!unchanged)
+          encryptedPassword = input.proxy.password
+            ? encrypt(input.proxy.password)
+            : undefined;
+      }
       const encryptedKeys = { ...previous.encryptedKeys };
       const providers: ToolsConfig['providers'] = {};
       for (const engine of translationEngines) {
@@ -457,44 +492,51 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         authentication: Boolean(config.username || get(id).encryptedPassword),
         route,
         bridge: bridges.get(id)?.diagnostics() || null,
+        lastAuthenticationFailure: authFailures.get(id) || null,
       };
     },
   );
-  ipcMain.handle('account-tools-test-proxy', async (event, id: string) => {
-    check(event, id);
-    attachAuth(id);
-    // An explicit repair/test must rebuild a failed bridge and flush pooled
-    // connections even when the saved settings have not changed.
-    await apply(id, get(id));
-    const s = session.fromPartition(`persist:service-${id}`);
-    const started = Date.now();
-    // session.fetch also permits Chromium fallback to DIRECT; resolveProxy must agree first.
-    const route = await s.resolveProxy('https://web.whatsapp.com/');
-    if (
-      get(id).proxy.enabled &&
-      get(id).proxy.mode === 'manual' &&
-      !/^(PROXY|HTTPS|SOCKS)/.test(route)
-    )
-      throw new Error('当前会话未使用配置的代理');
-    const config = get(id);
-    const startedProbe = Date.now();
-    try {
-      const document = await probeProxyDocument(
-        accountTransport(s, config.proxy, () =>
-          decrypt(config.encryptedPassword),
-        ),
-      );
-      return { route, milliseconds: Date.now() - started, ...document };
-    } catch {
-      const diagnostics = bridges.get(id)?.diagnostics();
-      const failure = diagnostics?.lastWhatsAppFailure;
-      throw new Error(
-        failure && failure.at >= startedProbe
-          ? `WhatsApp 页面读取失败（${failure.stage}/${failure.code}），请复制发送诊断反馈`
-          : '未能完整读取 WhatsApp 页面正文，请复制发送诊断反馈',
-      );
-    }
-  });
+  ipcMain.handle(
+    'account-tools-test-proxy',
+    async (event, id: string, repair = true) => {
+      check(event, id);
+      attachAuth(id);
+      if (typeof repair !== 'boolean') throw new Error('无效代理测试参数');
+      // An explicit repair can rebuild an unchanged bridge. A just-applied
+      // configuration is only probed, preserving its newly opened connections.
+      await (repair || !prepared.has(id)
+        ? apply(id, get(id))
+        : prepared.get(id));
+      const s = session.fromPartition(`persist:service-${id}`);
+      const started = Date.now();
+      // session.fetch also permits Chromium fallback to DIRECT; resolveProxy must agree first.
+      const route = await s.resolveProxy('https://web.whatsapp.com/');
+      if (
+        get(id).proxy.enabled &&
+        get(id).proxy.mode === 'manual' &&
+        !/^(PROXY|HTTPS|SOCKS)/.test(route)
+      )
+        throw new Error('当前会话未使用配置的代理');
+      const config = get(id);
+      const startedProbe = Date.now();
+      try {
+        const document = await probeProxyDocument(
+          accountTransport(s, config.proxy, () =>
+            decrypt(config.encryptedPassword),
+          ),
+        );
+        return { route, milliseconds: Date.now() - started, ...document };
+      } catch {
+        const diagnostics = bridges.get(id)?.diagnostics();
+        const failure = diagnostics?.lastWhatsAppFailure;
+        throw new Error(
+          failure && failure.at >= startedProbe
+            ? `WhatsApp 页面读取失败（${failure.stage}/${failure.code}），请复制发送诊断反馈`
+            : '未能完整读取 WhatsApp 页面正文，请复制发送诊断反馈',
+        );
+      }
+    },
+  );
   ipcMain.handle(
     'account-tools-translate',
     async (
@@ -503,19 +545,36 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       text: string,
       direction: 'incoming' | 'outgoing',
       force = false,
+      sourceContext?: string,
     ) => {
       check(event, id);
       if (
         typeof text !== 'string' ||
         !text.trim() ||
         text.length > 12_000 ||
-        !['incoming', 'outgoing'].includes(direction)
+        !['incoming', 'outgoing'].includes(direction) ||
+        (sourceContext !== undefined &&
+          (typeof sourceContext !== 'string' || sourceContext.length > 1000))
       )
         throw new Error('翻译内容为空或超过 12000 字符');
       const t = get(id).translation;
       if (!t[direction]) throw new Error('当前账号未启用此方向翻译');
       const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
       const savedConfig = get(id);
+      const configuredSource =
+        direction === 'incoming' ? t.receiveSource : t.source;
+      const contextualSource =
+        engine === 'Google' &&
+        direction === 'incoming' &&
+        configuredSource === 'auto' &&
+        sourceContext
+          ? myMemorySource(text, 'auto', sourceContext)
+          : '';
+      const sourceHint =
+        contextualSource &&
+        contextualSource !== myMemorySource(text, configuredSource)
+          ? contextualSource
+          : '';
       const key = TranslationCache.key([
         id,
         engine,
@@ -524,6 +583,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         savedConfig.providers?.[engine]?.model,
         savedConfig.encryptedKeys?.[engine],
         text,
+        ...(sourceHint ? ['fallback-source', sourceHint] : []),
       ]);
       const cached = translationCache.get(key);
       if (!force && cached !== undefined) return { text: cached, error: false };
@@ -581,7 +641,12 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           direction === 'incoming' ? t.receiveTarget : t.sendTarget;
         const source = direction === 'incoming' ? t.receiveSource : t.source;
         const result = useFallback
-          ? await translateMyMemory(transport, text, target, source)
+          ? await translateMyMemory(
+              transport,
+              text,
+              target,
+              sourceHint || source,
+            )
           : await translateAccount(
               transport,
               text,

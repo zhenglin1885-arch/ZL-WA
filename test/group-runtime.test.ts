@@ -1,9 +1,13 @@
+import { defaultGroupState } from '../src/features/groups/types';
+
 jest.mock('electron', () => ({ ipcRenderer: { invoke: jest.fn() } }));
 jest.mock('../src/features/accountTools/bulkRuntime', () => ({
   ensureBulkLibrary: jest.fn(async () => {}),
 }));
 
 const { GroupRuntime } = require('../src/features/groups/runtime');
+
+const { ipcRenderer } = jest.requireMock('electron');
 
 const ownerId = '8613800000001@c.us';
 const account = () => ({
@@ -26,6 +30,11 @@ const runtimeFor = (...services: any[]) =>
   new GroupRuntime({ services: { all: services } } as any);
 
 describe('group tools refresh', () => {
+  beforeEach(() => {
+    ipcRenderer.invoke.mockImplementation(async channel =>
+      channel === 'group-tools-load' ? defaultGroupState() : undefined,
+    );
+  });
   it('actually rereads enabled awake WhatsApp accounts and updates their unread state', async () => {
     const first = account();
     const sleeping = { ...account(), isHibernating: true };
@@ -67,6 +76,28 @@ describe('group tools refresh', () => {
       failed: 1,
     });
     expect(first.accountSnapshot).toBe(old);
+  });
+  it('keeps inventory errors readable and avoids further list calls during a persisted speech cooldown', async () => {
+    const first = account();
+    first.webview.executeJavaScript.mockResolvedValue({
+      status: 'uncertain',
+      rateLimited: true,
+      message: 'WhatsApp 服务器限流（rate-overlimit）',
+    } as any);
+    const runtime = runtimeFor(first);
+    const target = { accountId: first.id, accountName: 'A', ownerId };
+    await expect(runtime.list(target)).rejects.toThrow('服务器限流');
+    expect(first.webview.executeJavaScript).toHaveBeenCalledTimes(1);
+    await expect(runtime.list(target)).rejects.toThrow('已暂停');
+    expect(first.webview.executeJavaScript).toHaveBeenCalledTimes(1);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
+      'group-tools-save',
+      expect.objectContaining({
+        speechCooldowns: expect.objectContaining({
+          [ownerId]: expect.any(Object),
+        }),
+      }),
+    );
   });
   it('times out a stalled group read so another refresh can be attempted', async () => {
     jest.useFakeTimers();

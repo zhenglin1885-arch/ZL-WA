@@ -46,50 +46,6 @@ export async function groupGuest(request: {
       message: 'WhatsApp 登录身份已变化，请重新选择账号',
       retryable: false,
     };
-  // Inventory and announcement settings require the current server group list.
-  // Join/leave verification below reads only the target group's membership.
-  const fresh = async (): Promise<any[]> => {
-    const api = wpp.whatsapp as typeof WhatsAppAPI | undefined;
-    const query = api?.functions?.queryAllGroups;
-    if (typeof query !== 'function')
-      throw new Error('群组读取接口尚未就绪，请刷新群组后重试');
-    const values = await query();
-    if (!Array.isArray(values)) throw new Error('群组状态返回异常');
-    return values;
-  };
-  if (!request.task) {
-    const groups: {
-      id: string;
-      name: string;
-      admin: boolean;
-      announce: boolean;
-    }[] = [];
-    for (const item of await fresh()) {
-      const id = idOf(item.id);
-      if (!id.endsWith('@g.us') || item.isParentGroup) continue;
-      if (!(await wpp.group.iAmMember(id))) continue;
-      let admin = false;
-      try {
-        admin = Boolean(await wpp.group.iAmAdmin(id));
-      } catch {
-        /* Membership remains visible for leaving. */
-      }
-      groups.push({
-        id,
-        name: String(item.subject || id),
-        admin,
-        announce: Boolean(item.announce),
-      });
-    }
-    return { groups };
-  }
-  const { task } = request;
-  if (task.operation === 'join' && !/^[\w-]{16,64}$/.test(task.target))
-    return {
-      status: 'failed',
-      message: '无效的 WhatsApp 群邀请链接，未提交进群请求',
-      retryable: false,
-    };
   const describeError = (error: unknown) => {
     const text = String(error).slice(0, 500);
     const rateLimited = /rate[ _-]?overlimit|too many requests|\b429\b/i.test(
@@ -121,6 +77,73 @@ export async function groupGuest(request: {
               : '接口请求失败',
     };
   };
+  // Only the inventory needs the full server list. Per-group checks use
+  // a targeted metadata refresh when the native collection supports it.
+  const fresh = async (): Promise<any[]> => {
+    const api = wpp.whatsapp as typeof WhatsAppAPI | undefined;
+    const query = api?.functions?.queryAllGroups;
+    if (typeof query !== 'function')
+      throw new Error('群组读取接口尚未就绪，请刷新群组后重试');
+    const values = await query();
+    if (!Array.isArray(values)) throw new Error('群组状态返回异常');
+    return values;
+  };
+  if (!request.task) {
+    const groups: {
+      id: string;
+      name: string;
+      admin: boolean;
+      announce: boolean;
+    }[] = [];
+    let inventory: any[];
+    try {
+      inventory = await fresh();
+    } catch (error) {
+      const failure = describeError(error);
+      return {
+        status: 'uncertain',
+        message: `${failure.reason}（${failure.text}）`,
+        rateLimited: failure.rateLimited,
+        retryable: false,
+      };
+    }
+    try {
+      for (const item of inventory) {
+        const id = idOf(item.id);
+        if (!id.endsWith('@g.us') || item.isParentGroup) continue;
+        if (!(await wpp.group.iAmMember(id))) continue;
+        let admin = false;
+        try {
+          admin = Boolean(await wpp.group.iAmAdmin(id));
+        } catch (error) {
+          if (describeError(error).rateLimited) throw error;
+          /* Membership remains visible for leaving. */
+        }
+        groups.push({
+          id,
+          name: String(item.subject || id),
+          admin,
+          announce: Boolean(item.announce),
+        });
+      }
+    } catch (error) {
+      const failure = describeError(error);
+      return {
+        status: 'uncertain',
+        message: `${failure.reason}（${failure.text}）`,
+        rateLimited: failure.rateLimited,
+        retryable: false,
+      };
+    }
+    return { groups };
+  }
+  const { task } = request;
+  if (task.operation === 'join' && !/^[\w-]{16,64}$/.test(task.target))
+    return {
+      status: 'failed',
+      message: '无效的 WhatsApp 群邀请链接，未提交进群请求',
+      retryable: false,
+    };
   page.__zlGroupOperations ??= new Map();
   const operations: Map<string, any> = page.__zlGroupOperations;
   const previous = task.token ? operations.get(task.token) : undefined;
@@ -151,6 +174,43 @@ export async function groupGuest(request: {
       throw error;
     }
   };
+  page.__zlGroupSpeechReads ??= new Map();
+  const speechReads: Map<string, { at: number; group: any }> =
+    page.__zlGroupSpeechReads;
+  const speechMetadata = async (id: string, force: boolean) => {
+    const key = `${request.ownerId}:${id}`;
+    const cached = speechReads.get(key);
+    // The queue reads before dispatching. Reuse only that very recent server
+    // read in the dispatch call, never for a read-only result refresh.
+    if (request.execute && !force && cached && Date.now() - cached.at < 5000)
+      return cached.group;
+    speechReads.delete(key);
+    let store: any;
+    try {
+      store = wpp.whatsapp?.GroupMetadataStore;
+    } catch {
+      /* Older SDK. */
+    }
+    let group: any;
+    if (typeof store?.update === 'function') {
+      const wid =
+        wpp.whatsapp?.WidFactory?.createWid(id) ||
+        collection()?.get(id)?.id ||
+        id;
+      group = await store.update(wid);
+      group ||= store.get?.(wid) || collection()?.get(id)?.groupMetadata;
+      if (!group || (group.id && idOf(group.id) !== id))
+        throw new Error('目标群组的服务器状态未确认');
+    } else {
+      const inventory = await fresh();
+      group = inventory.find(item => idOf(item.id) === id);
+    }
+    if (!own()) throw new Error('账号身份已变化，请重新选择账号后核验');
+    speechReads.set(key, { at: Date.now(), group });
+    while (speechReads.size > 500)
+      speechReads.delete(speechReads.keys().next().value!);
+    return group;
+  };
   // Do not let WA-JS turn a failed metadata request (including 429) into
   // invalid_invite_code. Keep the native error and reuse a lookup in this call.
   let inviteLookup: Promise<any> | undefined;
@@ -173,7 +233,7 @@ export async function groupGuest(request: {
       : task.operation === 'leave'
         ? '退群'
         : '修改发言权限';
-  const check = async (): Promise<GroupResult> => {
+  const check = async (force = false): Promise<GroupResult> => {
     let id = task.operation === 'join' ? task.groupId : task.target;
     let invite: any;
     if (task.operation === 'join' && !id) {
@@ -182,13 +242,10 @@ export async function groupGuest(request: {
     }
     if (!id || !/^\d{1,40}(?:-\d{1,30})?@g\.us$/.test(id))
       throw new Error('群组编号未确认');
-    // Joining/leaving needs only this group's membership. Repeatedly querying
-    // every group before and after every item exhausts WhatsApp's read quota.
-    const inventory =
+    const group =
       task.operation === 'join' || task.operation === 'leave'
-        ? []
-        : await fresh();
-    const group = inventory.find(item => idOf(item.id) === id);
+        ? undefined
+        : await speechMetadata(id, force);
     const member =
       task.operation === 'join' || task.operation === 'leave'
         ? await membership(id)
@@ -481,7 +538,18 @@ export async function groupGuest(request: {
       );
       mutationReturned = true;
     }
-    let result = await check();
+    let result = await check(true);
+    if (
+      (task.operation === 'open' || task.operation === 'mute') &&
+      result.status === 'not-done'
+    )
+      result = {
+        ...result,
+        status: 'uncertain',
+        retryable: false,
+        message:
+          '发言权限请求已提交，服务器状态尚未同步；请稍后核验，暂不重复提交',
+      };
     if (task.operation === 'join' && task.joinSubmitted) {
       // Read-only settling checks; never issue a second join during this wait.
       for (const delay of [200, 400, 800]) {
@@ -527,7 +595,7 @@ export async function groupGuest(request: {
     // An exception can arrive after the server applied a change. Read it back
     // before allowing the queue to retry any mutation.
     try {
-      const result = await check();
+      const result = await check(true);
       if (result.status !== 'not-done') {
         current.result = result;
         return result;

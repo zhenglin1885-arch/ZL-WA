@@ -277,3 +277,123 @@ it('separates WhatsApp failures from unrelated requests and bounds redacted hist
     });
   }
 });
+
+it('allows a quiet client while SOCKS negotiation progresses, and keeps the established tunnel beyond the handshake deadline', async () => {
+  const sockets = new Set<Socket>();
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const upstream = createServer(socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    let phase = 0;
+    socket.on('data', data => {
+      const replies = [
+        Buffer.from([5, 2]),
+        Buffer.from([1, 0]),
+        Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 80]),
+      ];
+      if (phase < replies.length) {
+        const reply = replies[phase];
+        phase += 1;
+        timers.push(
+          setTimeout(() => {
+            if (!socket.destroyed) socket.write(reply);
+          }, 350),
+        );
+      } else socket.write(data);
+    });
+  });
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('No address');
+  const bridge = await createSocksBridge(
+    {
+      ...defaultTools().proxy,
+      host: '127.0.0.1',
+      port: String(address.port),
+      username: 'user',
+    },
+    'pass',
+    2000,
+  );
+  const client = connect(bridge.port, '127.0.0.1');
+  client.on('error', () => {});
+  try {
+    await once(client, 'connect');
+    client.write(
+      'CONNECT web.whatsapp.com:443 HTTP/1.1\r\nHost: web.whatsapp.com:443\r\n\r\n',
+    );
+    const [reply] = await once(client, 'data');
+    expect(reply.toString()).toContain('200 Connection Established');
+    await new Promise(resolve => {
+      setTimeout(resolve, 1100);
+    });
+    client.write('still-connected');
+    const [echo] = await once(client, 'data');
+    expect(echo.toString()).toBe('still-connected');
+    expect(bridge.diagnostics().lastFailure).toBeNull();
+  } finally {
+    client.destroy();
+    bridge.close();
+    timers.forEach(timer => clearTimeout(timer));
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>(resolve => {
+      upstream.close(() => resolve());
+    });
+  }
+});
+
+it('bounds an endlessly progressing SOCKS handshake without falling back to a direct connection', async () => {
+  const sockets = new Set<Socket>();
+  let trickle: ReturnType<typeof setInterval> | undefined;
+  const upstream = createServer(socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    let phase = 0;
+    socket.on('data', () => {
+      if (phase === 0) {
+        phase += 1;
+        socket.write(Buffer.from([5, 0]));
+      } else {
+        socket.write(Buffer.from([5, 0, 0, 3, 255]));
+        trickle = setInterval(() => {
+          if (!socket.destroyed) socket.write(Buffer.from([0]));
+        }, 100);
+      }
+    });
+  });
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('No address');
+  const bridge = await createSocksBridge(
+    { ...defaultTools().proxy, host: '127.0.0.1', port: String(address.port) },
+    '',
+    800,
+  );
+  const client = connect(bridge.port, '127.0.0.1');
+  client.on('error', () => {});
+  try {
+    await once(client, 'connect');
+    const closed = new Promise<void>(resolve => {
+      client.once('close', () => resolve());
+    });
+    client.write(
+      'CONNECT web.whatsapp.com:443 HTTP/1.1\r\nHost: web.whatsapp.com:443\r\n\r\n',
+    );
+    await closed;
+    expect(bridge.diagnostics().lastWhatsAppFailure).toMatchObject({
+      stage: 'destination',
+      code: 'HANDSHAKE_TIMEOUT',
+      target: 'whatsapp-web',
+    });
+  } finally {
+    clearInterval(trickle);
+    client.destroy();
+    bridge.close();
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>(resolve => {
+      upstream.close(() => resolve());
+    });
+  }
+});

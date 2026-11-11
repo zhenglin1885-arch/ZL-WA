@@ -49,6 +49,74 @@ function setup(overrides: Partial<GroupAdapter> = {}) {
   return { queue: new GroupQueue(adapter), adapter, snapshots };
 }
 describe('verified group queue', () => {
+  it('persists a speech cooldown, skips the limited owner, and allows other owners and later retries', async () => {
+    jest.useFakeTimers();
+    try {
+      const { queue, adapter, snapshots } = setup({
+        check: async t =>
+          t.ownerId === target.ownerId
+            ? {
+                status: 'uncertain',
+                message: 'rate-overlimit',
+                rateLimited: true,
+              }
+            : pending(),
+      });
+      const second = { ...target, target: '10002@g.us' };
+      const other = {
+        ...target,
+        accountId: 'account-b',
+        ownerId: '8613800000002@c.us',
+      };
+      await queue.start('mute', [target, second, other], 3);
+      const batch = queue.state.batches[0];
+      expect(batch.tasks.map(t => t.status)).toEqual([
+        'uncertain',
+        'stopped',
+        'success',
+      ]);
+      expect(adapter.check).toHaveBeenCalledTimes(2);
+      expect(adapter.execute).toHaveBeenCalledTimes(1);
+      expect(queue.speechCooldown(target.ownerId)).toBe(Date.now() + 60_000);
+      await queue.retry(batch.id);
+      await queue.reconcile(batch.id);
+      expect(adapter.check).toHaveBeenCalledTimes(2);
+      const restored = setup({ load: async () => snapshots.at(-1) });
+      await restored.queue.start('open', [target], 3);
+      expect(restored.adapter.check).not.toHaveBeenCalled();
+      expect(restored.adapter.execute).not.toHaveBeenCalled();
+      expect(
+        restored.queue.state.speechCooldowns?.[target.ownerId].until,
+      ).toBeGreaterThan(Date.now());
+      jest.setSystemTime(Date.now() + 61_000);
+      adapter.check.mockResolvedValue(pending());
+      await queue.retry(batch.id);
+      expect(batch.tasks.every(t => t.status === 'success')).toBe(true);
+      expect(adapter.execute).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it('backs off longer if speech reads remain limited after the first cooldown', async () => {
+    jest.useFakeTimers();
+    try {
+      const { queue, adapter } = setup({
+        check: async () => ({
+          status: 'uncertain',
+          message: 'rate-overlimit',
+          rateLimited: true,
+        }),
+      });
+      await queue.start('open', [target], 3);
+      jest.setSystemTime(Date.now() + 61_000);
+      await queue.retry(queue.state.batches[0].id);
+      expect(queue.speechCooldown(target.ownerId)).toBe(Date.now() + 120_000);
+      expect(adapter.check).toHaveBeenCalledTimes(2);
+      expect(adapter.execute).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('keeps the same group distinct across accounts, deduplicates exact targets, persists before each mutation and paces them', async () => {
     const { queue, adapter, snapshots } = setup();
     adapter.execute.mockImplementation(async task => {

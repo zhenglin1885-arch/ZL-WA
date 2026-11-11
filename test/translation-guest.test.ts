@@ -248,7 +248,7 @@ describe('two-phase native editor replacement guards', () => {
     const record: any = {
       container: { isConnected: true, style: {} },
       button: { style: {} },
-      label: {},
+      label: { style: {} },
     };
     state.config = { incoming: true };
     state.incoming = new WeakMap([[input, record]]);
@@ -256,6 +256,9 @@ describe('two-phase native editor replacement guards', () => {
     state.pending.set(3, job);
     translationResult(3, 'document-1', { text: '', error: true });
     expect(record.status).toBe('error');
+    expect(record.label.textContent).toBe('翻译失败');
+    expect(record.label.title).toContain('可点击重试');
+    expect(record.label.style.whiteSpace).toBe('nowrap');
     expect(record.button).toMatchObject({
       disabled: false,
       hidden: false,
@@ -267,6 +270,8 @@ describe('two-phase native editor replacement guards', () => {
       error: false,
     });
     expect(record.label.textContent).toBe('translated bubble');
+    expect(record.label.style.whiteSpace).toBe('pre-wrap');
+    expect(record.label.title).toBe('');
     expect(record.button.hidden).toBe(true);
     expect(input.innerText).toBe('original draft');
   });

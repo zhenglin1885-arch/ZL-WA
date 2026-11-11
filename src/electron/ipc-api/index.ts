@@ -26,11 +26,13 @@ export default (params: {
   cacheLocation: CacheLocation;
 }) => {
   settings(params);
+  // Native recovery controls must exist before optional account feature files
+  // are read. A corrupt local config must not also remove the diagnostics menu.
+  appIndicator(params);
   accountTools(params);
   customers(params.mainWindow);
   sessionStorage();
   autoUpdate(params);
-  appIndicator(params);
   clipboard();
   download(params);
   processManager();

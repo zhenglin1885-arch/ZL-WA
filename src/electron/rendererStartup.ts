@@ -86,6 +86,9 @@ export function startRendererWhenReady(initialize: () => void) {
       showRendererStartupFailure(error);
     }
   };
-  if (document.readyState === 'complete') start();
-  else window.addEventListener('load', start, { once: true });
+  // React needs the application DOM, not completion of every image/font/frame.
+  // Waiting for window.load can leave a usable document at its background.
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
 }

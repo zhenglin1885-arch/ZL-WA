@@ -38,7 +38,11 @@ interface TunnelFailure {
   at: number;
   target: Target;
 }
-export async function createSocksBridge(config: ProxyConfig, password: string) {
+export async function createSocksBridge(
+  config: ProxyConfig,
+  password: string,
+  handshakeTimeoutMs = 30_000,
+) {
   const username = Buffer.from(config.username);
   const secret = Buffer.from(password);
   const authenticated = Boolean(username.length > 0 || secret.length > 0);
@@ -106,8 +110,16 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
       failure('TIMEOUT');
       abort();
     };
-    upstream.setTimeout(12_000, timeout);
-    client.setTimeout(12_000, timeout);
+    // The client is deliberately quiet while SOCKS method/auth/destination
+    // negotiation progresses upstream. Its idle timer must not cut that short.
+    const deadline = setTimeout(() => {
+      failure('HANDSHAKE_TIMEOUT');
+      abort();
+    }, handshakeTimeoutMs);
+    const clearDeadline = () => clearTimeout(deadline);
+    client.once('close', clearDeadline);
+    upstream.once('close', clearDeadline);
+    upstream.setTimeout(Math.min(12_000, handshakeTimeoutMs * 0.4), timeout);
     // All failures terminate this tunnel; there is no direct-network fallback.
     const tunnel = async () => {
       const destination = new URL(`https://${request.url}`);
@@ -212,6 +224,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
       }
       established[target] += 1;
       stage = 'tunnel';
+      clearDeadline();
       upstream.setTimeout(0);
       client.setTimeout(0);
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
@@ -221,6 +234,7 @@ export async function createSocksBridge(config: ProxyConfig, password: string) {
     };
     // No credential or provider error bodies are logged or returned to a webview.
     void tunnel().catch(() => {
+      clearDeadline();
       if (!failedTunnel) failure('CONNECTION_CLOSED');
       client.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
       upstream.destroy();

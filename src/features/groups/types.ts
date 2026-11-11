@@ -37,6 +37,7 @@ export interface GroupBatch {
 export interface GroupToolsState {
   batches: GroupBatch[];
   intervals: Record<GroupMode, number>;
+  speechCooldowns?: Record<string, { until: number; strikes: number }>;
 }
 export interface GroupResult {
   status: 'success' | 'not-done' | 'failed' | 'uncertain' | 'approval';
@@ -116,6 +117,27 @@ export function validateGroupState(input: unknown): GroupToolsState {
       data.intervals[mode] > 3600
     )
       throw new Error('执行间隔应为 1–3600 秒');
+  if (data.speechCooldowns !== undefined) {
+    if (
+      !data.speechCooldowns ||
+      Array.isArray(data.speechCooldowns) ||
+      typeof data.speechCooldowns !== 'object' ||
+      Object.keys(data.speechCooldowns).length > 1000
+    )
+      throw new Error('无效的群组限流记录');
+    for (const [owner, value] of Object.entries(data.speechCooldowns))
+      if (
+        !/^\d{5,30}@(c\.us|lid)$/.test(owner) ||
+        !value ||
+        !Number.isFinite(value.until) ||
+        value.until < 0 ||
+        value.until > 8.64e15 ||
+        !Number.isInteger(value.strikes) ||
+        value.strikes < 1 ||
+        value.strikes > 10
+      )
+        throw new Error('无效的群组限流记录');
+  }
   let total = 0;
   for (const batch of data.batches) {
     if (Array.isArray(batch.tasks)) total += batch.tasks.length;

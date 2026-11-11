@@ -8,6 +8,7 @@ export interface ProxyConfig {
   username: string;
   password?: string;
   hasPassword?: boolean;
+  connectionRevision?: string;
 }
 export const translationEngines = [
   'Google',
@@ -68,12 +69,26 @@ export function proxyNeedsReload(
   saved: ProxyConfig,
   input: ProxyConfig,
 ): boolean {
+  if (previous.connectionRevision && saved.connectionRevision)
+    return previous.connectionRevision !== saved.connectionRevision;
   // Public configs redact passwords, so a password-only edit cannot be detected
   // by comparing the before/after public values.
   return (
     JSON.stringify(previous) !== JSON.stringify(saved) ||
     input.password !== undefined
   );
+}
+const normalizeProxyHost = (host: string) =>
+  host
+    .replaceAll(/^\[|]$/g, '')
+    .toLowerCase()
+    .replace(/\.$/, '');
+export function proxyHostMatches(
+  challenge: string,
+  configured: string,
+): boolean {
+  const expected = normalizeProxyHost(configured);
+  return Boolean(expected) && normalizeProxyHost(challenge) === expected;
 }
 export function proxyRules(proxy: ProxyConfig): Electron.ProxyConfig {
   if (!proxy.enabled || proxy.mode === 'system') return { mode: 'system' };
