@@ -10,6 +10,7 @@ export interface TranslationRequest {
   direction: 'incoming' | 'outgoing';
   force?: boolean;
   sourceContext?: string;
+  manual?: boolean;
 }
 export function translationTick(
   config: TranslationConfig,
@@ -22,7 +23,7 @@ export function translationTick(
   )
     return [];
   const page = window as any;
-  const revision = 17;
+  const revision = 19;
   const previous = page.__zlTranslation;
   if (previous && (previous.revision !== revision || !previous.ready)) {
     // Long-lived webviews may outlive the host renderer. Retire old callbacks
@@ -163,8 +164,9 @@ export function translationTick(
     const nativeMessage = '[data-id^="true_"], [data-id^="false_"]';
     const textMarker =
       '.selectable-text, [data-testid="msg-text"], [data-testid="selectable-text"], [data-lexical-text="true"]';
-    const incomingExcluded =
-      'footer, header, [contenteditable="true"], [data-zl-translation], [data-zl-translation-text], [data-zl-translate], [data-zl-retranslate], [data-testid*="quoted"], [data-testid*="link-preview"], blockquote, [data-testid="msg-author"], [data-testid="msg-sender"], [data-testid="sender-name"], [data-testid="author"]';
+    const groupInformation =
+      '[data-testid="group-info-card"], [data-testid="group-description"], [data-testid="group-description-card"], [data-testid="group-intro"], [data-testid="group-welcome"]';
+    const incomingExcluded = `footer, header, [contenteditable="true"], [data-zl-translation], [data-zl-translation-text], [data-zl-translate], [data-zl-retranslate], [data-testid*="quoted"], [data-testid*="link-preview"], blockquote, [data-testid="msg-author"], [data-testid="msg-sender"], [data-testid="sender-name"], [data-testid="author"], ${groupInformation}`;
     state.messageBubble = (node: HTMLElement): HTMLElement => {
       let keyed = node.closest<HTMLElement>(nativeMessage);
       if (keyed) {
@@ -190,10 +192,27 @@ export function translationTick(
         node
       );
     };
-    state.isContactCard = (bubble: HTMLElement): boolean => {
+    state.isNonTranslatableBubble = (bubble: HTMLElement): boolean => {
+      // Group welcome/description panels can use selectable text too. Require
+      // a native message identity or message bubble before decorating any text.
+      if (!bubble.matches(`${nativeMessage}, .message-in, .message-out`))
+        return true;
+      if (bubble.matches(groupInformation)) return true;
       try {
         const message = page.WPP?.whatsapp?.MsgStore?.get?.(bubble.dataset.id);
-        if (['vcard', 'multi_vcard'].includes(message?.type)) return true;
+        if (
+          message?.isNotification === true ||
+          [
+            'vcard',
+            'multi_vcard',
+            'gp2',
+            'group_notification',
+            'e2e_notification',
+            'notification',
+            'protocol',
+          ].includes(message?.type)
+        )
+          return true;
       } catch {
         // The SDK may still be starting; native card markers remain usable.
       }
@@ -209,7 +228,7 @@ export function translationTick(
       );
     };
     state.incomingNodes = (bubble: HTMLElement): HTMLElement[] => {
-      if (state.isContactCard(bubble)) return [];
+      if (state.isNonTranslatableBubble(bubble)) return [];
       const owned = (node: HTMLElement) =>
         !node.closest(incomingExcluded) &&
         node.getClientRects().length > 0 &&
@@ -767,6 +786,31 @@ export function translationTick(
       state.queue = [];
       state.busy = false;
     };
+    state.expireIncoming = () => {
+      for (const [id, job] of state.pending) {
+        if (
+          job.direction !== 'incoming' ||
+          Date.now() - job.createdAt < 150_000
+        )
+          continue;
+        state.pending.delete(id);
+        state.queue = state.queue.filter(request => request.id !== id);
+        const current = job.record;
+        if (current?.status === 'pending') {
+          current.status = 'idle';
+          current.autoAttempted = true;
+          current.button.disabled = false;
+          current.button.hidden = false;
+          current.button.textContent = '点击翻译';
+          current.button.style.display = 'inline-flex';
+          current.button.title = '翻译等待超时，请点击重试';
+          if (current.refresh) {
+            current.refresh.disabled = false;
+            current.refresh.removeAttribute('aria-busy');
+          }
+        }
+      }
+    };
     const discardStaleOutgoing = (context?: {
       input: HTMLElement;
       key: string;
@@ -1086,6 +1130,7 @@ export function translationTick(
     state.ready = true;
   }
   const state = page.__zlTranslation;
+  state.expireIncoming();
   if (
     JSON.stringify({ ...state.config, textColor: config.textColor }) !==
     JSON.stringify(config)
@@ -1183,7 +1228,7 @@ export function translationTick(
       const bubble = state.messageBubble(candidate) as HTMLElement;
       if (seenBubbles.has(bubble)) continue;
       seenBubbles.add(bubble);
-      if (state.isContactCard(bubble)) {
+      if (state.isNonTranslatableBubble(bubble)) {
         for (const decoration of bubble.querySelectorAll(
           '[data-zl-translation], [data-zl-translation-text], [data-zl-retranslate], [data-zl-translate]',
         ))
@@ -1293,6 +1338,7 @@ export function translationTick(
         state.controls.set(container, record);
         const current = record;
         current.request = (manual: boolean, force = false) => {
+          state.expireIncoming();
           if (
             !state.config.incoming ||
             current.chat !== state.chatKey() ||
@@ -1354,7 +1400,9 @@ export function translationTick(
           state.sequence += 1;
           const id = state.sequence;
           state.pending.set(id, {
+            createdAt: Date.now(),
             direction: 'incoming',
+            manual,
             input: current.input,
             text: current.text,
             bubble: current.input,
@@ -1367,6 +1415,7 @@ export function translationTick(
             token: state.token,
             text: current.text,
             direction: 'incoming',
+            manual,
             ...(sourceContext ? { sourceContext } : {}),
             ...(force ? { force: true } : {}),
           };
@@ -1492,6 +1541,13 @@ export function translationResult(
       result.error ||
       !result.text?.trim()
     ) {
+      if (valid && state.readText(job.input) !== job.text)
+        state.failedReplacement = {
+          input: job.input,
+          chat: job.chat,
+          context: job.context,
+          text: state.readText(job.input),
+        };
       state.pending.delete(id);
       state.busy = false;
       state.notice(

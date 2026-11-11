@@ -594,8 +594,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       direction: 'incoming' | 'outgoing',
       force = false,
       sourceContext?: string,
+      manual = false,
     ) => {
       check(event, id);
+      if (typeof manual !== 'boolean') throw new Error('无效翻译请求');
       if (
         typeof text !== 'string' ||
         !text.trim() ||
@@ -638,7 +640,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       if (!force && cached !== undefined) return { text: cached, error: false };
       const pendingKey = `${key}:${direction}:${force ? 'fresh' : 'cached'}`;
       const pending = pendingTranslations.get(pendingKey);
-      if (pending) return pending;
+      if (pending) {
+        if (manual) translations.prioritize(pending);
+        return pending;
+      }
       const fallbackKey = TranslationCache.key([key, 'MyMemory']);
       if (!force && engine === 'Google') {
         const previous = translationCache.get(fallbackKey);
@@ -649,7 +654,8 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           return { text: previous, error: false, provider: 'MyMemory' };
         }
       }
-      const perform = async (useFallback = false) => {
+      const perform = async (useFallback = false, signal?: AbortSignal) => {
+        signal?.throwIfAborted();
         if (
           JSON.stringify(get(id).translation) !== JSON.stringify(t) ||
           !get(id).translation[direction] ||
@@ -658,6 +664,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         )
           return { text: '', error: true };
         await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
+        signal?.throwIfAborted();
         const engine = direction === 'incoming' ? t.receiveEngine : t.engine;
         const config = get(id);
         if (
@@ -683,8 +690,11 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
               fromCache: true,
             };
         }
-        const transport = accountTransport(s, config.proxy, () =>
-          decrypt(config.encryptedPassword),
+        const transport = accountTransport(
+          s,
+          config.proxy,
+          () => decrypt(config.encryptedPassword),
+          signal,
         );
         const target =
           direction === 'incoming' ? t.receiveTarget : t.sendTarget;
@@ -705,6 +715,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
               decrypt(config.encryptedKeys?.[engine]),
               config.providers?.[engine]?.model,
             );
+        signal?.throwIfAborted();
         if (!result.error && data.accounts[id])
           translationCache.set(id, key, result.text);
         return result;
@@ -712,9 +723,10 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       const request = translations.enqueue(
         id,
         direction === 'outgoing',
-        () => perform(),
+        signal => perform(false, signal),
         engine === 'Google',
-        engine === 'Google' ? () => perform(true) : undefined,
+        engine === 'Google' ? signal => perform(true, signal) : undefined,
+        manual,
       );
 
       pendingTranslations.set(pendingKey, request);

@@ -10,8 +10,22 @@ export function accountTransport(
   s: Session,
   proxy: ProxyConfig,
   password: () => string,
+  signal?: AbortSignal,
 ) {
-  return (url: string, init: RequestInit): Promise<Response> => {
+  return (url: string, options: RequestInit): Promise<Response> => {
+    const init = signal
+      ? {
+          ...options,
+          signal: options.signal
+            ? (
+                AbortSignal as typeof AbortSignal & {
+                  any(signals: AbortSignal[]): AbortSignal;
+                }
+              ).any([signal, options.signal])
+            : signal,
+        }
+      : options;
+    init.signal?.throwIfAborted();
     if (
       !proxy.enabled ||
       proxy.mode !== 'manual' ||

@@ -14,6 +14,42 @@ beforeEach(() => {
   request.abort = jest.fn();
   request.end = jest.fn();
 });
+it('combines queue cancellation with provider timeouts without losing either signal', async () => {
+  const s: any = { fetch: jest.fn().mockResolvedValue(new Response('ok')) };
+  const queue = new AbortController();
+  const provider = new AbortController();
+  await accountTransport(
+    s,
+    defaultTools().proxy,
+    () => '',
+    queue.signal,
+  )('https://example.invalid', { signal: provider.signal });
+  const combined = s.fetch.mock.calls[0][1].signal;
+  expect(combined.aborted).toBe(false);
+  queue.abort();
+  expect(combined.aborted).toBe(true);
+  expect(provider.signal.aborted).toBe(false);
+});
+it('aborts an authenticated native proxy request when its queue job expires', async () => {
+  const proxy = {
+    ...defaultTools().proxy,
+    enabled: true,
+    host: 'proxy.example',
+    port: '8888',
+    username: 'synthetic',
+  };
+  const queue = new AbortController();
+  const pending = accountTransport(
+    {} as any,
+    proxy,
+    () => '',
+    queue.signal,
+  )('https://example.invalid', {});
+  const rejected = pending.catch((error: Error) => error.message);
+  queue.abort();
+  expect(await rejected).toContain('已取消');
+  expect(request.abort).toHaveBeenCalledTimes(1);
+});
 it('uses the account Session for direct and SOCKS bridge requests', async () => {
   const s: any = { fetch: jest.fn().mockResolvedValue(new Response('ok')) };
   await accountTransport(

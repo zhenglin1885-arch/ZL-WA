@@ -1,6 +1,63 @@
 import TranslationQueue from '../src/features/accountTools/TranslationQueue';
 
 describe('translation traffic queue', () => {
+  it('promotes an already deduplicated automatic request when the user explicitly asks for it', async () => {
+    const queue = new TranslationQueue();
+    let release!: () => void;
+    const started: string[] = [];
+    const active = queue.enqueue(
+      'a',
+      false,
+      () =>
+        new Promise<void>(resolve => {
+          release = resolve;
+        }),
+    );
+    const older = queue.enqueue('a', false, async () => {
+      started.push('older auto');
+    });
+    const chosen = queue.enqueue('a', false, async () => {
+      started.push('chosen');
+    });
+    queue.prioritize(chosen);
+    release();
+    await Promise.all([active, older, chosen]);
+    expect(started).toEqual(['chosen', 'older auto']);
+    queue.dispose();
+  });
+  it('prioritizes manual incoming messages ahead of automatic history while retaining send-preview priority', async () => {
+    const queue = new TranslationQueue();
+    const started: string[] = [];
+    let release!: () => void;
+    const first = queue.enqueue(
+      'a',
+      false,
+      () =>
+        new Promise<void>(resolve => {
+          release = resolve;
+        }),
+    );
+    const auto = queue.enqueue('a', false, async () => {
+      started.push('auto');
+    });
+    const manual = queue.enqueue(
+      'a',
+      false,
+      async () => {
+        started.push('manual');
+      },
+      false,
+      undefined,
+      true,
+    );
+    const outgoing = queue.enqueue('a', true, async () => {
+      started.push('outgoing');
+    });
+    release();
+    await Promise.all([first, auto, manual, outgoing]);
+    expect(started).toEqual(['outgoing', 'manual', 'auto']);
+    queue.dispose();
+  });
   it('limits total concurrency to three accounts and one request per account', async () => {
     const queue = new TranslationQueue();
     const started: string[] = [];
@@ -59,6 +116,70 @@ describe('translation traffic queue', () => {
     expect(await rejection).toBe('synthetic');
     expect(await incoming).toBe('in');
     expect(started).toEqual(['outgoing', 'incoming']);
+  });
+});
+
+describe('translation queue lifetime', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+  it('aborts a hung request, releases its account and Google lane, and discards expired queued requests', async () => {
+    const queue = new TranslationQueue();
+    let signal!: AbortSignal;
+    let finish!: (value: any) => void;
+    const hung = queue.enqueue(
+      'a',
+      false,
+      s => {
+        signal = s;
+        return new Promise(resolve => {
+          finish = resolve;
+        });
+      },
+      true,
+    );
+    const failure = hung.catch(error => error.message);
+    const stale = jest.fn(async () => ({ text: 'stale', error: false }));
+    const waiting = queue
+      .enqueue('a', false, stale, true)
+      .catch(error => error.message);
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(await failure).toContain('超时');
+    expect(await waiting).toContain('超时');
+    expect(signal.aborted).toBe(true);
+    expect(stale).not.toHaveBeenCalled();
+    finish({ text: 'late result', error: false });
+    const next = queue.enqueue(
+      'a',
+      true,
+      async () => ({ text: 'fresh', error: false }),
+      true,
+    );
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(await next).toEqual({ text: 'fresh', error: false });
+    queue.dispose();
+  });
+  it('includes an unresponsive fallback in the deadline and aborts active jobs on disposal', async () => {
+    const queue = new TranslationQueue();
+    let fallbackSignal!: AbortSignal;
+    const result = queue.enqueue(
+      'a',
+      false,
+      async () => ({ error: true, rateLimited: true }),
+      true,
+      s => {
+        fallbackSignal = s;
+        return new Promise(() => {});
+      },
+    );
+    const rejected = result.catch(error => error.message);
+    await jest.advanceTimersByTimeAsync(0);
+    queue.dispose();
+    expect(await rejected).toContain('已停止');
+    expect(fallbackSignal.aborted).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
 

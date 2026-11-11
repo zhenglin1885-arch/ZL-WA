@@ -12,14 +12,20 @@ interface Job {
   outgoing: boolean;
   google: boolean;
   attempts: number;
-  run: () => Promise<unknown>;
-  fallback?: () => Promise<unknown>;
+  run: (signal: AbortSignal) => Promise<unknown>;
+  fallback?: (signal: AbortSignal) => Promise<unknown>;
+  manual: boolean;
+  controller: AbortController;
+  deadlineAt: number;
+  promise?: Promise<unknown>;
   resolve: (value: any) => void;
   reject: (error: unknown) => void;
 }
 // Bound traffic across accounts. Google shares one paced lane because several
 // accounts may use the same public IP; changing accounts must not defeat 429.
 export default class TranslationQueue {
+  private jobs = new Set<Job>();
+
   private active = new Set<string>();
 
   private waiting: Job[] = [];
@@ -39,26 +45,67 @@ export default class TranslationQueue {
   enqueue<T, F = T>(
     accountId: string,
     outgoing: boolean,
-    run: () => Promise<T>,
+    run: (signal: AbortSignal) => Promise<T>,
     google = false,
-    fallback?: () => Promise<F>,
+    fallback?: (signal: AbortSignal) => Promise<F>,
+    manual = false,
   ): Promise<T | F> {
     if (this.disposed) return Promise.reject(new Error('翻译队列已停止'));
     if (this.waiting.length >= 240)
       return Promise.reject(new Error('翻译队列繁忙，请稍后重试'));
-    return new Promise<T | F>((resolve, reject) => {
-      this.waiting.push({
+    let queued: Job | undefined;
+    const request = new Promise<T | F>((resolve, reject) => {
+      const controller = new AbortController();
+      let settled = false;
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      let job: Job;
+      const finish = () => {
+        settled = true;
+        clearTimeout(deadline);
+        this.jobs.delete(job);
+      };
+      job = {
         accountId,
         outgoing,
         run,
         google,
         fallback,
+        manual,
+        controller,
+        deadlineAt: Date.now() + 120_000,
         attempts: 0,
-        resolve,
-        reject,
-      });
+        resolve: value => {
+          if (!settled) {
+            finish();
+            resolve(value);
+          }
+        },
+        reject: error => {
+          if (!settled) {
+            finish();
+            reject(error);
+          }
+        },
+      };
+      // Includes queue waiting, proxy preparation, provider calls and fallback.
+      deadline = setTimeout(() => {
+        controller.abort();
+        this.waiting = this.waiting.filter(item => item !== job);
+        job.reject(new Error('翻译等待超时，请稍后重试或切换翻译通道'));
+        this.drain();
+      }, 120_000);
+      this.jobs.add(job);
+      queued = job;
+      this.waiting.push(job);
       this.drain();
     });
+    if (queued) queued.promise = request;
+    return request;
+  }
+
+  prioritize(request: Promise<unknown>): void {
+    for (const job of this.jobs) if (job.promise === request) job.manual = true;
+    this.drain();
   }
 
   googleUnavailable(): boolean {
@@ -68,12 +115,35 @@ export default class TranslationQueue {
   dispose(): void {
     this.disposed = true;
     clearTimeout(this.timer);
-    for (const job of this.waiting) job.reject(new Error('翻译队列已停止'));
+    for (const job of this.jobs) {
+      job.controller.abort();
+      job.reject(new Error('翻译队列已停止'));
+    }
     this.waiting = [];
+  }
+
+  private execute(job: Job, fallback: boolean): Promise<unknown> {
+    const { signal } = job.controller;
+    if (signal.aborted) return Promise.reject(new Error('翻译请求已取消'));
+    let abort!: () => void;
+    const canceled = new Promise<never>((_resolve, reject) => {
+      abort = () => reject(new Error('翻译请求已取消'));
+      signal.addEventListener('abort', abort, { once: true });
+    });
+    let task: Promise<unknown>;
+    try {
+      task = (fallback ? job.fallback! : job.run)(signal);
+    } catch (error) {
+      task = Promise.reject(error);
+    }
+    return Promise.race([task, canceled]).finally(() =>
+      signal.removeEventListener('abort', abort),
+    );
   }
 
   private eligible(job: Job): boolean {
     return (
+      Date.now() < job.deadlineAt &&
       !this.active.has(job.accountId) &&
       (!job.google ||
         (!this.googleActive &&
@@ -89,10 +159,15 @@ export default class TranslationQueue {
     const priority = this.waiting.findIndex(
       job => job.outgoing && this.eligible(job),
     );
+    const manual = this.waiting.findIndex(
+      job => job.manual && this.eligible(job),
+    );
     const index =
       priority >= 0
         ? priority
-        : this.waiting.findIndex(job => this.eligible(job));
+        : manual >= 0
+          ? manual
+          : this.waiting.findIndex(job => this.eligible(job));
     if (index < 0) {
       if (
         !this.googleActive &&
@@ -129,14 +204,10 @@ export default class TranslationQueue {
     }
     const usingFallback =
       job.google && Boolean(job.fallback) && this.googleUnavailable();
-    let task: Promise<unknown>;
-    try {
-      task = usingFallback ? job.fallback!() : job.run();
-    } catch (error) {
-      task = Promise.reject(error);
-    }
+    const task = this.execute(job, usingFallback);
     task
       .then(async value => {
+        if (job.controller.signal.aborted) return;
         const result = value as ProviderResult | undefined;
         if (
           job.google &&
@@ -155,7 +226,7 @@ export default class TranslationQueue {
           );
           if (job.fallback && !this.disposed) {
             try {
-              job.resolve(await job.fallback());
+              job.resolve(await this.execute(job, true));
             } catch (error) {
               job.reject(error);
             }

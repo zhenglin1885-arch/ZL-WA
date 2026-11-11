@@ -2,7 +2,7 @@ name: ZL-WA Windows
 
 on:
   push:
-    branches: ['test/7.3.8-20261111-2']
+    branches: ['test/7.3.8-20261111-3']
   workflow_dispatch:
 
 permissions:
@@ -131,5 +131,5 @@ jobs:
           }
           $lines | Set-Content out/SHA256SUMS.txt -Encoding utf8
           $files = Get-ChildItem out -Filter *.exe | Select-Object -ExpandProperty FullName
-          gh release create test-7.3.8-20261111-2 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.8 Windows 测试版 2' --notes-file docs/releases/7.3.8-test-2.md
+          gh release create test-7.3.8-20261111-3 @files out/SHA256SUMS.txt out/windows-startup-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --latest=false --title 'ZL-WA 7.3.8 Windows 测试版 3' --notes-file docs/releases/7.3.8-test-3.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
