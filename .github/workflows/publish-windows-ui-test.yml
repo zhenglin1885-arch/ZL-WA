@@ -1,0 +1,70 @@
+name: Publish verified Windows UI test
+on:
+  push:
+    branches: ['publish/windows-ui-e4084c2']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify source build
+        run: |
+          for attempt in $(seq 1 60); do
+            gh api repos/$GH_REPO/actions/runs/43659025180 > run.json
+            if python3 -c 'import json,sys;sys.exit(json.load(open("run.json"))["status"]!="completed")'; then break; fi
+            sleep 20
+          done
+          gh api repos/$GH_REPO/actions/runs/43659025180/jobs > jobs.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('run.json'))
+          assert r['head_sha']=='e4084c2f9a90c52e9b10ffcbbf0188e662e12b2f'
+          assert r['status']=='completed'
+          jobs=json.load(open('jobs.json'))['jobs']
+          assert len(jobs)==1
+          steps={s['name']:s['conclusion'] for s in jobs[0]['steps']}
+          for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:
+            assert steps[name]=='success', name
+          assert [s['name'] for s in jobs[0]['steps'] if s['conclusion']=='failure']==['Create checksums and publish test release']
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZL-WA-Windows-x64
+          run-id: 43659025180
+          github-token: ${{ github.token }}
+          path: out
+      - name: Check packages and startup report
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('out')
+          expected={'ZL-WA-win-AutoSetup-7.3.8-x64.exe','ZL-WA-win-Portable-7.3.8-x64.exe'}
+          assert {p.name for p in root.glob('*.exe')}==expected
+          checksums={}
+          for name in sorted(expected):
+            with (root/name).open('rb') as f:
+              assert f.read(2)==b'MZ',name
+              f.seek(0)
+              checksums[name]=hashlib.file_digest(f,'sha256').hexdigest()
+          r=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+          assert r['commit']=='e4084c2f9a90c52e9b10ffcbbf0188e662e12b2f'
+          assert r['nativePackagedStartup'] and r['mainProcessResumeReload']
+          (root/'SHA256SUMS.txt').write_text(''.join(f'{v}  {k}\n' for k,v in checksums.items()))
+          PY
+      - name: Publish independent prerelease
+        run: |
+          cat > notes.md <<'EOF'
+          Windows x64 测试版，基于提交 e4084c2。
+          - S 金黄色、A 红色、B 蓝色、C 绿色、D 紫色，增加细轮廓，增强深浅主题下的辨识度。
+          - SABCD 标记显示在联系人／群组昵称前，原生列表、聚合会话及客户资料同步更新。
+          - 保留分组拖动排序、聚合会话可编辑红色备注等此前更新。
+
+          完整类型检查、自动测试、Windows 安装检查、打包启动及恢复验证均通过。发布前核对构建提交和启动报告，附带 SHA256 校验值。
+          EOF
+          gh release create test-7.3.8-20261115-2 out/*.exe out/SHA256SUMS.txt out/windows-startup-verification.json --target e4084c2f9a90c52e9b10ffcbbf0188e662e12b2f --prerelease --latest=false --title 'ZL-WA 7.3.8 Windows 界面功能测试版' --notes-file notes.md
