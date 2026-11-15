@@ -22,6 +22,7 @@ import {
   mdiDeleteOutline,
   mdiDotsVertical,
   mdiFolderMoveOutline,
+  mdiDragVertical,
   mdiFullscreen,
   mdiMagnifyMinusOutline,
   mdiMagnifyPlusOutline,
@@ -49,6 +50,7 @@ import {
   serializeAccountConfig,
   orderedAccountIds,
   moveAccount,
+  moveGroup,
   type AccountSidebarConfig,
 } from './state';
 import { accountStatus, markAllWhatsAppRead } from './whatsapp';
@@ -73,6 +75,8 @@ interface State {
   menu: { id: string; anchor: HTMLElement; group?: boolean } | null;
   notice: string;
   busy: boolean;
+  draggingGroup: string;
+  groupDrop: { id: string; after: boolean } | null;
   dragging: string;
   drop: { id: string; after: boolean } | null;
 }
@@ -104,6 +108,8 @@ export default class AccountSidebar extends Component<StoresProps, State> {
       menu: null,
       notice: '',
       busy: false,
+      draggingGroup: '',
+      groupDrop: null,
       dragging: '',
       drop: null,
     };
@@ -144,6 +150,43 @@ export default class AccountSidebar extends Component<StoresProps, State> {
       )
       .map(service => service.id);
     const next = moveAccount(config, ids, dragging, id, drop.after);
+    if (next !== config) this.perform(() => this.save(next));
+  };
+
+  private suppressGroupToggleUntil = 0;
+
+  dragOverGroup = (event: DragEvent<HTMLElement>, id: string): void => {
+    const { draggingGroup } = this.state;
+    if (!draggingGroup) return;
+    event.stopPropagation();
+    if (draggingGroup === id || this.state.busy) {
+      this.setState({ groupDrop: null });
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const after = event.clientY > bounds.top + bounds.height / 2;
+    if (this.state.groupDrop?.id !== id || this.state.groupDrop.after !== after)
+      this.setState({ groupDrop: { id, after } });
+  };
+
+  dropGroup = (event: DragEvent<HTMLElement>, id: string): void => {
+    const { draggingGroup } = this.state;
+    if (!draggingGroup) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.suppressGroupToggleUntil = Date.now() + 250;
+    this.setState({ draggingGroup: '', groupDrop: null });
+    if (this.state.busy) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const { config } = this;
+    const next = moveGroup(
+      config,
+      draggingGroup,
+      id,
+      event.clientY > bounds.top + bounds.height / 2,
+    );
     if (next !== config) this.perform(() => this.save(next));
   };
 
@@ -803,15 +846,47 @@ export default class AccountSidebar extends Component<StoresProps, State> {
             return (
               <section
                 key={group.id}
-                className="account-group"
+                className={`account-group ${this.state.draggingGroup === group.id ? 'is-dragging' : ''}`}
                 data-group-id={group.id}
               >
-                <header className="account-group__header">
+                <header
+                  className={`account-group__header ${this.state.groupDrop?.id === group.id ? (this.state.groupDrop.after ? 'drop-after' : 'drop-before') : ''}`}
+                  onDragOver={event => this.dragOverGroup(event, group.id)}
+                  onDrop={event => this.dropGroup(event, group.id)}
+                  onDragLeave={event => {
+                    if (
+                      !event.currentTarget.contains(
+                        event.relatedTarget as Node | null,
+                      )
+                    )
+                      this.setState({ groupDrop: null });
+                  }}
+                >
                   <button
                     type="button"
                     className="account-group__toggle"
+                    draggable={!this.state.busy}
+                    title="按住分组名称拖动排序"
+                    onDragStart={event => {
+                      event.stopPropagation();
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData(
+                        'application/x-zl-wa-account-group',
+                        group.id,
+                      );
+                      this.setState({
+                        draggingGroup: group.id,
+                        groupDrop: null,
+                        menu: null,
+                      });
+                    }}
+                    onDragEnd={() => {
+                      this.suppressGroupToggleUntil = Date.now() + 250;
+                      this.setState({ draggingGroup: '', groupDrop: null });
+                    }}
                     aria-expanded={!group.collapsed}
                     onClick={() => {
+                      if (Date.now() < this.suppressGroupToggleUntil) return;
                       this.perform(() =>
                         this.save({
                           ...config,
@@ -824,6 +899,7 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                       );
                     }}
                   >
+                    <Icon icon={mdiDragVertical} size={0.65} />
                     <Icon
                       icon={group.collapsed ? mdiChevronRight : mdiChevronDown}
                       size={0.7}

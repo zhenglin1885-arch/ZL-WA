@@ -99,13 +99,26 @@
 }
 .account-group {
   margin-top: 12px;
+  &.is-dragging {
+    opacity: 0.5;
+  }
   &__header {
     display: flex;
     align-items: center;
     min-height: 34px;
     gap: 2px;
   }
+  &__header.drop-before {
+    box-shadow: 0 -3px #579dff;
+  }
+  &__header.drop-after {
+    box-shadow: 0 3px #579dff;
+  }
   &__toggle {
+    cursor: grab;
+    &:active {
+      cursor: grabbing;
+    }
     flex: 1;
     min-width: 0;
     padding: 4px 0;

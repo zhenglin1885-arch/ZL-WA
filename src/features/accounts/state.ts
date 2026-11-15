@@ -52,26 +52,28 @@ export function serializeAccountConfig(
 export function normalizeAccountConfig(
   raw?: Partial<AccountSidebarConfig>,
 ): AccountSidebarConfig {
-  const seen = new Set([DEFAULT_GROUP_ID]);
-  const groups: AccountGroup[] = [
-    {
-      id: DEFAULT_GROUP_ID,
-      name: '默认分组',
-      collapsed: Boolean(
-        raw?.groups?.find(g => g.id === DEFAULT_GROUP_ID)?.collapsed,
-      ),
-    },
-  ];
+  const seen = new Set<string>();
+  const groups: AccountGroup[] = [];
   for (const group of raw?.groups ?? []) {
-    if (group.id && !seen.has(group.id) && group.name?.trim()) {
+    if (
+      group.id &&
+      !seen.has(group.id) &&
+      (group.id === DEFAULT_GROUP_ID || group.name?.trim())
+    ) {
       seen.add(group.id);
       groups.push({
         id: group.id,
-        name: group.name.trim(),
+        name: group.id === DEFAULT_GROUP_ID ? '默认分组' : group.name.trim(),
         collapsed: Boolean(group.collapsed),
       });
     }
   }
+  if (!seen.has(DEFAULT_GROUP_ID))
+    groups.unshift({
+      id: DEFAULT_GROUP_ID,
+      name: '默认分组',
+      collapsed: false,
+    });
   return {
     collapsed: Boolean(raw?.collapsed),
     groups,
@@ -157,4 +159,26 @@ export function moveAccount(
   for (const [index, id] of order.entries())
     accounts[id] = { ...accounts[id], order: index };
   return { ...config, accounts };
+}
+
+export function moveGroup(
+  config: AccountSidebarConfig,
+  source: string,
+  target: string,
+  after: boolean,
+): AccountSidebarConfig {
+  if (
+    source === target ||
+    !config.groups.some(group => group.id === source) ||
+    !config.groups.some(group => group.id === target)
+  )
+    return config;
+  const groups = config.groups.filter(group => group.id !== source);
+  const index = groups.findIndex(group => group.id === target);
+  groups.splice(
+    index + (after ? 1 : 0),
+    0,
+    config.groups.find(group => group.id === source)!,
+  );
+  return { ...config, groups };
 }

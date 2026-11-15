@@ -8,9 +8,63 @@ import {
   serializeAccountConfig,
   orderedAccountIds,
   moveAccount,
+  moveGroup,
 } from '../src/features/accounts/state';
 
 describe('local account organization', () => {
+  it('moves whole groups above and below targets and restores their saved order', () => {
+    const config = normalizeAccountConfig({
+      groups: [
+        { id: 'sales', name: '销售', collapsed: true },
+        { id: 'support', name: '客服', collapsed: false },
+      ],
+      accounts: { a: { groupId: 'sales', remark: '保留', order: 2 } },
+    });
+    const moved = moveGroup(config, 'support', 'sales', false);
+    expect(moved.groups.map(group => group.id)).toEqual([
+      'default',
+      'support',
+      'sales',
+    ]);
+    const down = moveGroup(moved, 'default', 'sales', true);
+    const restored = normalizeAccountConfig(
+      JSON.parse(JSON.stringify(serializeAccountConfig(down))),
+    );
+    expect(restored.groups.map(group => group.id)).toEqual([
+      'support',
+      'sales',
+      'default',
+    ]);
+    expect(restored.groups[1].collapsed).toBe(true);
+    expect(restored.accounts).toEqual(config.accounts);
+    expect(down.accounts).toBe(config.accounts);
+    expect(config.groups.map(group => group.id)).toEqual([
+      'default',
+      'sales',
+      'support',
+    ]);
+    expect(() => removeGroup(restored, 'default')).toThrow('默认分组不能删除');
+  });
+
+  it('ignores invalid group drops and keeps exactly one default group at its saved position', () => {
+    const config = normalizeAccountConfig({
+      groups: [
+        { id: 'sales', name: '销售', collapsed: false },
+        { id: 'default', name: '', collapsed: true },
+        { id: 'default', name: '重复', collapsed: false },
+      ],
+    });
+    expect(config.groups.map(group => group.id)).toEqual(['sales', 'default']);
+    expect(config.groups[1]).toEqual({
+      id: 'default',
+      name: '默认分组',
+      collapsed: true,
+    });
+    expect(moveGroup(config, 'sales', 'sales', true)).toBe(config);
+    expect(moveGroup(config, 'missing', 'sales', true)).toBe(config);
+    expect(moveGroup(config, 'sales', 'missing', false)).toBe(config);
+  });
+
   it('moves cards up or down, persists order and preserves account metadata', () => {
     const config = normalizeAccountConfig({
       accounts: {
