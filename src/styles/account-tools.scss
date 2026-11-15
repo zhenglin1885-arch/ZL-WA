@@ -721,34 +721,34 @@
     grid-column: span 3;
   }
   .customer-flag--vip {
-    color: #ffd43b;
+    color: #ffcf00;
   }
   .customer-flag--priority {
-    color: #ff4d5e;
+    color: #ff304f;
   }
   .customer-flag--follow {
-    color: #339dff;
+    color: #2196ff;
   }
   .customer-flag--signup {
-    color: #2ee86f;
+    color: #16df62;
   }
   .customer-flag--deposit {
-    color: #ffffff;
+    color: #b34dff;
   }
   .customer-flag-grid button.customer-flag--vip {
-    color: #ffd43b;
+    color: #ffcf00;
   }
   .customer-flag-grid button.customer-flag--priority {
-    color: #ff4d5e;
+    color: #ff304f;
   }
   .customer-flag-grid button.customer-flag--follow {
-    color: #339dff;
+    color: #2196ff;
   }
   .customer-flag-grid button.customer-flag--signup {
-    color: #2ee86f;
+    color: #16df62;
   }
   .customer-flag-grid button.customer-flag--deposit {
-    color: #ffffff;
+    color: #b34dff;
   }
   .customer-flag-grid button[aria-pressed='true'] {
     color: #fff;
@@ -767,7 +767,7 @@
     background: #217348;
   }
   .customer-flag-grid .customer-flag--deposit[aria-pressed='true'] {
-    background: #59616b;
+    background: #67339a;
   }
   .customer-copy {
     display: flex;

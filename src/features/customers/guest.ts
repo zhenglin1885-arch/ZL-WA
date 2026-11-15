@@ -185,7 +185,9 @@ export function readCustomerContext(): CustomerContext {
           : undefined);
   }
   if (!chat?.id) {
-    const name = header.querySelector('[title]')?.getAttribute('title');
+    const name = header
+      .querySelector('[title]:not(.zl-customer-flag)')
+      ?.getAttribute('title');
     const matches = name
       ? models.filter(m =>
           [
@@ -222,7 +224,7 @@ export function readCustomerContext(): CustomerContext {
           chat.name ||
           contact?.pushname ||
           document
-            .querySelector('#main header [title]')
+            .querySelector('#main header [title]:not(.zl-customer-flag)')
             ?.getAttribute('title') ||
           id.split('@')[0],
       ),
@@ -322,7 +324,7 @@ export function customerTick(
       .zl-chat-note::placeholder{color:#8a969c}
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
       .zl-chat-note[data-save-state="error"]{box-shadow:0 1px #ff6060}
-      .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-left:5px}
+      .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-inline-end:5px}
       .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:24px!important;background:transparent;font:900 18px/1 sans-serif;text-shadow:none}.zl-customer-flag svg{display:block;width:100%;height:100%}
     `;
     document.head.append(style);
@@ -648,11 +650,11 @@ export function customerTick(
     box.className = 'zl-customer-flags';
     box.dataset.zlCustomers = 'flags';
     const design = {
-      vip: ['S', '#ffd43b', 'S'],
-      priority: ['A', '#ff4d5e', 'A'],
-      follow: ['B', '#339dff', 'B'],
-      signup: ['C', '#2ee86f', 'C'],
-      deposit: ['D', '#ffffff', 'D'],
+      vip: ['S', '#ffcf00', 'S'],
+      priority: ['A', '#ff304f', 'A'],
+      follow: ['B', '#2196ff', 'B'],
+      signup: ['C', '#16df62', 'C'],
+      deposit: ['D', '#b34dff', 'D'],
     };
     for (const flag of summary(id)?.flags ?? []) {
       const item = document.createElement('span');
@@ -1055,7 +1057,8 @@ export function customerTick(
         });
         if (getComputedStyle(titleLine).position === 'static')
           titleLine.style.position = 'relative';
-        titleLine.append(flags(match));
+        const markers = flags(match);
+        if (markers.childNodes.length > 0) marker.before(markers);
         row.dataset.zlCustomerRendered = 'true';
         state.rowStatus.set(row, 'rendered');
         const note = summary(match)?.remarkName;
@@ -1239,7 +1242,7 @@ export function customerTick(
         line.dataset.zlCustomers = 'header';
         const markers = flags(active);
         if (markers.childNodes.length > 0) line.append(markers);
-        name.after(line);
+        name.before(line);
       }
       state.headerKey = `${active}:${data.revision}`;
     }

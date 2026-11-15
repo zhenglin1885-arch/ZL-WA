@@ -173,7 +173,6 @@ function CustomerEditor({
       <div className="customer-overview">
         <div className="customer-name">
           <Icon icon={mdiAccountOutline} size={0.9} />
-          <strong>{contact.name}</strong>
           <span className="customer-active-flags">
             {profile.flags.map(flag => (
               <span
@@ -185,6 +184,7 @@ function CustomerEditor({
               </span>
             ))}
           </span>
+          <strong>{contact.name}</strong>
         </div>
         <small>
           {contact.group ? '群聊' : contact.phone || '手机号待同步'}

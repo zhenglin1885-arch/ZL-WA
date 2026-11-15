@@ -451,7 +451,6 @@ const ConversationSidebar = observer(
                     </span>
                     <span className="conversation-row__content">
                       <span className="conversation-row__title">
-                        <span className="conversation-row__name">{title}</span>
                         {flags.length > 0 && (
                           <span
                             className="conversation-row__flags"
@@ -463,6 +462,7 @@ const ConversationSidebar = observer(
                             ))}
                           </span>
                         )}
+                        <span className="conversation-row__name">{title}</span>
                         <time>{formatTime(row.timestamp)}</time>
                       </span>
                       <ConversationRemark

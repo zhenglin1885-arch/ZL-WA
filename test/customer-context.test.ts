@@ -28,7 +28,9 @@ describe('customer conversation identity fallback', () => {
             ? header
               ? {
                   querySelector: (query: string) =>
-                    query === '[title]' ? { getAttribute: () => title } : null,
+                    query === '[title]:not(.zl-customer-flag)'
+                      ? { getAttribute: () => title }
+                      : null,
                 }
               : null
             : selector === '#main [data-id]' && messageKey
