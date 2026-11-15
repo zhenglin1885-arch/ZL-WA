@@ -3,6 +3,8 @@ import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import { ensureBulkLibrary } from '../accountTools/bulkRuntime';
 import { readCustomerContext } from '../customers/guest';
+import { getCustomerRuntime } from '../customers/runtime';
+import { emptyCustomer } from '../customers/types';
 import type { CustomerBundle, CustomerContext } from '../customers/types';
 import { normalizeAccountConfig } from '../accounts/state';
 import { configureWhatsAppLayout } from '../accounts/layout';
@@ -349,6 +351,42 @@ export class ConversationRuntime {
           service.id,
           error instanceof Error ? error.message : '读取会话失败',
         );
+    }
+  }
+
+  async saveRemark(row: AggregateConversation, remark: string) {
+    const service = this.stores.services.all.find(s => s.id === row.accountId);
+    const source = this.sources.get(row.accountId);
+    if (
+      !service ||
+      !this.sourceCurrent(service, source) ||
+      !source?.owners.includes(row.owner) ||
+      !this.rows.some(current => current.key === row.key)
+    )
+      throw new Error('账号或会话已变更，请刷新后重试');
+    if (remark.length > 100) throw new Error('备注最多 100 字');
+    await getCustomerRuntime(this.stores).save(
+      row.owner,
+      row.id,
+      { ...emptyCustomer(), remarkName: remark },
+      ['remarkName'],
+    );
+    // Invalidate in-flight index reads before publishing the acknowledged edit.
+    this.revisions.set(
+      row.accountId,
+      (this.revisions.get(row.accountId) || 0) + 1,
+    );
+    if (this.sourceCurrent(service, source)) {
+      const rows = this.snapshots.get(row.accountId) || [];
+      this.snapshots.set(
+        row.accountId,
+        rows.map(current =>
+          current.membershipKey === row.membershipKey
+            ? { ...current, remark }
+            : current,
+        ),
+      );
+      this.notify();
     }
   }
 

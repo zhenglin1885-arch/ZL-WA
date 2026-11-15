@@ -19,6 +19,7 @@ import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import BulkSend from '../accountTools/BulkSend';
 import CustomerFlagIcon from '../customers/CustomerFlagIcon';
+import ConversationRemark from './ConversationRemark';
 import { customerFlagNames, type CustomerFlag } from '../customers/types';
 import { getConversationRuntime } from './runtime';
 import {
@@ -144,8 +145,8 @@ const ConversationSidebar = observer(
       for (const row of visible.filter(
         item => conversationGroup(config, item) === group.id,
       )) {
-        entries.push({ top: totalHeight, height: 86, group: group.id, row });
-        totalHeight += 86;
+        entries.push({ top: totalHeight, height: 102, group: group.id, row });
+        totalHeight += 102;
       }
     }
     const displayed = entries.filter(
@@ -434,11 +435,12 @@ const ConversationSidebar = observer(
                   />
                   <button
                     type="button"
-                    className="conversation-row__open"
+                    className="conversation-row__activate"
                     aria-pressed={isActive}
                     aria-label={`打开 ${title} · ${row.accountRemark || row.accountName}`}
                     onClick={() => void open(row)}
-                  >
+                  />
+                  <div className="conversation-row__open">
                     <span className="conversation-row__avatar">
                       {avatar ? <img src={avatar} alt="" /> : title.slice(0, 2)}
                       {row.unread > 0 && (
@@ -463,6 +465,13 @@ const ConversationSidebar = observer(
                         )}
                         <time>{formatTime(row.timestamp)}</time>
                       </span>
+                      <ConversationRemark
+                        key={row.key}
+                        remark={row.remark}
+                        name={title}
+                        save={value => runtime.saveRemark(row, value)}
+                        onError={setNotice}
+                      />
                       <span className="conversation-row__preview">
                         {row.archived ? '[已归档] ' : ''}
                         {row.lastFromMe ? '你：' : ''}
@@ -473,7 +482,7 @@ const ConversationSidebar = observer(
                         {row.accountRemark || row.accountName}
                       </span>
                     </span>
-                  </button>
+                  </div>
                 </div>
               );
             })}

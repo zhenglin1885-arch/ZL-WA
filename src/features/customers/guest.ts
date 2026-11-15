@@ -317,11 +317,7 @@ export function customerTick(
     const style = document.createElement('style');
     style.dataset.zlCustomers = 'style';
     style.textContent = `
-      html[data-zl-aggregate-view] [data-zl-customer-header-title]{display:none!important}
-      html[data-zl-aggregate-view] .zl-header-customer-private>.zl-customer-flags{display:none}
       .zl-header-remark{display:none}
-      html[data-zl-aggregate-view] .zl-header-remark{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;color:inherit;font:inherit;font-weight:inherit;text-align:start;padding:0;cursor:pointer}
-      html[data-zl-aggregate-view] .zl-header-remark.is-empty{color:#8a969c;font-size:13px;font-weight:normal}
       .zl-chat-note{position:absolute;box-sizing:border-box;font:11px/13px sans-serif!important;text-indent:0!important;text-align:start!important;letter-spacing:normal!important;appearance:none!important;transform:none!important;color:#ff6060;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:4;height:13px!important;min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;outline:none;cursor:text;pointer-events:auto!important;user-select:text!important;-webkit-user-select:text!important;-webkit-app-region:no-drag}
       .zl-chat-note::placeholder{color:#8a969c}
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
@@ -1242,41 +1238,6 @@ export function customerTick(
         const line = document.createElement('span');
         line.dataset.zlCustomers = 'header';
         const markers = flags(active);
-        if (!active.endsWith('@g.us')) {
-          line.className = 'zl-header-customer-private';
-          // Keep the native React-owned title intact for identity resolution.
-          // Only its aggregate-mode presentation is replaced by our own control.
-          const remark = summary(active)?.remarkName || '';
-          const button = document.createElement('button');
-          button.type = 'button';
-          button.className = `zl-header-remark${remark ? '' : ' is-empty'}`;
-          button.textContent = remark || '添加备注';
-          button.title = remark ? '点击编辑备注' : '点击添加备注';
-          button.setAttribute(
-            'aria-label',
-            remark ? `编辑备注 ${remark}` : '添加备注',
-          );
-          const owner = data.owner;
-          const chatId = active;
-          button.addEventListener('click', event => {
-            event.stopPropagation();
-            const bounds = header.getBoundingClientRect();
-            state.action(
-              chatId,
-              'remark',
-              JSON.stringify({
-                left: bounds.left + 20,
-                top: bounds.bottom + 4,
-                viewportWidth: window.innerWidth,
-                viewportHeight: window.innerHeight,
-              }),
-              owner,
-            );
-          });
-          (name as HTMLElement).dataset.zlCustomerHeaderTitle = 'true';
-          state.headerName = name;
-          line.append(button);
-        }
         if (markers.childNodes.length > 0) line.append(markers);
         name.after(line);
       }

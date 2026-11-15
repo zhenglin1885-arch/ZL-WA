@@ -302,6 +302,43 @@ describe('aggregate account isolation and lifecycle', () => {
       stores.services.all[2].webview.executeJavaScript,
     ).not.toHaveBeenCalled();
   });
+  it('saves only the selected customer remark and immediately updates its account row', async () => {
+    await runtime.refresh();
+    const row = runtime.rows.find(r => r.accountId === 'A')!;
+    ipcRenderer.invoke.mockImplementation(
+      async (channel: string, owner: string, id: string, patch: unknown) => {
+        expect(channel).toBe('customers-patch');
+        expect(owner).toBe('A@c.us');
+        expect(id).toBe(row.id);
+        expect(patch).toEqual({ remarkName: '新备注' });
+        return {
+          owner,
+          revision: 2,
+          summaries: { [id]: { remarkName: '新备注', flags: ['priority'] } },
+          aliases: {},
+        };
+      },
+    );
+    await runtime.saveRemark(row, '新备注');
+    expect(runtime.rows.find(r => r.accountId === 'A')?.remark).toBe('新备注');
+    expect(runtime.rows.find(r => r.accountId === 'B')?.remark).toBe('VIP');
+    expect(runtime.rows[0].name).toBe('Alice');
+  });
+
+  it('retains the saved remark on failure and rejects a stale account before writing', async () => {
+    await runtime.refresh();
+    const row = runtime.rows[0];
+    ipcRenderer.invoke.mockRejectedValue(new Error('disk full'));
+    await expect(runtime.saveRemark(row, 'draft')).rejects.toThrow('disk full');
+    expect(runtime.rows[0].remark).toBe('VIP');
+    ipcRenderer.invoke.mockClear();
+    stores.services.all[0].accountSnapshot.ownerId = 'OTHER@c.us';
+    await expect(runtime.saveRemark(row, 'wrong account')).rejects.toThrow(
+      '账号或会话已变更',
+    );
+    expect(ipcRenderer.invoke).not.toHaveBeenCalled();
+  });
+
   it('marks only supplied conversations on their own account without loading SDKs', async () => {
     await runtime.refresh();
     stores.services.all[0].webview.executeJavaScript.mockImplementation(

@@ -123,7 +123,10 @@ export function readConversationIndex(): {
               safe(() => contact.pushname) ||
               phone ||
               '号码待同步'
-            : phone || '号码待同步',
+            : safe(() => model.formattedTitle) ||
+              safe(() => contact?.pushname) ||
+              phone ||
+              '号码待同步',
       ).slice(0, 160),
       phone,
       group: id.endsWith('@g.us'),
