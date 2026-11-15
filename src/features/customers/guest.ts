@@ -652,10 +652,11 @@ export function customerTick(
     box.className = 'zl-customer-flags';
     box.dataset.zlCustomers = 'flags';
     const design = {
-      priority: ['A', '#ffd43b', 'A'],
+      vip: ['S', '#ffd43b', 'S'],
+      priority: ['A', '#ff4d5e', 'A'],
       follow: ['B', '#339dff', 'B'],
       signup: ['C', '#2ee86f', 'C'],
-      deposit: ['D', '#ff4d5e', 'D'],
+      deposit: ['D', '#ffffff', 'D'],
     };
     for (const flag of summary(id)?.flags ?? []) {
       const item = document.createElement('span');

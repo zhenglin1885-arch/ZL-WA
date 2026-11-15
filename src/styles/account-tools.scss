@@ -700,11 +700,13 @@
   }
   .customer-flag-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 7px;
     margin-top: 12px;
   }
   .customer-flag-grid button {
+    grid-column: span 2;
+    min-width: 0;
     display: flex;
     gap: 7px;
     align-items: center;
@@ -714,8 +716,15 @@
     margin: 0;
     background: transparent;
   }
-  .customer-flag--priority {
+  .customer-flag-grid button.customer-flag--vip,
+  .customer-flag-grid button.customer-flag--priority {
+    grid-column: span 3;
+  }
+  .customer-flag--vip {
     color: #ffd43b;
+  }
+  .customer-flag--priority {
+    color: #ff4d5e;
   }
   .customer-flag--follow {
     color: #339dff;
@@ -724,10 +733,13 @@
     color: #2ee86f;
   }
   .customer-flag--deposit {
-    color: #ff4d5e;
+    color: #ffffff;
+  }
+  .customer-flag-grid button.customer-flag--vip {
+    color: #ffd43b;
   }
   .customer-flag-grid button.customer-flag--priority {
-    color: #ffd43b;
+    color: #ff4d5e;
   }
   .customer-flag-grid button.customer-flag--follow {
     color: #339dff;
@@ -736,14 +748,17 @@
     color: #2ee86f;
   }
   .customer-flag-grid button.customer-flag--deposit {
-    color: #ff4d5e;
+    color: #ffffff;
   }
   .customer-flag-grid button[aria-pressed='true'] {
     color: #fff;
     border-color: transparent;
   }
-  .customer-flag-grid .customer-flag--priority[aria-pressed='true'] {
+  .customer-flag-grid .customer-flag--vip[aria-pressed='true'] {
     background: #80631e;
+  }
+  .customer-flag-grid .customer-flag--priority[aria-pressed='true'] {
+    background: #943443;
   }
   .customer-flag-grid .customer-flag--follow[aria-pressed='true'] {
     background: #174f8c;
@@ -752,7 +767,7 @@
     background: #217348;
   }
   .customer-flag-grid .customer-flag--deposit[aria-pressed='true'] {
-    background: #943443;
+    background: #59616b;
   }
   .customer-copy {
     display: flex;

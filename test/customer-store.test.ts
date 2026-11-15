@@ -107,6 +107,27 @@ describe('local WhatsApp customers and unlimited pins', () => {
     copy.flags.pop();
     expect(store.profile(owner, id).flags).toHaveLength(4);
   });
+  it('adds and removes S while preserving existing saved customer flags', () => {
+    const id = '33333@c.us';
+    const existing = ['priority', 'follow', 'signup', 'deposit'] as const;
+    store.patch(owner, id, { flags: [...existing], notes: '保留备注' });
+    const reopened = new CustomerStore(path);
+    reopened.patch(owner, id, {
+      flags: ['vip', ...reopened.profile(owner, id).flags],
+    });
+    const restored = new CustomerStore(path);
+    expect(restored.profile(owner, id)).toMatchObject({
+      flags: ['vip', ...existing],
+      notes: '保留备注',
+    });
+    expect(restored.bundle(owner).summaries[id].flags).toEqual([
+      'vip',
+      ...existing,
+    ]);
+    restored.patch(owner, id, { flags: [...existing] });
+    expect(new CustomerStore(path).profile(owner, id).flags).toEqual(existing);
+  });
+
   it('rejects invalid identities and invalid fields without changing stored values', () => {
     expect(() => store.bind(['bad'])).toThrow();
     expect(() => store.pin(owner, '__proto__', 'pin')).toThrow();

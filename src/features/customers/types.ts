@@ -1,5 +1,6 @@
 /* eslint-disable sonar/max-union-size -- Customer actions use a finite protocol shared by host and guest. */
 export const customerFlagNames = {
+  vip: 'S',
   priority: 'A',
   follow: 'B',
   signup: 'C',
