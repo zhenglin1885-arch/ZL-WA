@@ -324,7 +324,7 @@ export function customerTick(
       .zl-chat-note::placeholder{color:#8a969c}
       .zl-chat-note:focus{box-shadow:0 1px #579dff}
       .zl-chat-note[data-save-state="error"]{box-shadow:0 1px #ff6060}
-      .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-inline-end:5px}
+      .zl-customer-flags{display:inline-flex;flex-shrink:0;gap:3px;vertical-align:middle;height:auto!important;margin-inline-start:5px}
       .zl-customer-flag{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:20px;height:24px!important;background:transparent;font:900 18px/1 sans-serif;text-shadow:none}.zl-customer-flag svg{display:block;width:100%;height:100%}
     `;
     document.head.append(style);
@@ -1058,7 +1058,7 @@ export function customerTick(
         if (getComputedStyle(titleLine).position === 'static')
           titleLine.style.position = 'relative';
         const markers = flags(match);
-        if (markers.childNodes.length > 0) marker.before(markers);
+        if (markers.childNodes.length > 0) titleLine.append(markers);
         row.dataset.zlCustomerRendered = 'true';
         state.rowStatus.set(row, 'rendered');
         const note = summary(match)?.remarkName;
@@ -1242,7 +1242,7 @@ export function customerTick(
         line.dataset.zlCustomers = 'header';
         const markers = flags(active);
         if (markers.childNodes.length > 0) line.append(markers);
-        name.before(line);
+        name.after(line);
       }
       state.headerKey = `${active}:${data.revision}`;
     }
