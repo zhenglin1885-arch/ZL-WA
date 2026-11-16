@@ -2,6 +2,7 @@ import BulkQueue, {
   validateBulkSpec,
   type BulkAdapter,
 } from '../src/features/accountTools/BulkQueue';
+import { bottomUpGroupRecipients } from '../src/features/accountTools/bulkRecipientOrder';
 import type { BulkSpec, SendRecord } from '../src/features/accountTools/config';
 
 const spec = (extra: Partial<BulkSpec> = {}): BulkSpec => ({
@@ -54,6 +55,59 @@ describe('persistent bulk queue without live WhatsApp', () => {
     queue.dispose();
     jest.useRealTimers();
   });
+  it.each([false, true])(
+    'sends selected groups bottom-up per account for new tasks (scheduled=%s)',
+    async scheduled => {
+      const listed = ['A', 'B', 'C', 'D'].map(name => ({
+        id: `${name}@g.us`,
+        accountId: 'first',
+        name,
+        group: true,
+      }));
+      const other = ['E', 'F'].map(name => ({
+        id: `${name}@g.us`,
+        accountId: 'second',
+        name,
+        group: true,
+      }));
+      // B is not selected. Checkbox click order must not add it to the task.
+      const selected = [listed[0], listed[2], listed[3], ...other];
+      const targets = bottomUpGroupRecipients(selected);
+      const action = queue.submit(
+        spec({
+          targets,
+          ...(scheduled
+            ? { scheduledAt: new Date(Date.now() + 10_000).toISOString() }
+            : {}),
+        }),
+      );
+      if (scheduled) {
+        await action;
+        expect(queue.records[0].spec?.targets.map(r => r.name)).toEqual([
+          'D',
+          'C',
+          'A',
+          'F',
+          'E',
+        ]);
+        expect(adapter.send).not.toHaveBeenCalled();
+        await jest.advanceTimersByTimeAsync(10_000);
+        await finish(queue.tick());
+      } else await finish(action);
+      expect(
+        jest.mocked(adapter.send).mock.calls.map(([target]) => target.name),
+      ).toEqual(['D', 'C', 'A', 'F', 'E']);
+      expect(queue.records[0].deliveries?.map(d => d.target.name)).toEqual([
+        'D',
+        'C',
+        'A',
+        'F',
+        'E',
+      ]);
+      expect(selected.map(r => r.name)).toEqual(['A', 'C', 'D', 'E', 'F']);
+    },
+  );
+
   it('persists each checkpoint and message ID before proceeding, without duplicate sends', async () => {
     const action = queue.submit(spec());
     await finish(action);

@@ -16,6 +16,7 @@ import { listRecipients } from './guest';
 import { listBulkContacts } from './bulkGuest';
 import { ensureBulkLibrary, getBulkQueue } from './bulkRuntime';
 import { validateBulkSpec } from './BulkQueue';
+import { bottomUpGroupRecipients } from './bulkRecipientOrder';
 import BulkHistory from './BulkHistory';
 import BulkMediaPreview from './BulkMediaPreview';
 import { normalizeAccountConfig } from '../accounts/state';
@@ -295,7 +296,7 @@ const BulkSend = observer(
           media,
           contactName,
           contactPhone: contactPhone.replace(/^\+/, ''),
-          targets: chosen,
+          targets: bottomUpGroupRecipients(chosen),
           scheduledAt: scheduled
             ? scheduledAt
               ? new Date(scheduledAt).toISOString()
@@ -897,6 +898,9 @@ const BulkSend = observer(
             将通过 {new Set(confirm?.targets.map(r => r.accountId)).size}{' '}
             个账号向 {confirm?.targets.length} 个聊天发送
             {messageTypes.find(([value]) => value === confirm?.type)?.[1]}消息：
+            {confirm?.targets.some(target => target.group) && (
+              <p>群组发送顺序：每个账号内按对象列表从下往上发送。</p>
+            )}
             <p className="bulk-record-text">{confirm?.text}</p>
             {confirm?.media && <p>附件：{confirm.media.name}</p>}
             {confirm?.reply && (
