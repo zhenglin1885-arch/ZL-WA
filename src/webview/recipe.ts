@@ -135,7 +135,11 @@ contextBridge.exposeInMainWorld('ferdium', {
     )
       ipcRenderer.send('download-service-media', url);
   },
-  pushWhatsAppUnread: (value: { ownerId: string; count: number }) => {
+  pushWhatsAppUnread: (value: {
+    ownerId: string;
+    count: number;
+    notify?: boolean;
+  }) => {
     if (
       process.isMainFrame &&
       globalThis.location.hostname === 'web.whatsapp.com' &&

@@ -9,6 +9,7 @@ export function watchWhatsAppUnread(): boolean {
   }
   const events = [
     'change:unreadCount',
+    'change:lastMessage',
     'change:archive',
     'change:isArchived',
     'change:muteExpiration',
@@ -35,6 +36,9 @@ export function watchWhatsAppUnread(): boolean {
   const state: any = {
     collection: undefined,
     last: '',
+    messages: new Map(),
+    soundOwner: '',
+    soundAt: 0,
     scheduled: false,
     disposed: false,
   };
@@ -59,11 +63,29 @@ export function watchWhatsAppUnread(): boolean {
     if (!/^\d{5,30}@(c\.us|lid)$/.test(ownerId)) return;
     const socket = module('WAWebSocketModel')?.Socket?.state;
     const now = Date.now() / 1000;
+    const live =
+      !force && state.soundOwner === ownerId && now - state.soundAt < 15;
+    if (state.soundOwner !== ownerId) state.messages.clear();
+    let notify = false;
     let count = 0;
     if (!['UNPAIRED', 'UNPAIRED_IDLE'].includes(socket)) {
       for (const chat of chats) {
         const server = chat.id?.server || idOf(chat.id).split('@')[1];
         const expiration = Number(chat.muteExpiration ?? 0);
+        const last = chat.lastMessage || chat.msgs?.last?.();
+        const messageId = idOf(last?.id);
+        const previous = state.messages.get(idOf(chat.id));
+        const fresh =
+          live &&
+          messageId &&
+          previous !== messageId &&
+          (last?.id?.fromMe ?? last?.isSentByMe) === false &&
+          Number(last?.t) <= now + 5 &&
+          Number(last?.t) >= now - 30;
+        // WhatsApp can publish the message before updating its unread count.
+        // Retain that candidate until the unread event arrives.
+        if (!fresh || chat.unreadCount !== 0)
+          state.messages.set(idOf(chat.id), messageId);
         if (
           !chat.archive &&
           !chat.isArchived &&
@@ -74,18 +96,27 @@ export function watchWhatsAppUnread(): boolean {
           ['c.us', 'lid', 'g.us'].includes(server) &&
           Number.isFinite(chat.unreadCount) &&
           (chat.unreadCount > 0 || chat.unreadCount === -1)
-        )
+        ) {
           count += chat.unreadCount === -1 ? 1 : Math.floor(chat.unreadCount);
+          if (chat.unreadCount > 0 && fresh) notify = true;
+        }
       }
     }
+    state.soundOwner = ownerId;
+    state.soundAt = now;
     const signature = `${ownerId}:${count}`;
     if (
-      (force ||
+      (notify ||
+        force ||
         signature !== state.last ||
         Date.now() - (state.lastPublishedAt ?? 0) >= 10_000) &&
       typeof page.ferdium?.pushWhatsAppUnread === 'function'
     ) {
-      page.ferdium.pushWhatsAppUnread({ ownerId, count });
+      page.ferdium.pushWhatsAppUnread({
+        ownerId,
+        count,
+        ...(notify ? { notify: true } : {}),
+      });
       state.last = signature;
       state.lastPublishedAt = Date.now();
     }

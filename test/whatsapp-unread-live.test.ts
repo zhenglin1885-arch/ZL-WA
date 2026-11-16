@@ -47,6 +47,63 @@ describe('live WhatsApp unread signals', () => {
     }
     originals.clear();
   });
+  it('keeps a new message candidate when its unread event arrives after the message event', () => {
+    chats[0].unreadCount = 0;
+    watchWhatsAppUnread();
+    chats[0].lastMessage = {
+      id: { _serialized: 'ordered', fromMe: false },
+      t: Date.now() / 1000,
+    };
+    page.__zlWaUnread.tick();
+    chats[0].unreadCount = 1;
+    page.__zlWaUnread.tick();
+    expect(page.ferdium.pushWhatsAppUnread.mock.calls.at(-1)[0].notify).toBe(
+      true,
+    );
+  });
+
+  it('signals fresh incoming messages once, without startup backlog, muted chats or resume sounds', () => {
+    const now = Date.now() / 1000;
+    chats[0].lastMessage = {
+      id: { _serialized: 'old', fromMe: false },
+      t: now,
+    };
+    watchWhatsAppUnread();
+    expect(
+      page.ferdium.pushWhatsAppUnread.mock.calls.at(-1)[0].notify,
+    ).toBeUndefined();
+    chats[0].lastMessage = {
+      id: { _serialized: 'new', fromMe: false },
+      t: now,
+    };
+    page.__zlWaUnread.tick();
+    expect(page.ferdium.pushWhatsAppUnread.mock.calls.at(-1)[0].notify).toBe(
+      true,
+    );
+    const count = page.ferdium.pushWhatsAppUnread.mock.calls.length;
+    page.__zlWaUnread.tick();
+    expect(page.ferdium.pushWhatsAppUnread).toHaveBeenCalledTimes(count);
+    chats[0].isMuted = true;
+    chats[0].lastMessage = {
+      id: { _serialized: 'muted', fromMe: false },
+      t: now,
+    };
+    page.__zlWaUnread.tick();
+    expect(
+      page.ferdium.pushWhatsAppUnread.mock.calls.at(-1)[0].notify,
+    ).toBeUndefined();
+    chats[0].isMuted = false;
+    chats[0].lastMessage = {
+      id: { _serialized: 'resume', fromMe: false },
+      t: now,
+    };
+    page.__zlWaUnread.soundAt -= 60;
+    page.__zlWaUnread.tick();
+    expect(
+      page.ferdium.pushWhatsAppUnread.mock.calls.at(-1)[0].notify,
+    ).toBeUndefined();
+  });
+
   it('pushes a changed message total in the same event turn without polling or profile/avatar work', async () => {
     expect(watchWhatsAppUnread()).toBe(true);
     chats[0].unreadCount = 9;
@@ -95,7 +152,7 @@ describe('live WhatsApp unread signals', () => {
   it('does not install duplicate subscriptions and removes them on page disposal', () => {
     watchWhatsAppUnread();
     watchWhatsAppUnread();
-    expect(collection.on).toHaveBeenCalledTimes(9);
+    expect(collection.on).toHaveBeenCalledTimes(10);
     page.__zlWaUnread.dispose();
     expect(listeners.size).toBe(0);
     expect(clearInterval).toHaveBeenCalledWith(123);

@@ -8,10 +8,16 @@ export function playNotificationSound(silent = false): boolean {
     audio ??= new Audio(
       new URL('assets/sounds/ding-dong.wav', window.location.href).href,
     );
-    audio.volume = 0.65;
+    audio.volume = 0.85;
     audio.currentTime = 0;
     lastPlayed = Date.now();
-    void audio.play().catch(() => {});
+    const playedAt = lastPlayed;
+    void audio.play().catch(() => {
+      if (lastPlayed === playedAt) {
+        audio = undefined;
+        lastPlayed = Number.NEGATIVE_INFINITY;
+      }
+    });
     return true;
   } catch {
     return false;

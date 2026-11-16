@@ -43,6 +43,26 @@ describe('aggregate conversation folders', () => {
     expect(moved.members).toEqual({ 'A:10001': 'vip' });
     expect(a.id).toBe('10001@c.us');
   });
+  it('moves exactly the selected nine conversations even when 139 rows are loaded', () => {
+    const rows = Array.from({ length: 139 }, (_, i) => ({
+      ...row('A'),
+      id: `${10000 + i}@c.us`,
+      key: `A:${i}`,
+      membershipKey: `A:${i}`,
+    }));
+    const selected = rows.slice(0, 9).map(item => ({ ...item }));
+    const moved = moveConversations(config(), selected, 'vip');
+    const restored = normalizeConversationGroups(
+      JSON.parse(JSON.stringify(moved)),
+    );
+    expect(
+      rows.filter(item => conversationGroup(restored, item) === 'vip'),
+    ).toHaveLength(9);
+    expect(
+      rows.filter(item => conversationGroup(restored, item) === 'default'),
+    ).toHaveLength(130);
+  });
+
   it('returns conversations to default when deleting a folder, and protects default', () => {
     const a = row('A');
     const removed = removeConversationGroup(

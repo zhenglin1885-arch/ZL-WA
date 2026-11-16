@@ -79,6 +79,7 @@ const ConversationSidebar = observer(
     }>();
     const [dialog, setDialog] = useState<{
       kind: 'create' | 'move' | 'rename';
+      rows?: AggregateConversation[];
       id?: string;
       anchor: HTMLElement;
       value: string;
@@ -187,9 +188,9 @@ const ConversationSidebar = observer(
       void perform(async () => {
         if (!dialog) return;
         if (dialog.kind === 'move') {
-          if (chosen.length === 0) throw new Error('请先选择会话');
+          if (!dialog.rows?.length) throw new Error('请先选择会话');
           if (!dialog.value) throw new Error('请选择分组');
-          await save(moveConversations(config, chosen, dialog.value));
+          await save(moveConversations(config, dialog.rows, dialog.value));
           setSelected(new Set());
         } else {
           if (
@@ -505,7 +506,7 @@ const ConversationSidebar = observer(
                 selectable.length > 0 && chosen.length === selectable.length
               }
               disabled={selectable.length === 0}
-              title="全选已展开分组中的当前筛选结果"
+              title={`跨所有已展开分组，选择当前筛选的 ${selectable.length} 个会话`}
               onChange={() =>
                 setSelected(
                   chosen.length === selectable.length
@@ -514,7 +515,7 @@ const ConversationSidebar = observer(
                 )
               }
             />
-            全选
+            全选筛选结果（{selectable.length}）
           </label>
           <span>已选 {chosen.length}</span>
           <button
@@ -524,6 +525,7 @@ const ConversationSidebar = observer(
               setNotice('');
               setDialog({
                 kind: 'move',
+                rows: chosen.map(row => ({ ...row })),
                 anchor: event.currentTarget,
                 value: '',
               });
@@ -658,6 +660,22 @@ const ConversationSidebar = observer(
                   }
                 />
               )}
+              {dialog.kind === 'move' && (
+                <div>
+                  <p>
+                    本次仅移动以下 {dialog.rows?.length || 0}{' '}
+                    个会话（含所属账号）：
+                  </p>
+                  <ul style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {dialog.rows?.map(row => (
+                      <li key={row.key}>
+                        {row.name || row.phone} ·{' '}
+                        {row.accountRemark || row.accountName}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {notice && <p role="alert">{notice}</p>}
               <div className="conversation-popup__actions">
                 <button
@@ -672,7 +690,7 @@ const ConversationSidebar = observer(
                   disabled={
                     busy ||
                     (dialog.kind === 'move' &&
-                      (!dialog.value || chosen.length === 0))
+                      (!dialog.value || !dialog.rows?.length))
                   }
                 >
                   确认

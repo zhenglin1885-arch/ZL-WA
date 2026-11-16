@@ -23,6 +23,8 @@ import {
   type AccountIdentity,
 } from '../../../features/accounts/whatsapp';
 import { configureWhatsAppLayout } from '../../../features/accounts/layout';
+import { playNotificationSound } from '../../../features/accounts/notificationSound';
+import { isInTimeframe } from '../../../helpers/schedule-helpers';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
 import { configureWhatsAppVoice } from '../../../features/accounts/voice';
 import { configureWhatsAppAudioUpload } from '../../../features/accounts/audioUpload';
@@ -420,6 +422,19 @@ class ServiceWebview extends Component<IProps> {
     ];
     if (service.accountSnapshot.ownerId && !owners.includes(value.ownerId))
       return;
+    const settings = this.props.stores?.settings.all.app;
+    if (
+      value.notify === true &&
+      settings &&
+      !settings.isAppMuted &&
+      !service.isMuted &&
+      service.isNotificationEnabled &&
+      !(
+        settings.scheduledDNDEnabled &&
+        isInTimeframe(settings.scheduledDNDStart, settings.scheduledDNDEnd)
+      )
+    )
+      playNotificationSound();
     this.unreadRevision += 1;
     service.accountUnreadLive = true;
     runInAction(() => {

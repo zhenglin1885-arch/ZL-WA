@@ -38,7 +38,7 @@ describe('local notification chime', () => {
       'file:///app/assets/sounds/ding-dong.wav',
     );
     expect(audio.currentTime).toBe(0);
-    expect(audio.volume).toBe(0.65);
+    expect(audio.volume).toBe(0.85);
     expect(play()).toBe(false);
     jest.mocked(Date.now).mockReturnValue(11_201);
     expect(play()).toBe(true);
@@ -51,5 +51,8 @@ describe('local notification chime', () => {
     audio.play.mockRejectedValue(new Error('no audio device'));
     expect(play()).toBe(true);
     await Promise.resolve();
+    audio.play.mockResolvedValue(undefined);
+    expect(play()).toBe(true);
+    expect(AudioMock).toHaveBeenCalledTimes(2);
   });
 });
