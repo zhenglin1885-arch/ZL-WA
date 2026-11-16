@@ -1,0 +1,72 @@
+name: Publish verified Windows UI test
+on:
+  push:
+    branches: ['publish/windows-fixes-28737a3']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify source build
+        run: |
+          for attempt in $(seq 1 60); do
+            gh api repos/$GH_REPO/actions/runs/43793980173 > run.json
+            if python3 -c 'import json,sys;sys.exit(json.load(open("run.json"))["status"]!="completed")'; then break; fi
+            sleep 20
+          done
+          gh api repos/$GH_REPO/actions/runs/43793980173/jobs > jobs.json
+          python3 - <<'PY'
+          import json
+          r=json.load(open('run.json'))
+          assert r['head_sha']=='28737a343b41f390b40ffbf6987f55d99eace4f6'
+          assert r['status']=='completed'
+          jobs=json.load(open('jobs.json'))['jobs']
+          assert len(jobs)==1
+          steps={s['name']:s['conclusion'] for s in jobs[0]['steps']}
+          for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:
+            assert steps[name]=='success', name
+          assert [s['name'] for s in jobs[0]['steps'] if s['conclusion']=='failure']==['Create checksums and publish test release']
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZL-WA-Windows-x64
+          run-id: 43793980173
+          github-token: ${{ github.token }}
+          path: out
+      - name: Check packages and startup report
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('out')
+          expected={'ZL-WA-win-AutoSetup-7.3.8-x64.exe','ZL-WA-win-Portable-7.3.8-x64.exe'}
+          assert {p.name for p in root.glob('*.exe')}==expected
+          checksums={}
+          for name in sorted(expected):
+            with (root/name).open('rb') as f:
+              assert f.read(2)==b'MZ',name
+              f.seek(0)
+              checksums[name]=hashlib.file_digest(f,'sha256').hexdigest()
+          r=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+          assert r['commit']=='28737a343b41f390b40ffbf6987f55d99eace4f6'
+          assert r['nativePackagedStartup'] and r['mainProcessResumeReload']
+          (root/'SHA256SUMS.txt').write_text(''.join(f'{v}  {k}\n' for k,v in checksums.items()))
+          PY
+      - name: Publish independent prerelease
+        run: |
+          cat > notes.md <<'EOF'
+          Windows x64 测试版，基于提交 28737a3。
+          - 群内消息置顶保持 WhatsApp 官方行为，与聊天列表本地置顶隔离，修复消息菜单被误拦截的问题。
+          - 新消息声音增加独立兜底，音量从 65% 调至 85%，保留静音和免打扰设置。
+          - 聚合会话移动分组锁定本次选择，确认前显示数量与名单，标明全选范围。
+          - 保留 SABCD 最新配色和昵称后置显示。
+
+          本次未自动调整已有分组归属；原有 139 个客户的误入来源尚未确定。
+          完整类型检查、自动测试、Windows 安装检查、打包启动及恢复验证均通过。附带 SHA256 校验值与启动验证报告。
+          EOF
+          gh release create test-7.3.8-20261115-4 out/*.exe out/SHA256SUMS.txt out/windows-startup-verification.json --target 28737a343b41f390b40ffbf6987f55d99eace4f6 --prerelease --latest=false --title 'ZL-WA 7.3.8 Windows 界面功能测试版' --notes-file notes.md
