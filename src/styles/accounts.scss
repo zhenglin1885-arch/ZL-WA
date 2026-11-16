@@ -643,6 +643,21 @@ body:not(.theme__dark) .account-sidebar {
     width: 100%;
   }
   .conversation-group {
+    &.is-dragging {
+      opacity: 0.5;
+    }
+    &.drop-before {
+      box-shadow: inset 0 3px #579dff;
+    }
+    &.drop-after {
+      box-shadow: inset 0 -3px #579dff;
+    }
+    > button:first-child[draggable='true'] {
+      cursor: grab;
+    }
+    > button:first-child[draggable='true']:active {
+      cursor: grabbing;
+    }
     position: absolute;
     left: 0;
     right: 0;

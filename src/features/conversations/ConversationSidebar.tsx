@@ -24,6 +24,7 @@ import { customerFlagNames, type CustomerFlag } from '../customers/types';
 import { getConversationRuntime } from './runtime';
 import {
   normalizeConversationGroups,
+  reorderConversationGroup,
   conversationGroup,
   moveConversations,
   searchConversation,
@@ -62,6 +63,19 @@ const ConversationSidebar = observer(
       [stores, activate],
     );
     const [, render] = useState(0);
+    const draggedGroup = useRef('');
+    const suppressGroupClick = useRef(0);
+    const [draggingGroup, setDraggingGroup] = useState('');
+    const [groupDrop, setGroupDrop] = useState<{
+      id: string;
+      after: boolean;
+    } | null>(null);
+    const endGroupDrag = () => {
+      draggedGroup.current = '';
+      suppressGroupClick.current = Date.now() + 250;
+      setDraggingGroup('');
+      setGroupDrop(null);
+    };
     const [search, setSearch] = useState('');
     const [kind, setKind] = useState('all');
     const [account, setAccount] = useState('all');
@@ -152,8 +166,9 @@ const ConversationSidebar = observer(
     }
     const displayed = entries.filter(
       entry =>
-        entry.top + entry.height >= scroll - 430 &&
-        entry.top < scroll + height + 430,
+        (!entry.row && entry.group === draggingGroup) ||
+        (entry.top + entry.height >= scroll - 430 &&
+          entry.top < scroll + height + 430),
     );
     const avatarRows = displayed.flatMap(entry =>
       entry.row ? [entry.row] : [],
@@ -335,6 +350,14 @@ const ConversationSidebar = observer(
         <div
           className="conversation-list"
           ref={list}
+          onDragOver={event => {
+            if (!draggedGroup.current) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientY < bounds.top + 32)
+              event.currentTarget.scrollTop -= 16;
+            else if (event.clientY > bounds.bottom - 32)
+              event.currentTarget.scrollTop += 16;
+          }}
           onScroll={event => setScroll(event.currentTarget.scrollTop)}
         >
           <div
@@ -349,11 +372,69 @@ const ConversationSidebar = observer(
                 return (
                   <div
                     key={`group:${entry.group}`}
-                    className="conversation-group"
+                    className={`conversation-group ${draggingGroup === group.id ? 'is-dragging' : ''} ${groupDrop?.id === group.id ? (groupDrop.after ? 'drop-after' : 'drop-before') : ''}`}
+                    data-group-id={group.id}
+                    onDragOver={event => {
+                      if (
+                        !draggedGroup.current ||
+                        busy ||
+                        draggedGroup.current === group.id
+                      )
+                        return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      const bounds =
+                        event.currentTarget.getBoundingClientRect();
+                      const after =
+                        event.clientY > bounds.top + bounds.height / 2;
+                      if (
+                        groupDrop?.id !== group.id ||
+                        groupDrop.after !== after
+                      )
+                        setGroupDrop({ id: group.id, after });
+                    }}
+                    onDragLeave={event => {
+                      if (
+                        !event.currentTarget.contains(
+                          event.relatedTarget as Node | null,
+                        )
+                      )
+                        setGroupDrop(null);
+                    }}
+                    onDrop={event => {
+                      const source = draggedGroup.current;
+                      if (!source) return;
+                      event.preventDefault();
+                      const bounds =
+                        event.currentTarget.getBoundingClientRect();
+                      const next = reorderConversationGroup(
+                        config,
+                        source,
+                        group.id,
+                        event.clientY > bounds.top + bounds.height / 2,
+                      );
+                      endGroupDrag();
+                      if (!busy && next !== config)
+                        void perform(() => save(next));
+                    }}
                     style={{ top: entry.top, height: entry.height }}
                   >
                     <button
                       type="button"
+                      draggable={!busy}
+                      title="按住分组名称上下拖动排序"
+                      onDragStart={event => {
+                        draggedGroup.current = group.id;
+                        setDraggingGroup(group.id);
+                        setGroupDrop(null);
+                        setMenu(undefined);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData(
+                          'application/x-zl-wa-conversation-group',
+                          group.id,
+                        );
+                      }}
+                      onDragEnd={endGroupDrag}
                       aria-expanded={!group.collapsed}
                       disabled={busy}
                       onContextMenu={event => {
@@ -366,7 +447,8 @@ const ConversationSidebar = observer(
                             top: event.clientY,
                           });
                       }}
-                      onClick={() =>
+                      onClick={() => {
+                        if (Date.now() < suppressGroupClick.current) return;
                         void perform(() =>
                           save({
                             ...config,
@@ -376,8 +458,8 @@ const ConversationSidebar = observer(
                                 : g,
                             ),
                           }),
-                        )
-                      }
+                        );
+                      }}
                     >
                       {group.collapsed ? '▸' : '▾'} {group.name} (
                       {

@@ -1,5 +1,6 @@
 import {
   normalizeConversationGroups,
+  reorderConversationGroup,
   moveConversations,
   removeConversationGroup,
   conversationGroup,
@@ -34,6 +35,45 @@ const config = () =>
     members: {},
   });
 describe('aggregate conversation folders', () => {
+  it('reorders folders above and below targets and persists default-folder position without changing memberships', () => {
+    const original = normalizeConversationGroups({
+      groups: [
+        { id: 'a', name: 'A', collapsed: true },
+        { id: 'b', name: 'B', collapsed: false },
+      ],
+      members: { 'owner:123@c.us': 'a' },
+    });
+    const up = reorderConversationGroup(original, 'b', 'a', false);
+    expect(up.groups.map(g => g.id)).toEqual(['default', 'b', 'a']);
+    const down = reorderConversationGroup(up, 'default', 'a', true);
+    const restored = normalizeConversationGroups(
+      JSON.parse(JSON.stringify(down)),
+    );
+    expect(restored.groups.map(g => g.id)).toEqual(['b', 'a', 'default']);
+    expect(restored.groups[1].collapsed).toBe(true);
+    expect(restored.members).toEqual(original.members);
+    expect(down.members).toBe(original.members);
+    expect(original.groups.map(g => g.id)).toEqual(['default', 'a', 'b']);
+    expect(() => removeConversationGroup(restored, 'default')).toThrow();
+  });
+  it('ignores missing/self drop targets and normalizes duplicate default groups at the saved position', () => {
+    const folders = normalizeConversationGroups({
+      groups: [
+        { id: 'a', name: 'A', collapsed: false },
+        { id: 'default', name: '默认分组', collapsed: true },
+        { id: 'default', name: '重复', collapsed: false },
+      ],
+    });
+    expect(folders.groups.map(g => g.id)).toEqual(['a', 'default']);
+    expect(folders.groups[1].collapsed).toBe(true);
+    expect(reorderConversationGroup(folders, 'a', 'a', true)).toBe(folders);
+    expect(reorderConversationGroup(folders, 'missing', 'a', false)).toBe(
+      folders,
+    );
+    expect(reorderConversationGroup(folders, 'a', 'missing', true)).toBe(
+      folders,
+    );
+  });
   it('keeps the same contact on different accounts separate and persists only folder membership', () => {
     const a = row('A');
     const b = row('B');

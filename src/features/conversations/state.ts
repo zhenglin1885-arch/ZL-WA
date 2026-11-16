@@ -8,26 +8,21 @@ export const DEFAULT_CONVERSATION_GROUP = 'default';
 export function normalizeConversationGroups(
   raw?: Partial<ConversationGroups>,
 ): ConversationGroups {
-  const groups: ConversationGroups['groups'] = [
-    {
-      id: 'default',
-      name: '默认分组',
-      collapsed: Boolean(raw?.groups?.find(g => g.id === 'default')?.collapsed),
-    },
-  ];
+  const groups: ConversationGroups['groups'] = [];
   for (const g of raw?.groups || [])
     if (
       typeof g.id === 'string' &&
-      g.id !== 'default' &&
+      g.id &&
       !groups.some(x => x.id === g.id) &&
-      typeof g.name === 'string' &&
-      g.name.trim()
+      (g.id === 'default' || (typeof g.name === 'string' && g.name.trim()))
     )
       groups.push({
         id: g.id,
-        name: g.name.trim().slice(0, 60),
+        name: g.id === 'default' ? '默认分组' : g.name.trim().slice(0, 60),
         collapsed: Boolean(g.collapsed),
       });
+  if (!groups.some(g => g.id === 'default'))
+    groups.unshift({ id: 'default', name: '默认分组', collapsed: false });
   return {
     groups,
     members: Object.fromEntries(
@@ -37,6 +32,28 @@ export function normalizeConversationGroups(
     ),
   };
 }
+export function reorderConversationGroup(
+  config: ConversationGroups,
+  source: string,
+  target: string,
+  after: boolean,
+): ConversationGroups {
+  const moved = config.groups.find(group => group.id === source);
+  if (
+    !moved ||
+    source === target ||
+    !config.groups.some(group => group.id === target)
+  )
+    return config;
+  const groups = config.groups.filter(group => group.id !== source);
+  groups.splice(
+    groups.findIndex(group => group.id === target) + (after ? 1 : 0),
+    0,
+    moved,
+  );
+  return { ...config, groups };
+}
+
 export function conversationGroup(
   config: ConversationGroups,
   row: AggregateConversation,
