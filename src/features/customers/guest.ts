@@ -496,8 +496,9 @@ export function customerTick(
         state.menuChat = state.resolveRow?.(row) || '';
         state.installPinCommands();
       } else if (
+        target.closest?.('#main, [role="dialog"]') ||
         !target.closest?.(
-          '[role="menu"], [role="menuitem"], [role="button"], [data-animate-dropdown], [data-animate-dropdown-item], [data-testid="mi-pin"], [data-testid="mi-unpin"], li, button',
+          '[role="menu"], [role="menuitem"], [role="presentation"], [data-animate-dropdown], [data-animate-dropdown-item], [data-testid="mi-pin"], [data-testid="mi-unpin"]',
         )
       )
         state.menuChat = '';
@@ -505,19 +506,14 @@ export function customerTick(
     window.addEventListener('pointerdown', rememberRow, true);
     window.addEventListener('mousedown', rememberRow, true);
     document.addEventListener('contextmenu', rememberRow, true);
-    document.addEventListener(
-      'focusin',
-      event => {
-        if ((event.target as Element).closest?.('#pane-side [role="row"]'))
-          rememberRow(event);
-      },
-      true,
-    );
+    document.addEventListener('focusin', rememberRow, true);
     const pinMenuEvent = (event: Event) => {
       const target = event.target as Element;
       const item = target.closest?.(
         '[role="menuitem"], [data-testid="mi-pin"], [data-testid="mi-unpin"], [data-animate-dropdown-item], [role="button"], li, button',
       );
+      // Chat-list pinning must never consume message/header/dialog actions.
+      if (target.closest?.('#main, [role="dialog"]')) return;
       if (!item || !state.menuChat || !state.data) return;
       const text = (item.textContent || item.getAttribute('aria-label') || '')
         .replaceAll(/\s+/g, ' ')
