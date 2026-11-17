@@ -2,10 +2,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+const expectedVersion = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 const [executable, arch, output] = process.argv.slice(2);
 assert.equal(process.platform, 'darwin');
 assert(['arm64', 'x64'].includes(arch));
@@ -107,7 +110,7 @@ try {
       setTimeout(resolve, 500);
     });
   }
-  assert.equal(state.version, '7.3.8');
+  assert.equal(state.version, expectedVersion);
   assert.equal(state.arch, arch);
   assert.equal(state.platform, 'darwin');
   assert(
