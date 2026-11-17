@@ -25,6 +25,10 @@ import {
 import { configureWhatsAppLayout } from '../../../features/accounts/layout';
 import { playNotificationSound } from '../../../features/accounts/notificationSound';
 import { isInTimeframe } from '../../../helpers/schedule-helpers';
+import {
+  isFacebookBusiness,
+  readFacebookSnapshot,
+} from '../../../features/accounts/facebook';
 import { watchWhatsAppUnread } from '../../../features/accounts/unread';
 import { configureWhatsAppVoice } from '../../../features/accounts/voice';
 import { configureWhatsAppAudioUpload } from '../../../features/accounts/audioUpload';
@@ -221,7 +225,51 @@ class ServiceWebview extends Component<IProps> {
     }, wait);
   };
 
+  pollFacebookAccount = async (): Promise<void> => {
+    const { service } = this.props;
+    const view = this.webview?.view;
+    if (
+      !view ||
+      this.disposed ||
+      this.accountPollRunning ||
+      service.isHibernating ||
+      !service.isEnabled
+    )
+      return;
+    const epoch = this.accountDocumentEpoch;
+    this.accountPollRunning = true;
+    this.lastAccountPollAt = Date.now();
+    try {
+      const snapshot = await view.executeJavaScript(
+        `(${readFacebookSnapshot.toString()})()`,
+      );
+      if (
+        !this.disposed &&
+        this.webview?.view === view &&
+        epoch === this.accountDocumentEpoch &&
+        service.isEnabled &&
+        !service.isHibernating
+      )
+        runInAction(() => {
+          service.accountSnapshot = { status: snapshot.status };
+        });
+    } catch {
+      if (
+        !this.disposed &&
+        this.webview?.view === view &&
+        epoch === this.accountDocumentEpoch
+      )
+        runInAction(() => {
+          service.accountSnapshot = { status: 'loading' };
+        });
+    } finally {
+      this.accountPollRunning = false;
+    }
+  };
+
   pollAccount = async (): Promise<void> => {
+    if (isFacebookBusiness(this.props.service))
+      return this.pollFacebookAccount();
     const { service, stores } = this.props;
     const view = this.webview?.view;
     if (
@@ -622,7 +670,10 @@ class ServiceWebview extends Component<IProps> {
     webview.addEventListener('console-message', this.handleConsoleMessage);
     webview.addEventListener('did-navigate', this.handleDidNavigate);
     webview.addEventListener('page-title-updated', this.handlePageTitleUpdated);
-    if (this.props.service.recipe?.id === 'whatsapp') {
+    if (
+      this.props.service.recipe?.id === 'whatsapp' ||
+      isFacebookBusiness(this.props.service)
+    ) {
       webview.addEventListener(
         'did-start-loading',
         this.accountNavigationStarted,
