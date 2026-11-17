@@ -225,6 +225,15 @@ class ServiceWebview extends Component<IProps> {
     }, wait);
   };
 
+  facebookNavigationStarted = (event: Event): void => {
+    const navigation = event as Event & {
+      isMainFrame?: boolean;
+      isInPlace?: boolean;
+    };
+    if (navigation.isMainFrame && !navigation.isInPlace)
+      this.accountNavigationStarted();
+  };
+
   pollFacebookAccount = async (): Promise<void> => {
     const { service } = this.props;
     const view = this.webview?.view;
@@ -239,10 +248,17 @@ class ServiceWebview extends Component<IProps> {
     const epoch = this.accountDocumentEpoch;
     this.accountPollRunning = true;
     this.lastAccountPollAt = Date.now();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const snapshot = await view.executeJavaScript(
-        `(${readFacebookSnapshot.toString()})()`,
-      );
+      const snapshot = await Promise.race([
+        view.executeJavaScript(`(${readFacebookSnapshot.toString()})()`),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Facebook status read timed out')),
+            8000,
+          );
+        }),
+      ]);
       if (
         !this.disposed &&
         this.webview?.view === view &&
@@ -263,6 +279,7 @@ class ServiceWebview extends Component<IProps> {
           service.accountSnapshot = { status: 'loading' };
         });
     } finally {
+      if (timeout) clearTimeout(timeout);
       this.accountPollRunning = false;
     }
   };
@@ -674,11 +691,18 @@ class ServiceWebview extends Component<IProps> {
       this.props.service.recipe?.id === 'whatsapp' ||
       isFacebookBusiness(this.props.service)
     ) {
-      webview.addEventListener(
-        'did-start-loading',
-        this.accountNavigationStarted,
-      );
-      webview.addEventListener('ipc-message', this.handleUnread);
+      if (this.props.service.recipe?.id === 'whatsapp') {
+        webview.addEventListener(
+          'did-start-loading',
+          this.accountNavigationStarted,
+        );
+        webview.addEventListener('ipc-message', this.handleUnread);
+      } else {
+        webview.addEventListener(
+          'did-start-navigation',
+          this.facebookNavigationStarted,
+        );
+      }
       webview.addEventListener('did-stop-loading', this.pollAccount);
       this.accountPollTimer = setInterval(() => {
         if (
@@ -696,6 +720,11 @@ class ServiceWebview extends Component<IProps> {
       clearInterval(this.accountPollTimer);
       this.accountPollTimer = null;
     }
+    if (webview)
+      webview.removeEventListener(
+        'did-start-navigation',
+        this.facebookNavigationStarted,
+      );
     if (!webview) {
       return;
     }

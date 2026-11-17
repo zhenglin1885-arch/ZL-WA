@@ -1,6 +1,8 @@
 /* eslint-disable unicorn/consistent-function-scoping -- Serialized guest functions keep their helpers local. */
 // WhatsApp-specific integration stays outside the pinned upstream recipes.
 // Functions executed in a guest page must be self-contained (no outer closures).
+import { isFacebookBusiness } from './facebook';
+
 export interface AccountSnapshot {
   status: 'online' | 'logged-out' | 'error' | 'loading';
   nickname?: string;
@@ -366,6 +368,8 @@ export async function markAllWhatsAppRead(): Promise<{
 }
 
 export function accountStatus(service: {
+  recipe?: { id: string; name?: string; serviceURL?: string };
+  url?: string;
   isEnabled: boolean;
   isLoading: boolean;
   isError: boolean;
@@ -376,6 +380,14 @@ export function accountStatus(service: {
   if (service.isHibernating) return 'sleeping';
   if (!service.isEnabled) return 'logged-out';
   if (service.isError || service.hasCrashed) return 'error';
+  // Business Suite can keep child frames loading after authentication is known.
+  // Main-document navigation explicitly resets the snapshot to loading.
+  if (
+    service.recipe &&
+    isFacebookBusiness({ recipe: service.recipe, url: service.url }) &&
+    ['online', 'logged-out'].includes(service.accountSnapshot.status)
+  )
+    return service.accountSnapshot.status;
   if (service.isLoading) return 'loading';
   return service.accountSnapshot.status;
 }
