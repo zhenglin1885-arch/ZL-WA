@@ -8,10 +8,10 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 150
     permissions:
       contents: write
-      actions: read
+      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -23,24 +23,40 @@ jobs:
     - name: Verify same-source successful platform builds
       run: |
         set -euo pipefail
-        for attempt in $(seq 1 90); do
-          gh api repos/$GH_REPO/actions/runs/44154160738 > arm-run.json
-          if python3 -c 'import json,sys;sys.exit(json.load(open("arm-run.json"))["status"]!="completed")'; then break; fi
-          sleep 20
-        done
-        gh api repos/$GH_REPO/actions/runs/44151675728 > main-run.json
-        gh api repos/$GH_REPO/actions/runs/44151675728/jobs > main-jobs.json
-        gh api repos/$GH_REPO/actions/runs/44154160738/jobs > arm-jobs.json
         python3 - <<'VERIFY'
-        import json,os
-        main=json.load(open('main-run.json'));arm=json.load(open('arm-run.json'))
+        import json,os,subprocess,time
+        repo=os.environ['GH_REPO']
+        def api(path,post=False):
+         args=['gh','api']+(['--method','POST'] if post else [])+[f'repos/{repo}/{path}']
+         data=subprocess.check_output(args,text=True)
+         return json.loads(data) if data.strip() else None
+        main=api('actions/runs/44151675728')
         assert main['head_sha']==os.environ['ZL_SOURCE_COMMIT']
-        assert arm['status']=='completed' and arm['conclusion']=='success'
-        assert arm['head_sha']=='dbad699fc00cecec5a3113e74238272311061877'
-        main_jobs={j['name']:j for j in json.load(open('main-jobs.json'))['jobs']}
+        main_jobs=api('actions/runs/44151675728/jobs?filter=all&per_page=100')['jobs']
         for name in ['windows','macos (x64, macos-26-intel)']:
-         assert main_jobs[name]['conclusion']=='success',name
-        assert all(j['conclusion']=='success' for j in json.load(open('arm-jobs.json'))['jobs'])
+         assert any(j['name']==name and j['conclusion']=='success' for j in main_jobs),name
+        builds=[(44151675728,os.environ['ZL_SOURCE_COMMIT']),(44154160738,'dbad699fc00cecec5a3113e74238272311061877')]
+        retried=set();budget={run:0 for run,_ in builds}
+        for attempt in range(360):
+         for run,head in builds:
+          r=api(f'actions/runs/{run}');assert r['head_sha']==head
+          jobs=api(f'actions/runs/{run}/jobs?filter=all&per_page=100')['jobs']
+          arms=[j for j in jobs if j['name'].startswith('macos (arm64,')]
+          if not arms:continue
+          latest=max(arms,key=lambda j:j['id'])
+          if latest['status']=='completed' and latest['conclusion']=='success':
+           with open(os.environ['GITHUB_ENV'],'a') as env:env.write(f'ARM_RUN_ID={run}\n')
+           print('Selected successful native arm64 job',latest['id'],'from run',run)
+           raise SystemExit(0)
+          if latest['conclusion']=='cancelled' and latest['id'] not in retried and budget[run]<3:
+           annotations=api(f'check-runs/{latest["id"]}/annotations')
+           capacity=any('capacity' in a.get('message','').lower() or 'not acquired by runner' in a.get('message','').lower() for a in annotations)
+           if capacity:
+            api(f'actions/jobs/{latest["id"]}/rerun',post=True)
+            retried.add(latest['id']);budget[run]+=1
+            print('Retried native arm64 job after capacity cancellation',latest['id'])
+         time.sleep(20)
+        raise AssertionError('Native arm64 capacity unavailable; no release published')
         VERIFY
     - uses: actions/download-artifact@v4
       with:
@@ -57,7 +73,7 @@ jobs:
     - uses: actions/download-artifact@v4
       with:
         name: ZL-WA-7.3.9-macOS-arm64
-        run-id: 44154160738
+        run-id: ${{ env.ARM_RUN_ID }}
         github-token: ${{ github.token }}
         path: release-assets
     - name: Validate all packages and reports
@@ -100,6 +116,20 @@ jobs:
         fi
         gh api repos/$GH_REPO/git/ref/tags/v7.3.9 > tag.json
         python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["ZL_SOURCE_COMMIT"]'
+        if gh release view v7.3.9 --json isDraft,assets > existing.json 2>/dev/null; then
+          for attempt in $(seq 1 30); do
+            gh release view v7.3.9 --json isDraft,assets > existing.json
+            if python3 - <<'EXISTS'
+        import json
+        r=json.load(open('existing.json'))
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'}|{f'ZL-WA-macOS-7.3.9-{a}.{e}' for a in ['x64','arm64'] for e in ['dmg','zip']}
+        assert not r['isDraft'] and expected<={a['name'] for a in r['assets']}
+        EXISTS
+            then exit 0; fi
+            sleep 10
+          done
+          exit 1
+        fi
         gh release create v7.3.9 release-assets/* --verify-tag --target "$ZL_SOURCE_COMMIT" --draft --title 'ZL-WA 7.3.9' --notes-file release-notes.md
         gh api repos/$GH_REPO/git/ref/tags/v7.3.9 > tag.json
         python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["ZL_SOURCE_COMMIT"]'
