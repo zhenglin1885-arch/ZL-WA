@@ -1,0 +1,106 @@
+name: Publish 7.3.9 verified cross-platform stable
+'on':
+  push:
+    branches:
+    - publish/7.3.9-stable
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ZL_SOURCE_COMMIT: a5dec6fb5fd23c5fbcb4604a63ff1ee7b39dc963
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: a5dec6fb5fd23c5fbcb4604a63ff1ee7b39dc963
+    - name: Verify same-source successful platform builds
+      run: |
+        set -euo pipefail
+        for attempt in $(seq 1 90); do
+          gh api repos/$GH_REPO/actions/runs/44154160738 > arm-run.json
+          if python3 -c 'import json,sys;sys.exit(json.load(open("arm-run.json"))["status"]!="completed")'; then break; fi
+          sleep 20
+        done
+        gh api repos/$GH_REPO/actions/runs/44151675728 > main-run.json
+        gh api repos/$GH_REPO/actions/runs/44151675728/jobs > main-jobs.json
+        gh api repos/$GH_REPO/actions/runs/44154160738/jobs > arm-jobs.json
+        python3 - <<'VERIFY'
+        import json,os
+        main=json.load(open('main-run.json'));arm=json.load(open('arm-run.json'))
+        assert main['head_sha']==os.environ['ZL_SOURCE_COMMIT']
+        assert arm['status']=='completed' and arm['conclusion']=='success'
+        assert arm['head_sha']=='dbad699fc00cecec5a3113e74238272311061877'
+        main_jobs={j['name']:j for j in json.load(open('main-jobs.json'))['jobs']}
+        for name in ['windows','macos (x64, macos-26-intel)']:
+         assert main_jobs[name]['conclusion']=='success',name
+        assert all(j['conclusion']=='success' for j in json.load(open('arm-jobs.json'))['jobs'])
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: 44151675728
+        github-token: ${{ github.token }}
+        path: release-assets
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-macOS-x64
+        run-id: 44151675728
+        github-token: ${{ github.token }}
+        path: release-assets
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-macOS-arm64
+        run-id: 44154160738
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate all packages and reports
+      run: |
+        python3 - <<'VERIFY'
+        import hashlib,json,os,pathlib
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'}
+        expected|={f'ZL-WA-macOS-7.3.9-{arch}.{ext}' for arch in ['x64','arm64'] for ext in ['dmg','zip']}
+        actual={p.name for p in root.iterdir() if p.suffix in ['.exe','.dmg','.zip']}
+        assert actual==expected,(actual,expected)
+        commit=os.environ['ZL_SOURCE_COMMIT']
+        w=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert w['version']=='7.3.9' and w['commit']==commit and w['nativePackagedStartup'] and w['mainProcessResumeReload']
+        notes=pathlib.Path('docs/releases/7.3.9.md').read_text()+'\n## macOS 签名状态\n'
+        for arch in ['x64','arm64']:
+         v=json.loads((root/f'verification-{arch}.json').read_text())
+         assert v['version']=='7.3.9' and v['arch']==arch and v['commit']==commit
+         assert v['signatureValid'] and v['zipDmgPayloadIdentical'] and v['startup']['nativePackagedStartup']
+         for f in v['files']:
+          p=root/f['name']
+          with p.open('rb') as stream: assert hashlib.file_digest(stream,'sha256').hexdigest()==f['sha256']
+         label='Intel' if arch=='x64' else 'Apple 芯片（M 系列）'
+         notes+=f"- {label}：签名方式 {v['signing']}；Apple 公证：{'已完成' if v['notarized'] else '未配置，尚未公证'}。\n"
+         if not v['notarized']: notes+='  首次打开如被 macOS 阻止，请在“系统设置 → 隐私与安全性”中查看并允许打开。\n'
+        checksums=[]
+        for name in sorted(expected):
+         p=root/name
+         assert p.stat().st_size>1000000
+         with p.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
+         checksums.append(f'{digest}  {name}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(checksums)+'\n')
+        pathlib.Path('release-notes.md').write_text(notes+f'\n源码提交：`{commit}`。\n')
+        VERIFY
+    - name: Publish Windows and macOS together as stable 7.3.9
+      run: |
+        set -euo pipefail
+        if ! gh api repos/$GH_REPO/git/ref/tags/v7.3.9 > tag.json 2>/dev/null; then
+          gh api --method POST repos/$GH_REPO/git/refs -f ref=refs/tags/v7.3.9 -f sha="$ZL_SOURCE_COMMIT" > /dev/null
+        fi
+        gh api repos/$GH_REPO/git/ref/tags/v7.3.9 > tag.json
+        python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["ZL_SOURCE_COMMIT"]'
+        gh release create v7.3.9 release-assets/* --verify-tag --target "$ZL_SOURCE_COMMIT" --draft --title 'ZL-WA 7.3.9' --notes-file release-notes.md
+        gh api repos/$GH_REPO/git/ref/tags/v7.3.9 > tag.json
+        python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["ZL_SOURCE_COMMIT"]'
+        gh release edit v7.3.9 --draft=false --prerelease=false --latest
