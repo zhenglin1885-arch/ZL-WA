@@ -509,6 +509,22 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(result.error).not.toContain('private message');
     expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
   });
+  it('identifies the removed LID API without leaking the provider message or replaying', async () => {
+    wpp.chat.sendTextMessage.mockRejectedValue(
+      new TypeError(
+        'n.UserPrefs.getMeLidUserOrThrow is not a function PRIVATE_PHONE',
+      ),
+    );
+    const result = await sendBulkMessage('chat@g.us', spec());
+    expect(result).toMatchObject({
+      messageId: '',
+      confirmed: false,
+      halt: true,
+    });
+    expect(result.error).toContain('LID 身份接口不兼容');
+    expect(result.error).not.toContain('PRIVATE_PHONE');
+    expect(wpp.chat.sendTextMessage).toHaveBeenCalledTimes(1);
+  });
   it('checks the actual socket before submission even when the account sidebar still appears online', async () => {
     (window as any).require = () => ({ Socket: { state: 'UNPAIRED' } });
     await expect(sendBulkMessage('chat@g.us', spec())).rejects.toThrow(

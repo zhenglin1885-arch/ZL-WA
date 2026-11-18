@@ -560,8 +560,12 @@ export async function sendBulkMessage(
       // Submission may have happened before the promise rejected. Do not
       // classify it as safely retryable or expose provider/user message text.
       const code = (error as any)?.code || (error as any)?.name;
-      const label =
-        typeof code === 'string' && /^[_a-z][\w-]{0,59}$/i.test(code)
+      const incompatibleLid = /getMeLidUserOrThrow.*not a function/.test(
+        String((error as any)?.message || ''),
+      );
+      const label = incompatibleLid
+        ? '（WhatsApp LID 身份接口不兼容，请更新测试包）'
+        : typeof code === 'string' && /^[_a-z][\w-]{0,59}$/i.test(code)
           ? `（${code}）`
           : '';
       return {

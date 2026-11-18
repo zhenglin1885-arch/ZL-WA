@@ -11,6 +11,7 @@ import moment from 'moment';
 import * as buildInfo from 'preval-build-info';
 import glob from 'tiny-glob';
 import prepareZLPicksRecipes from './build-helpers/prepare-zl-picks-recipes.cjs';
+import prepareWhatsAppLibrary from './build-helpers/prepare-whatsapp-library.cjs';
 
 const { log } = console;
 
@@ -56,9 +57,14 @@ const copyManualAssets = () => {
   prepareZLPicksRecipes('recipes', `${outDir}/recipes`);
   fs.copyFileSync('package.json', `${outDir}/package.json`);
   fs.copyFileSync('electron-builder.npmrc', `${outDir}/.npmrc`);
-  fs.copyFileSync(
-    'node_modules/@wppconnect/wa-js/dist/wppconnect-wa.js',
+  fs.writeFileSync(
     `${outDir}/wppconnect-wa.js`,
+    prepareWhatsAppLibrary(
+      fs.readFileSync(
+        'node_modules/@wppconnect/wa-js/dist/wppconnect-wa.js',
+        'utf8',
+      ),
+    ),
   );
   fs.copyFileSync(
     'node_modules/@wppconnect/wa-js/dist/wppconnect-wa.js.LICENSE.txt',

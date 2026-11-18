@@ -35,7 +35,7 @@ try {
     'one sound per message burst, no sound for silent or clipboard events',
   );
   assert(result.calls[0].src.endsWith('/assets/sounds/ding-dong.wav'));
-  assert.equal(result.calls[0].volume, 0.65);
+  assert.equal(result.calls[0].volume, 0.85);
   assert(
     result.popups.every(popup => popup.silent),
     'OS default sound disabled to avoid duplication',
