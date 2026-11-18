@@ -33,7 +33,7 @@ describe('account network probes', () => {
     expect(result).toMatchObject({ target: 'facebook', ip: '203.0.113.8' });
     expect(result.milliseconds).toBeGreaterThanOrEqual(1);
     expect(fetcher).toHaveBeenCalledWith(
-      'https://business.facebook.com/',
+      'https://business.facebook.com/robots.txt',
       expect.objectContaining({ method: 'HEAD' }),
     );
     expect(fetcher.mock.calls.some(([url]) => url.includes('whatsapp'))).toBe(

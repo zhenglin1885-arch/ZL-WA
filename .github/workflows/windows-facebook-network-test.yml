@@ -147,3 +147,5 @@ jobs:
         NOTES
         printf '\n构建提交：`%s`。\n' "$GITHUB_SHA" >> notes.md
         gh release create test-7.3.9-fb-network-3 out/*.exe out/SHA256SUMS.txt out/windows-startup-verification.json --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows FB网络检测修复测试版' --notes-file notes.md
+
+# Probe a public same-host Meta resource to avoid login redirects.

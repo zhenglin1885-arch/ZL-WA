@@ -2,9 +2,11 @@ import { isIP } from 'node:net';
 
 export type AccountNetworkTarget = 'whatsapp' | 'facebook';
 
+// A public same-host resource avoids login redirects, which authenticated
+// proxy transports intentionally reject. No Facebook login is required.
 export const accountLatencyURL = (target: AccountNetworkTarget) =>
   target === 'facebook'
-    ? 'https://business.facebook.com/'
+    ? 'https://business.facebook.com/robots.txt'
     : 'https://web.whatsapp.com/';
 
 export interface AccountNetworkStatus {

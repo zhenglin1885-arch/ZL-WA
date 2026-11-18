@@ -809,7 +809,7 @@ describe('privileged account tools IPC', () => {
     const fb = await invoke('network-status', 'fb-1', false, 'facebook');
     expect(fb).toMatchObject({ target: 'facebook', ip: '203.0.113.8' });
     expect(s.fetch).toHaveBeenCalledWith(
-      'https://business.facebook.com/',
+      'https://business.facebook.com/robots.txt',
       expect.objectContaining({ method: 'HEAD' }),
     );
     await invoke('network-status', 'fb-1', false, 'facebook');
