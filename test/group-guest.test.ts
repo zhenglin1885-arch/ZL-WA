@@ -95,6 +95,43 @@ describe('native group adapter verification', () => {
     }
     originals.clear();
   });
+  it('lists groups when the unused legacy LID getter throws', async () => {
+    wpp.conn.getMyUserLid = jest.fn(() => {
+      throw new TypeError('n.UserPrefs.getMeLidUserOrThrow is not a function');
+    });
+    expect(await groupGuest({ ownerId })).toMatchObject({
+      groups: [{ id: groupId, admin: true }],
+    });
+    expect(wpp.conn.getMyUserLid).not.toHaveBeenCalled();
+  });
+  it('falls back past an incompatible native identity getter and verifies speech changes', async () => {
+    (globalThis as any).window.require = () => ({
+      getMaybeMePnUser: () => {
+        throw new TypeError('removed PN getter');
+      },
+      getMaybeMeLidUser: () => {
+        throw new TypeError('removed LID getter');
+      },
+    });
+    wpp.conn.getMyUserLid = () => {
+      throw new TypeError('getMeLidUserOrThrow is not a function');
+    };
+    expect(
+      await groupGuest({ ownerId, task: task(), execute: true }),
+    ).toMatchObject({ status: 'success' });
+    expect(wpp.group.setProperty).toHaveBeenCalledTimes(1);
+  });
+  it('refuses mutations when no compatible getter can confirm the selected owner', async () => {
+    wpp.conn.getMyUserWid = () => 'other@c.us';
+    wpp.conn.getMyUserLid = () => {
+      throw new TypeError('getMeLidUserOrThrow is not a function');
+    };
+    expect(
+      await groupGuest({ ownerId, task: task(), execute: true }),
+    ).toMatchObject({ status: 'failed', retryable: false });
+    expect(wpp.group.setProperty).not.toHaveBeenCalled();
+    expect(wpp.whatsapp.functions.queryAllGroups).not.toHaveBeenCalled();
+  });
   it('reads server group state and verifies the final announcement flag', async () => {
     const result = await groupGuest({ ownerId, task: task(), execute: true });
     expect(result).toMatchObject({ status: 'success', groupId });

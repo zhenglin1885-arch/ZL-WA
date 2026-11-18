@@ -32,13 +32,19 @@ export async function groupGuest(request: {
       /* Native WPP fallback below. */
     }
     return [
-      prefs?.getMaybeMePnUser?.(),
-      prefs?.getMaybeMeLidUser?.(),
-      wpp.conn?.getMyUserWid?.(),
-      wpp.conn?.getMyUserLid?.(),
-    ]
-      .map(id => idOf(id))
-      .includes(request.ownerId);
+      () => prefs?.getMaybeMePnUser?.(),
+      () => prefs?.getMaybeMeLidUser?.(),
+      () => wpp.conn?.getMyUserWid?.(),
+      () => wpp.conn?.getMyUserLid?.(),
+    ].some(read => {
+      try {
+        // A removed optional LID getter must not invalidate a confirmed PN
+        // identity. Do not read any further getters once identity matches.
+        return idOf(read()).replace(/:\d+@/, '@') === request.ownerId;
+      } catch {
+        return false;
+      }
+    });
   };
   if (!own())
     return {
