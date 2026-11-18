@@ -26,6 +26,8 @@ import initBulkMedia from './bulkMedia';
 import TranslationCache from '../TranslationCache';
 import {
   probeAccountNetwork,
+  accountLatencyURL,
+  type AccountNetworkTarget,
   type AccountNetworkStatus,
 } from '../AccountNetwork';
 import {
@@ -475,16 +477,27 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   );
   ipcMain.handle(
     'account-tools-network-status',
-    async (event, id: string, force = false) => {
+    async (
+      event,
+      id: string,
+      force = false,
+      target: AccountNetworkTarget = 'whatsapp',
+    ) => {
       check(event, id);
+      if (target !== 'whatsapp' && target !== 'facebook')
+        throw new Error('无效网络检测目标');
       requireReviewedProxy(id);
       attachAuth(id);
       await (prepared.has(id) ? prepared.get(id) : apply(id, get(id)));
       const cached = networkCache.get(id);
-      if (!force && cached && Date.now() - cached.checkedAt < 30_000)
+      if (
+        !force &&
+        cached?.target === target &&
+        Date.now() - cached.checkedAt < 30_000
+      )
         return cached;
       const version = networkVersions.get(id);
-      const key = `${id}:${version}`;
+      const key = `${id}:${version}:${target}`;
       if (networkPending.has(key)) return networkPending.get(key);
       const request = (async () => {
         const s = session.fromPartition(`persist:service-${id}`);
@@ -492,7 +505,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         if (config.proxy.enabled && config.proxy.mode === 'manual') {
           for (const url of [
             'https://www.cloudflare.com/cdn-cgi/trace',
-            'https://web.whatsapp.com/',
+            accountLatencyURL(target),
           ]) {
             // A failed proxy must never silently report the machine's direct IP.
             // eslint-disable-next-line no-await-in-loop
@@ -504,6 +517,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
           accountTransport(s, config.proxy, () =>
             decrypt(config.encryptedPassword),
           ),
+          target,
         );
         if (networkVersions.get(id) !== version)
           throw new Error('网络配置已更改，请重新刷新');

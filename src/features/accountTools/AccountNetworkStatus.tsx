@@ -3,6 +3,7 @@ import { ipcRenderer } from 'electron';
 import { observer } from 'mobx-react';
 import { useEffect, useState } from 'react';
 import type { RealStores } from '../../stores';
+import { isFacebookBusiness } from '../accounts/facebook';
 import type { AccountNetworkStatus as NetworkStatus } from '../../electron/AccountNetwork';
 
 export default observer(function AccountNetworkStatus({
@@ -11,8 +12,11 @@ export default observer(function AccountNetworkStatus({
   stores: RealStores;
 }) {
   const service = stores.services.active;
+  const facebook = Boolean(service && isFacebookBusiness(service));
+  const target = facebook ? 'facebook' : 'whatsapp';
   const id =
-    service?.recipe.id === 'whatsapp' &&
+    (service?.recipe.id === 'whatsapp' || facebook) &&
+    service &&
     service.isEnabled &&
     !service.isHibernating
       ? service.id
@@ -36,6 +40,7 @@ export default observer(function AccountNetworkStatus({
           'account-tools-network-status',
           id,
           force,
+          target,
         );
         if (!stopped) setState({ id, result, busy: false });
       } catch (error) {
@@ -58,7 +63,7 @@ export default observer(function AccountNetworkStatus({
       clearInterval(timer);
       window.removeEventListener('zl-account-network-changed', changed);
     };
-  }, [id, revision]);
+  }, [id, revision, target]);
   const current = state.id === id ? state : undefined;
   const result = current?.result;
   const ms = result?.milliseconds;
@@ -73,7 +78,7 @@ export default observer(function AccountNetworkStatus({
   const title = id
     ? [
         `当前账号：${service?.accountSnapshot.nickname || service?.name}`,
-        'IP 为该账号实际网络出口；延迟为到 WhatsApp 的 HTTPS 请求耗时。',
+        `IP 为该账号实际网络出口；延迟为到 ${facebook ? 'Meta Business Suite' : 'WhatsApp'} 的 HTTPS 请求耗时。`,
         result?.ip ? `出口 IP：${result.ip}` : '',
         current?.error,
         result?.ipError,
@@ -84,7 +89,7 @@ export default observer(function AccountNetworkStatus({
       ]
         .filter(Boolean)
         .join('\n')
-    : '请选择已启用且未休眠的 WhatsApp 账号';
+    : '请选择已启用且未休眠的 WhatsApp 或 Facebook Business 账号';
   return (
     <div
       className="account-network-status"

@@ -24,6 +24,22 @@ describe('account network probes', () => {
       );
     },
   );
+  it('measures Meta Business Suite through the supplied Facebook transport', async () => {
+    const fetcher = jest.fn(
+      async (url: string) =>
+        new Response(url.includes('cdn-cgi') ? 'ip=203.0.113.8' : null),
+    );
+    const result = await probeAccountNetwork(fetcher, 'facebook');
+    expect(result).toMatchObject({ target: 'facebook', ip: '203.0.113.8' });
+    expect(result.milliseconds).toBeGreaterThanOrEqual(1);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://business.facebook.com/',
+      expect.objectContaining({ method: 'HEAD' }),
+    );
+    expect(fetcher.mock.calls.some(([url]) => url.includes('whatsapp'))).toBe(
+      false,
+    );
+  });
   it('keeps valid latency when the IP response is malformed', async () => {
     const result = await probeAccountNetwork(
       async url =>

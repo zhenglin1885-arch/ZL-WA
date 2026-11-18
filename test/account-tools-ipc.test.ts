@@ -799,6 +799,49 @@ describe('privileged account tools IPC', () => {
     event.senderFrame = {};
     await expect(invoke('network-status', 'account-1')).rejects.toThrow('禁止');
   });
+  it('isolates Facebook account routing, destination caches and manual refresh', async () => {
+    await invoke('prepare', 'fb-1');
+    const s = sessions.get('persist:service-fb-1');
+    s.fetch.mockImplementation(
+      async (url: string) =>
+        new Response(url.includes('cdn-cgi') ? 'ip=203.0.113.8' : null),
+    );
+    const fb = await invoke('network-status', 'fb-1', false, 'facebook');
+    expect(fb).toMatchObject({ target: 'facebook', ip: '203.0.113.8' });
+    expect(s.fetch).toHaveBeenCalledWith(
+      'https://business.facebook.com/',
+      expect.objectContaining({ method: 'HEAD' }),
+    );
+    await invoke('network-status', 'fb-1', false, 'facebook');
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+    await invoke('network-status', 'fb-1', true, 'facebook');
+    expect(s.fetch).toHaveBeenCalledTimes(4);
+    const wa = await invoke('network-status', 'fb-1', false, 'whatsapp');
+    expect(wa.target).toBe('whatsapp');
+    expect(s.fetch).toHaveBeenCalledTimes(6);
+    await expect(
+      invoke('network-status', 'fb-1', true, 'https://arbitrary.example'),
+    ).rejects.toThrow('无效网络检测目标');
+    expect(s.fetch).toHaveBeenCalledTimes(6);
+  });
+  it('never falls back to a direct address when the Facebook proxy route is missing', async () => {
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      enabled: true,
+      host: 'localhost',
+      port: '8888',
+    };
+    await invoke('save', 'fb-1', config);
+    const s = sessions.get('persist:service-fb-1');
+    s.resolveProxy.mockImplementation(async (url: string) =>
+      url.includes('facebook') ? 'DIRECT' : 'PROXY localhost:8888',
+    );
+    await expect(
+      invoke('network-status', 'fb-1', true, 'facebook'),
+    ).rejects.toThrow('未使用配置的代理');
+    expect(s.fetch).not.toHaveBeenCalled();
+  });
   it('does not expose a direct IP when a configured proxy route fails', async () => {
     const config = defaultTools();
     config.proxy = {

@@ -1,6 +1,14 @@
 import { isIP } from 'node:net';
 
+export type AccountNetworkTarget = 'whatsapp' | 'facebook';
+
+export const accountLatencyURL = (target: AccountNetworkTarget) =>
+  target === 'facebook'
+    ? 'https://business.facebook.com/'
+    : 'https://web.whatsapp.com/';
+
 export interface AccountNetworkStatus {
+  target: AccountNetworkTarget;
   ip: string;
   milliseconds?: number;
   ipError?: string;
@@ -12,6 +20,7 @@ export interface AccountNetworkStatus {
 // fetch that could bypass the account's proxy or credentials.
 export async function probeAccountNetwork(
   fetcher: (url: string, init: RequestInit) => Promise<Response>,
+  target: AccountNetworkTarget = 'whatsapp',
 ): Promise<AccountNetworkStatus> {
   const [ip, latency] = await Promise.allSettled([
     (async () => {
@@ -29,7 +38,7 @@ export async function probeAccountNetwork(
     })(),
     (async () => {
       const start = performance.now();
-      const response = await fetcher('https://web.whatsapp.com/', {
+      const response = await fetcher(accountLatencyURL(target), {
         method: 'HEAD',
         signal: AbortSignal.timeout(12_000),
         cache: 'no-store',
@@ -40,6 +49,7 @@ export async function probeAccountNetwork(
     })(),
   ]);
   return {
+    target,
     ip: ip.status === 'fulfilled' ? ip.value : '',
     milliseconds: latency.status === 'fulfilled' ? latency.value : undefined,
     ipError: ip.status === 'rejected' ? String(ip.reason) : undefined,
