@@ -149,3 +149,5 @@ jobs:
         NOTES
         printf '\n构建提交：`%s`。\n' "$GITHUB_SHA" >> notes.md
         gh release create test-7.3.9-group-library-4 out/*.exe out/SHA256SUMS.txt out/windows-startup-verification.json --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 群组接口加载修复测试版' --notes-file notes.md
+
+# Recheck typed regression fixtures before packaging.
