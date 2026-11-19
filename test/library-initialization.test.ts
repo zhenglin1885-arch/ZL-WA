@@ -41,8 +41,9 @@ it('retries a failed embedded library read instead of permanently caching its re
     .mockRejectedValueOnce(new Error('temporary read failure'))
     .mockResolvedValueOnce('fixture-library');
   const view: any = {
-    executeJavaScript: jest.fn(async (code: string) =>
-      code.startsWith('new Promise'),
+    executeJavaScript: jest.fn(
+      async (code: string) =>
+        code.startsWith('new Promise') || code.includes('ZL_LID_UNAVAILABLE'),
     ),
   };
   await expect(ensureBulkLibrary(view)).rejects.toThrow(
@@ -51,4 +52,91 @@ it('retries a failed embedded library read instead of permanently caching its re
   await ensureBulkLibrary(view);
   expect(ipcRenderer.invoke).toHaveBeenCalledTimes(2);
   expect(view.executeJavaScript).toHaveBeenCalledWith('fixture-library');
+});
+
+it('replaces an existing legacy SDK before using a group interface', async () => {
+  jest.resetModules();
+  const { runInNewContext } = require('node:vm');
+  const { ipcRenderer } = require('electron');
+  const { ensureBulkLibrary: initialize } = jest.requireActual<
+    typeof import('../src/features/accountTools/bulkRuntime')
+  >('../src/features/accountTools/bulkRuntime');
+  const page: any = {
+    WPP: {
+      isReady: true,
+      conn: {
+        getMyUserLid: new Function('return n.UserPrefs.getMeLidUserOrThrow()'),
+      },
+    },
+  };
+  const script = `window.WPP={isReady:true,conn:{getMyUserLid:function(){throw Object.assign(new Error('unavailable'),{code:'ZL_LID_UNAVAILABLE'});}}};window.injected=(window.injected||0)+1`;
+  ipcRenderer.invoke.mockResolvedValue(script);
+  const view: any = {
+    executeJavaScript: jest.fn(async (code: string) =>
+      runInNewContext(code, {
+        window: page,
+        location: { hostname: 'web.whatsapp.com' },
+      }),
+    ),
+  };
+  await Promise.all([initialize(view), initialize(view)]);
+  expect(page.injected).toBe(1);
+  expect(ipcRenderer.invoke).toHaveBeenCalledTimes(1);
+  await initialize(view);
+  expect(page.injected).toBe(1);
+});
+
+it('blocks a still-incompatible SDK after injection instead of exposing a raw guest exception', async () => {
+  jest.resetModules();
+  const { runInNewContext } = require('node:vm');
+  const { ipcRenderer } = require('electron');
+  const { ensureBulkLibrary: initialize } = jest.requireActual<
+    typeof import('../src/features/accountTools/bulkRuntime')
+  >('../src/features/accountTools/bulkRuntime');
+  const page = {
+    WPP: {
+      isReady: true,
+      conn: {
+        getMyUserLid: new Function('return n.UserPrefs.getMeLidUserOrThrow()'),
+      },
+    },
+  };
+  ipcRenderer.invoke.mockResolvedValue('true');
+  const view: any = {
+    executeJavaScript: jest.fn(async (code: string) =>
+      runInNewContext(code, {
+        window: page,
+        location: { hostname: 'web.whatsapp.com' },
+      }),
+    ),
+  };
+  await expect(initialize(view)).rejects.toThrow('不兼容的旧接口');
+});
+
+it('does not replace the interface while an earlier group request is pending', async () => {
+  jest.resetModules();
+  const { runInNewContext } = require('node:vm');
+  const { ipcRenderer } = require('electron');
+  const { ensureBulkLibrary: initialize } = jest.requireActual<
+    typeof import('../src/features/accountTools/bulkRuntime')
+  >('../src/features/accountTools/bulkRuntime');
+  const page = {
+    WPP: {
+      isReady: true,
+      conn: {
+        getMyUserLid: new Function('return n.UserPrefs.getMeLidUserOrThrow()'),
+      },
+    },
+    __zlGroupOperations: new Map([['token', { pending: true }]]),
+  };
+  const view: any = {
+    executeJavaScript: jest.fn(async (code: string) =>
+      runInNewContext(code, {
+        window: page,
+        location: { hostname: 'web.whatsapp.com' },
+      }),
+    ),
+  };
+  await expect(initialize(view)).rejects.toThrow('仍在执行');
+  expect(ipcRenderer.invoke).not.toHaveBeenCalled();
 });

@@ -1,0 +1,151 @@
+name: Windows group SDK initialization fix test package
+'on':
+  push:
+    branches:
+    - fix/group-library-refresh
+    paths:
+    - .github/workflows/windows-group-library-test.yml
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+        if-no-files-found: error
+  publish-test:
+    needs:
+    - windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: out
+    - name: Verify packages and create prerelease
+      run: |
+        set -euo pipefail
+        python3 - <<'PYCODE'
+        import pathlib,json,hashlib,os
+        root=pathlib.Path('out');expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'}
+        assert {p.name for p in root.glob('*.exe')}==expected
+        r=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert r['version']=='7.3.9' and r['commit']==os.environ['GITHUB_SHA']
+        assert r['nativePackagedStartup'] and r['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         lines.append(f'{digest}  {name}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        PYCODE
+        cat > notes.md <<'NOTES'
+        Windows x64 测试包，应用版本 7.3.9。
+        - 修复账号页面已存在旧版 WPP 时跳过兼容库加载的问题；操作前检查并替换已知不兼容接口，加载后再次校验，未完成的群组请求保持等待，不重放操作。
+        - 诊断增加 sdkLidCompatibility 字段，便于区分页面实际使用的接口。
+        - 修复 FB 界面顶部 IP 与延迟不显示、刷新按钮无响应：支持 FB 自动检测与手动刷新，延迟检测指向 Meta Business Suite，使用当前账号网络与代理，并隔离不同检测目标的缓存。
+        - 修复批量禁言／开启发言读取群组时报 getMeLidUserOrThrow is not a function、群组列表为空的问题；备用身份接口不兼容时仍保留账号身份核验。
+        - 修复群消息准备阶段调用失效 LID 接口导致文字群发 TypeError 的问题；同一适配覆盖媒体消息准备，保留账号身份验证，不重放失败发送。
+        - 包含 FB 登录状态与生产打包修复：已登录绿点、未登录红点，兼容当前 Meta Business Suite 界面。
+        - 保留 WhatsApp 服务端限流后的冷却暂停和只读核验，未确认结果不会直接当作成功。
+
+        已通过完整类型检查、自动测试、Windows 安装升级检查及打包后原生启动／恢复验证。附 SHA256 与启动验证报告。
+        新增实际内置 WA-JS 库回归，验证旧接口报错复现、现代 LID 身份发送成功、缺失身份时阻止提交；并逐字核对 app.asar 中的库与经过测试的适配产物。
+        代码与自动测试覆盖各账号内群组逆序发送、定时队列、发送回执与防重复、群组管理、分组排序、客户备注、SABCD 标记、声音及 FB 状态。未连接用户真实 WhatsApp 账号，服务端权限、限流和代理连通需在实际账号中继续验证。
+        这是独立测试发布，不替换现有 7.3.9 正式版；Mac 未发布。
+        NOTES
+        printf '\n构建提交：`%s`。\n' "$GITHUB_SHA" >> notes.md
+        gh release create test-7.3.9-group-library-4 out/*.exe out/SHA256SUMS.txt out/windows-startup-verification.json --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 群组接口加载修复测试版' --notes-file notes.md

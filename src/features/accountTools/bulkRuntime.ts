@@ -36,7 +36,21 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
     checkDeadline();
     const exists = await view.executeJavaScript('Boolean(window.WPP)');
     checkDeadline();
-    if (!exists) {
+    // A recipe or another initializer can already have installed an older SDK.
+    // Presence alone must not skip the app's tested LID compatibility build.
+    const compatible = `(()=>{const getter=window.WPP?.conn?.getMyUserLid;if(typeof getter!=='function')return true;const source=Function.prototype.toString.call(getter);return !source.includes('getMeLidUserOrThrow')||source.includes('ZL_LID_UNAVAILABLE')})()`;
+    const stale = exists && !(await view.executeJavaScript(compatible));
+    checkDeadline();
+    if (!exists || stale) {
+      if (
+        stale &&
+        (await view.executeJavaScript(
+          'Boolean(window.__zlGroupOperations && [...window.__zlGroupOperations.values()].some(operation => operation.pending))',
+        ))
+      )
+        throw new Error(
+          '当前账号有群组请求仍在执行，请等待结束后刷新接口；未重复提交',
+        );
       library ??= ipcRenderer.invoke('account-tools-library');
       source = library;
       const script = await library!;
@@ -50,6 +64,11 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
       ))
     )
       throw new Error('WhatsApp 接口未就绪，请刷新账号再试');
+    checkDeadline();
+    if (!(await view.executeJavaScript(compatible)))
+      throw new Error(
+        '当前账号仍在使用不兼容的旧接口，请重新加载该账号后重试；未提交群组操作',
+      );
   })();
   const initialization = Promise.race([
     work,

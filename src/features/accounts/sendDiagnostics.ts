@@ -155,6 +155,17 @@ export function readSendDiagnostics() {
     socket: token(socket),
     sdkReady: bool(read(() => wpp.isReady)),
     sdkVersion: version(read(() => wpp.version)),
+    sdkLidCompatibility: bool(
+      read(() => {
+        const getter = wpp.conn.getMyUserLid;
+        if (typeof getter !== 'function') return null;
+        const source = Function.prototype.toString.call(getter);
+        return (
+          !source.includes('getMeLidUserOrThrow') ||
+          source.includes('ZL_LID_UNAVAILABLE')
+        );
+      }),
+    ),
     whatsappVersion: version(read(() => page.Debug.VERSION)),
     stream: { mode: token(stream?.mode), info: token(stream?.info) },
     authenticated: bool(read(() => wpp.conn.isAuthenticated())),
