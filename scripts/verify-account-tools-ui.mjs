@@ -64,8 +64,13 @@ const vm = async code =>
 const queueExpression = `require('./features/accountTools/bulkRuntime').getBulkQueue(window.ferdium.stores)`;
 const service = id =>
   `window.ferdium.stores.services.one(${JSON.stringify(id)})`;
-const guest = (id, code) =>
-  evaluate(`${service(id)}.webview.executeJavaScript(${JSON.stringify(code)})`);
+const guest = async (id, code) => {
+  const envelope = await evaluate(
+    `${service(id)}.webview.executeJavaScript(${JSON.stringify(`(async()=>{try{return {ok:true,value:await eval(${JSON.stringify(code)})}}catch(error){return {ok:false,error:String(error.stack||error)}}})()`)})`,
+  );
+  if (!envelope.ok) throw new Error(envelope.error);
+  return envelope.value;
+};
 const shot = async path => {
   await new Promise(r => {
     setTimeout(r, 350);
@@ -422,6 +427,20 @@ try {
         `document.activeElement === document.querySelector('.account-dialog input')`,
         'native click focused dialog input',
       );
+      await call('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: 'a',
+        code: 'KeyA',
+        windowsVirtualKeyCode: 65,
+        modifiers: 2,
+      });
+      await call('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: 'a',
+        code: 'KeyA',
+        windowsVirtualKeyCode: 65,
+        modifiers: 0,
+      });
       await call('Input.insertText', { text });
       assert.equal(await evaluate('document.activeElement.value'), text);
     };
@@ -567,7 +586,7 @@ try {
     const beforeRetranslate = await vm('globalThis.__zlTranslationCalls');
     const refreshPoint = await guest(
       first,
-      `(()=>{const button=document.querySelector('.message-in [data-zl-retranslate]');button.scrollIntoView({block:'center'});const r=button.getBoundingClientRect();if(!button.textContent.includes('文'))throw Error('Missing 文 icon');if(button.previousElementSibling.tagName!=='SPAN')throw Error('Translation is not inline');return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+      `(()=>{const button=document.querySelector('.message-in [data-zl-retranslate]');button.scrollIntoView({block:'center'});const r=button.getBoundingClientRect();if(button.getAttribute('aria-label')!=='重新翻译'||!button.querySelector('svg'))throw Error('Missing accessible retranslate icon');if(!button.closest('[data-zl-translation-tail]')||button.previousSibling?.nodeType!==Node.TEXT_NODE)throw Error('Translation icon is not inline with the translated text tail');return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
     );
     const refreshContents = await evaluate(
       `${service(first)}.webview.getWebContentsId()`,
@@ -653,7 +672,7 @@ try {
         first,
         'document.querySelector("#formatted-caption [data-zl-translate]").textContent',
       ),
-      '重新翻译中…',
+      '翻译中…',
       'native click immediately shows progress before provider responds',
     );
     await wait(
@@ -676,13 +695,13 @@ try {
       `document.querySelector('#formatted-caption [data-zl-retranslate]').click();true`,
     );
     await wait(
-      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translation-text]").textContent.includes("重试") && !document.querySelector("#formatted-caption [data-zl-retranslate]").disabled')`,
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translation-text]").textContent.includes("翻译失败") && !document.querySelector("#formatted-caption [data-zl-translate]").disabled')`,
       'refresh failure is visible and retry stays enabled',
     );
     await vm('globalThis.__zlTranslateFail=false;true');
     await guest(
       first,
-      `document.querySelector('#formatted-caption [data-zl-retranslate]').click();true`,
+      `document.querySelector('#formatted-caption [data-zl-translate]').click();true`,
     );
     await wait(
       `${service(first)}.webview.executeJavaScript('document.querySelector("#formatted-caption [data-zl-translate]").hidden')`,
@@ -710,7 +729,7 @@ try {
       `document.querySelector('#manual-retry [data-zl-translate]').click();true`,
     );
     await wait(
-      `${service(first)}.webview.executeJavaScript('document.querySelector("#manual-retry [data-zl-translation-text]").textContent').then(t=>t.includes('重试'))`,
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#manual-retry [data-zl-translation-text]").textContent').then(t=>t.includes('翻译失败'))`,
       'manual failure',
     );
     await vm('globalThis.__zlTranslateFail=false;true');
@@ -745,7 +764,7 @@ try {
       `document.querySelector('header span').dataset.id='preview-next-chat';true`,
     );
     await wait(
-      `${service(first)}.webview.executeJavaScript('document.querySelector("#preview-fresh [data-zl-translation-text]")?.textContent.includes("重试")')`,
+      `${service(first)}.webview.executeJavaScript('document.querySelector("#preview-fresh [data-zl-translation-text]")?.textContent.includes("翻译失败")')`,
       'newly opened chat preview failure',
     );
     const failedCalls = await vm('globalThis.__zlTranslationCalls');
@@ -1478,13 +1497,18 @@ try {
       'PASS translation failure and stale-draft protection leave the original unsent',
     );
     // Test Enter, including repeat protection, through a real contenteditable event.
+    await wait(
+      `${service(first)}.webview.executeJavaScript('!window.__zlTranslation.busy && window.__zlTranslation.pending.size===0')`,
+      'previous stale-draft request fully settled',
+    );
     await guest(
       first,
       `(()=>{const i=document.querySelector('[contenteditable]');i.innerText='键盘测试';i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));return true})()`,
     );
-    await new Promise(r => {
-      setTimeout(r, 1000);
-    });
+    await wait(
+      `${service(first)}.webview.executeJavaScript('document.querySelector("[contenteditable]").innerText===${JSON.stringify('Hello translated')}')`,
+      'keyboard preview translation completed',
+    );
     assert.equal(
       await guest(
         first,
@@ -1539,7 +1563,7 @@ try {
       /PROXY 127\.0\.0\.1:47891/,
     );
     await vm(
-      `(async()=>{const req=process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json');const fs=req('node:fs');globalThis.__zlProxyConnects=0;globalThis.__zlProxyTLS=req('node:https').createServer({key:fs.readFileSync('${tlsDirectory}/key.pem'),cert:fs.readFileSync('${tlsDirectory}/cert.pem')},(_r,s)=>{s.writeHead(200);s.end()});globalThis.__zlProxyServer=req('node:http').createServer();globalThis.__zlProxyServer.on('connect',(_r,c,h)=>{globalThis.__zlProxyConnects++;const u=req('node:net').connect(47892,'127.0.0.1',()=>{c.write('HTTP/1.1 200 Connection Established\\r\\n\\r\\n');if(h.length)u.write(h);c.pipe(u);u.pipe(c)});u.on('error',()=>c.destroy());c.on('error',()=>u.destroy())});await new Promise(r=>globalThis.__zlProxyTLS.listen(47892,'127.0.0.1',r));await new Promise(r=>globalThis.__zlProxyServer.listen(47891,'127.0.0.1',r));req('electron').session.fromPartition('persist:service-${first}').setCertificateVerifyProc((_r,cb)=>cb(0));return true})()`,
+      `(async()=>{const req=process.getBuiltinModule('module').createRequire(process.cwd()+'/package.json');const fs=req('node:fs');globalThis.__zlProxyConnects=0;globalThis.__zlProxyTLS=req('node:https').createServer({key:fs.readFileSync('${tlsDirectory}/key.pem'),cert:fs.readFileSync('${tlsDirectory}/cert.pem')},(_r,s)=>{s.writeHead(200,{'Content-Type':'text/html'});s.end('<!doctype html><html><body>Local proxy document fixture</body></html>')});globalThis.__zlProxyServer=req('node:http').createServer();globalThis.__zlProxyServer.on('connect',(_r,c,h)=>{globalThis.__zlProxyConnects++;const u=req('node:net').connect(47892,'127.0.0.1',()=>{c.write('HTTP/1.1 200 Connection Established\\r\\n\\r\\n');if(h.length)u.write(h);c.pipe(u);u.pipe(c)});u.on('error',()=>c.destroy());c.on('error',()=>u.destroy())});await new Promise(r=>globalThis.__zlProxyTLS.listen(47892,'127.0.0.1',r));await new Promise(r=>globalThis.__zlProxyServer.listen(47891,'127.0.0.1',r));req('electron').session.fromPartition('persist:service-${first}').setCertificateVerifyProc((_r,cb)=>cb(0));return true})()`,
     );
     const connection = await evaluate(
       `require('electron').ipcRenderer.invoke('account-tools-test-proxy',${JSON.stringify(first)})`,
@@ -1748,7 +1772,7 @@ try {
     // Media + revoke exercise the privileged file picker, isolated guest adapter and live history UI.
     await guest(
       first,
-      `fixture.advanced=[];fixture.revoked=[];window.WPP={isReady:true,chat:{get:()=>({}),sendFileMessage:async(id,data,options)=>{const messageId='fixture-media-'+crypto.randomUUID();fixture.advanced.push({id,dataPrefix:data.slice(0,30),options,messageId});return {id:messageId,ack:1}},getMessageById:async()=>({id:{fromMe:true,remote:{_serialized:'10001@g.us'}}}),deleteMessage:async(chat,id,local,revoke)=>{fixture.revoked.push({chat,id,local,revoke});return {isRevoked:true,sendMsgResult:'OK'}}}};true`,
+      `fixture.advanced=[];fixture.revoked=[];fixture.beforeMediaWPP=window.WPP;window.WPP={isReady:true,chat:{get:()=>({}),sendFileMessage:async(id,data,options)=>{const messageId='fixture-media-'+crypto.randomUUID();fixture.advanced.push({id,dataPrefix:data.slice(0,30),options,messageId});return {id:messageId,ack:1}},getMessageById:async()=>({id:{fromMe:true,remote:{_serialized:'10001@g.us'}}}),deleteMessage:async(chat,id,local,revoke)=>{fixture.revoked.push({chat,id,local,revoke});return {isRevoked:true,sendMsgResult:'OK'}}}};true`,
     );
     const mediaPath = `${tlsDirectory}/fixture.png`;
     writeFileSync(
@@ -1851,6 +1875,10 @@ try {
       'PASS bulk settings persist on immediate close/reopen without carrying over recipient selection',
     );
     await clickText('关闭');
+    await guest(
+      first,
+      'window.WPP=fixture.beforeMediaWPP;delete fixture.beforeMediaWPP;true',
+    );
     await verifyBulkMultitask({
       first,
       service,

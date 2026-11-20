@@ -384,6 +384,29 @@
           },
         },
       };
+      // Offline WA-JS surface used by the production bulk sender. Submission
+      // still traverses the same synthetic native action and never the network.
+      window.WPP.conn = {
+        getMyUserWid: () => `${fixture.ownPhone}@c.us`,
+        getMyUserLid: () => `${fixture.ownPhone}9@lid`,
+        isMainReady: () => true,
+      };
+      window.WPP.chat = {
+        get: async id => modules.WAWebCollections.Chat.get(id),
+        sendTextMessage: async (id, body) => {
+          const chat = modules.WAWebCollections.Chat.get(id);
+          if (!chat) throw Error('Synthetic chat missing');
+          const key = `true_${id}_${crypto.randomUUID()}`;
+          const [created, sent] =
+            modules.WAWebSendMsgChatAction.addAndSendMsgToChat(chat, {
+              id: key,
+              body,
+            });
+          await created;
+          await sent;
+          return { id: key, ack: 1 };
+        },
+      };
       fixture.loadPinCommands = () => {
         // Model a command-driven native menu: the limit guard runs before the
         // exported action, without a recognizable DOM menu item.

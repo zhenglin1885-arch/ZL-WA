@@ -41,7 +41,7 @@ try {
       }
       if(code.includes('openChatBottom')){opened.push(id);return true;}
       if(code.startsWith('location.hostname'))return false;
-      if(code==='Boolean(window.WPP)'||code.startsWith('new Promise'))return true;
+      if(code==='Boolean(window.WPP)'||code.startsWith('new Promise')||code.includes('ZL_LID_UNAVAILABLE'))return true;
       if(code.includes('return {context,index:')){const value={context:{token:'document-'+id,owners:['861380000000'+(index+1)+'@c.us']},index:{rows:rows.map(row=>({...row,unread:readKeys.has(id+':'+row.id)?0:row.unread})),contactsReady:true}};if(blockIndexes)return new Promise(resolve=>heldIndexes.push(()=>resolve(value)));return value;}
       if(code.includes('image/jpeg'))return Object.fromEntries(rows.map(row=>[row.id,photo]));
       return true;
@@ -58,15 +58,17 @@ try {
     root.render(React.createElement('div',{id:'fixture'},React.createElement(Component,{stores,activate:id=>runInAction(()=>{stores.services.active=stores.services.all.find(item=>item.id===id);}),onBack:()=>{window.back=true;}}),React.createElement('main',{className:'fixture-right'},'原账号聊天区域')));
     const check=(ok,message)=>{if(!ok)throw Error(message);};
     await wait(()=>document.querySelectorAll('.conversation-row').length===4);
+    await wait(()=>heldIndexes.length>0);
     check(heldIndexes.length>0&&document.querySelectorAll('.conversation-row__avatar img').length===4,'Warm list/photos waited for fresh metadata');
     blockIndexes=false;heldIndexes.splice(0).forEach(release=>release());
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝二号')),'Account remark missing');
     check([...document.querySelectorAll('.conversation-row__account')].some(item=>item.textContent.includes('蓝三号')),'Other account remark missing');
     const titles=[...document.querySelectorAll('.conversation-row__title')].map(item=>item.textContent);
-    check(titles.some(text=>text.startsWith('重点 Alice'))&&titles.some(text=>text.startsWith('Alice')),'Local contact remark or unremarked-name fallback missing');
+    check(titles.filter(text=>text.startsWith('Alice')).length===2&&!titles.some(text=>text.startsWith('重点 Alice')),'Contact names were replaced by remarks');
+    check([...document.querySelectorAll('.conversation-row__remark')].some(input=>input.value==='重点 Alice'),'Separate editable contact remark missing');
     check(titles.some(text=>text.startsWith('Investment group'))&&!titles.some(text=>text.includes('群备注不作为标题')),'Group title was replaced by a local remark');
     check(!document.querySelector('.conversation-summary details')&&!/待同步|正在读取|已休眠/.test(document.querySelector('.conversation-summary').textContent),'Account synchronization details are still visible');
-    const first=document.querySelector('.conversation-row__open');first.click();await wait(()=>opened.length===1);
+    const first=document.querySelector('.conversation-row__activate');first.click();await wait(()=>opened.length===1);
     await wait(()=>first.closest('.conversation-row').classList.contains('is-active')&&!first.closest('.conversation-row').classList.contains('is-opening'));
     const activeRow=first.closest('.conversation-row');
     const darkSelected=getComputedStyle(activeRow).backgroundColor;

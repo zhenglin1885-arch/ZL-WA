@@ -1,0 +1,110 @@
+{
+  "appCommit": "46ac141e727142e732bfe428ff267a62c74c23fc",
+  "windowsRun": 44644447748,
+  "version": "7.3.9",
+  "businessChange": {
+    "file": "src/features/accounts/AccountSidebar.tsx",
+    "addedLines": 3,
+    "removedLines": 3,
+    "description": "菜单修改昵称改为修改备注，复用账号备注字段和已有保存流程"
+  },
+  "gates": {
+    "fullGui": true,
+    "remarkRestart": true,
+    "supplementalGui": true
+  },
+  "unitTests": {
+    "suitesPassed": 84,
+    "passed": 929,
+    "skipped": 2,
+    "skippedReason": "既有 jsUtils 未定义值与 null 工具函数测试，未新增跳过功能检查"
+  },
+  "gui": {
+    "environment": "Electron 43.3.0 / Chromium on Linux virtual display; actual rendered app, controlled synthetic accounts/messages",
+    "mainPassGroups": 51,
+    "totalPassEntries": 60,
+    "supplemental": {
+      "aggregate": {
+        "instantWarmEntry": true,
+        "instantRepeatEntry": true,
+        "cachedAvatarReuse": true,
+        "groupContextMenuAndRename": true,
+        "deleteReturnsMembersToDefault": true,
+        "defaultGroupProtected": true,
+        "scopedAllReadAndBadgeRemoval": true,
+        "redUnreadBadge99Plus": true,
+        "expandedFoldersOnlySelection": true,
+        "archivesExclusiveToArchive": true,
+        "localContactRemarksAndNativeGroupNames": true,
+        "unremarkedContactFallback": true,
+        "syncDetailsHidden": true,
+        "persistentOpenedHighlight": true,
+        "checkboxSelectionHighlight": true,
+        "lightDarkSelectionAdaptation": true,
+        "popupWithinNarrowViewport": true,
+        "inlineValidationVisible": true,
+        "visibleNativeCreatePopup": true,
+        "visibleNativeMovePopup": true,
+        "cancelLeavesMembership": true,
+        "statusAndEllipsisRemoved": true,
+        "enlargedPlus": true,
+        "separateAccountRows": true,
+        "accountRemarks": true,
+        "openUsesOriginalAccount": true,
+        "selectAll": true,
+        "createAndMoveGroup": true,
+        "bulkComposer": true,
+        "filteredSelection": true,
+        "accountRemarkSearch": true,
+        "virtualized604Conversations": true
+      },
+      "business": [
+        "PASS offline Chromium business contact notes/flags and virtual-row identity regression"
+      ],
+      "sound": [
+        "PASS actual app notifications use a bundled ding-dong, coalesce bursts, honor silent/global mute and avoid duplicate OS sounds"
+      ],
+      "history": [
+        "PASS recovered history edit/revoke actions, legacy type metadata, selected targets, and ambiguous-message refusal without sending"
+      ],
+      "mediaPreview": [
+        "PASS image/video previews, real video metadata/playback, removal cleanup, selection race protection, failure fallback and untouched document types {"
+      ],
+      "backup": [
+        "PASS backup all-online selection, sleeping-account exclusion and embedded-image export instructions"
+      ],
+      "facebookAndFlags": [
+        "PASS native Facebook logged-in/logged-out detection, header IP/latency and refresh, account switch and SABCD colors in light/dark themes"
+      ]
+    },
+    "completeProcessRestartVerified": true
+  },
+  "nativeWindows": {
+    "typecheck": true,
+    "allTests": true,
+    "installerUpgrade": true,
+    "packagedSdkContent": true,
+    "packagedStartup": true,
+    "resumeReload": true
+  },
+  "scopeLimits": {
+    "realCustomerMessagesSent": false,
+    "realWhatsAppFacebookAccountsUsed": false,
+    "externalPaidTranslationKeysUsed": false,
+    "actualUserProxyNodesTested": false,
+    "description": "已验证本地逻辑、隔离页面、真实 Electron 控件和 Windows 安装包；真实账号权限、服务器限流、实际代理节点和外部翻译服务状态未做实号验证。"
+  },
+  "testFiles": {
+    "scripts/verify-account-tools-ui.mjs": "679a5174879fac6d966bfc57e691b5b878f16b09ea87b03052e74ed758dd359b",
+    "scripts/fixtures/whatsapp-tools.html": "1b32ecdd603eaa3d2c3498d1662527d1f482c92b266db1e38a20f0b9898f1287",
+    "scripts/verify-aggregate-conversations-ui.mjs": "bcbbf9508a1b7a7a4c2a71860070a85981b74067da52def095ffea256d89f63e",
+    "scripts/verify-customer-business-ui.mjs": "d7fb737ccb3dbf7f921a4fbff7f9f060ebb1e79506a96921dc103db7d30bafcc",
+    "scripts/verify-notification-sound-ui.mjs": "905639dba2d27266c5c8a7715020a26962fb602a029a9d082ef4e19dfa886457",
+    "scripts/verify-bulk-history-actions-ui.mjs": "715e7c589bcd294fe0796e9c93518eb8e7632b5fca53ac3c205fa62eccc4f9ba",
+    "scripts/verify-bulk-media-preview-ui.mjs": "15cdda72517a09fbfac2c6f46be5076a8a30a34f9708f540914478cd39135342",
+    "scripts/verify-backup-options-ui.mjs": "3806052b49d2140d35ec6d5db690e6c371d9af69c10ce9e8ea0ea8ef1c7e4203",
+    "scripts/verify-account-remark-persistence-ui.mjs": "b30ef1148eeffd3618ce3f00dda1b489712459b4312dd289cd040572735c2d4e",
+    "scripts/verify-facebook-network-flags-ui.mjs": "707ba0521f4bad570b95afaedf77ed020498315c7d4f5ad74a7e7846093bc792",
+    "scripts/account-tools-cdp.mjs": "ee8866b843ac15f8a933db8fe0c8bfeee67197620a9290a71e4427fc9223d02a"
+  }
+}

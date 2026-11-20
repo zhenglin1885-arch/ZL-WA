@@ -1,0 +1,75 @@
+name: Publish account remark test after GUI verification
+'on':
+  push:
+    branches:
+    - publish/account-remark-test5
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --exit-code 46ac141e727142e732bfe428ff267a62c74c23fc HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml
+        gh api repos/$GH_REPO/actions/runs/44644447748 > run.json
+        gh api repos/$GH_REPO/actions/runs/44644447748/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        r=json.load(open('run.json'));assert r['head_sha']=='46ac141e727142e732bfe428ff267a62c74c23fc' and r['status']=='completed' and r['conclusion']=='success'
+        jobs=json.load(open('jobs.json'))['jobs'];w=next(j for j in jobs if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        report=json.load(open('qa/account-remark-test5.json'));assert report['appCommit']=='46ac141e727142e732bfe428ff267a62c74c23fc' and report['windowsRun']==44644447748
+        assert report['gates']['fullGui'] and report['gates']['remarkRestart'] and report['gates']['supplementalGui']
+        for path,digest in report['testFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: 44644447748
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']=='46ac141e727142e732bfe428ff267a62c74c23fc' and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-remark-test5-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/account-remark-test5.json',root/'QA-summary.json')
+        shutil.copyfile('qa/account-remark-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows x64 账号备注菜单测试版，应用版本 7.3.9。
+
+        本次业务代码只修改 AccountSidebar 的 3 行：菜单“修改昵称”改成“修改备注”，编辑账号卡片铅笔图标旁的备注行；复用已有备注保存流程，保留账号昵称和手机号。
+
+        发布前完成：
+        - Linux 和 Windows 全量类型检查与自动测试（84 组、929 项通过；2 项既有工具函数空值测试跳过）。
+        - 实际 Electron 界面的隔离数据检查：账号菜单、拖动、主题、翻译、代理、群发、回执、群组工具、客户资料、点赞、引用回复和下载等，详见 GUI-checks.txt 与 QA-summary.json。
+        - 菜单读取原备注、修改正确行、昵称不变，以及完全退出应用后重启仍保留备注。
+        - Windows 安装升级、包内兼容库核对、打包应用原生启动和恢复验证。
+
+        界面检查使用模拟账号和本地服务，不等于所有真实 WhatsApp/FB 账号、代理节点或付费翻译服务均已实测；其权限、限流和连通性仍受外部服务影响。保留此前测试版修复，不修改正式版资产，Mac 继续暂停发布。
+        NOTES
+        gh release create test-7.3.9-account-remark-5 release-assets/* --target 46ac141e727142e732bfe428ff267a62c74c23fc --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 账号备注菜单测试版（完成界面回归）' --notes-file release-notes.md
