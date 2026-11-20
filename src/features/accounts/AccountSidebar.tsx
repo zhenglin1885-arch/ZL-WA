@@ -605,11 +605,11 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                   accountGroupId(this.config, service.id),
                 ),
               ),
-              item('修改昵称', mdiAccountEditOutline, () =>
+              item('修改备注', mdiAccountEditOutline, () =>
                 this.openDialog(
-                  'nickname',
+                  'remark',
                   service.id,
-                  this.config.accounts[service.id]?.nickname ?? '',
+                  this.config.accounts[service.id]?.remark ?? '',
                 ),
               ),
               item('删除会话', mdiDeleteOutline, () =>

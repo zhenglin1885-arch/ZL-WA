@@ -432,6 +432,28 @@ try {
       '!document.querySelector(".account-dialog") && [...document.querySelectorAll(".account-group")].some(n=>n.textContent.includes("GUI测试分组"))',
       'new group saved',
     );
+    const menuIdentityBefore = await evaluate(
+      `(()=>{const card=document.querySelector('[data-service-id="${first}"]');return {name:card.querySelector('.account-card__name').textContent,phone:card.querySelector('.account-card__phone').textContent,nickname:window.ferdium.stores.settings.app.accountSidebar.accounts['${first}']?.nickname}})()`,
+    );
+    await click(`[data-service-id="${first}"] .account-card__more`);
+    await clickText('修改备注');
+    await typeInVisibleDialog('菜单修改的账号备注');
+    await clickText('保存');
+    await wait(
+      `!document.querySelector('.account-dialog') && document.querySelector('[data-service-id="${first}"] .account-card__remark').textContent.includes('菜单修改的账号备注')`,
+      'context menu edits the account remark row',
+    );
+    const menuIdentityAfter = await evaluate(
+      `(()=>{const card=document.querySelector('[data-service-id="${first}"]');return {name:card.querySelector('.account-card__name').textContent,phone:card.querySelector('.account-card__phone').textContent,nickname:window.ferdium.stores.settings.app.accountSidebar.accounts['${first}']?.nickname}})()`,
+    );
+    assert.deepEqual(
+      menuIdentityAfter,
+      menuIdentityBefore,
+      'remark menu preserves nickname, displayed account name and phone',
+    );
+    console.log(
+      'PASS account menu edits the remark line while preserving account identity',
+    );
     await click(`[data-service-id="${first}"] .account-card__remark`);
     await wait(
       `!!document.querySelector('.account-remark-dialog [role="dialog"]')`,
