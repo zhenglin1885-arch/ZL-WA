@@ -1,0 +1,71 @@
+name: Publish native WhatsApp name test after GUI verification
+'on':
+  push:
+    branches:
+    - publish/whatsapp-name-test6
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --exit-code f66652135945d50922b8195a19423454f9ac8ee5 HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml
+        gh api repos/$GH_REPO/actions/runs/44923416379 > run.json
+        gh api repos/$GH_REPO/actions/runs/44923416379/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        r=json.load(open('run.json'));assert r['head_sha']=='f66652135945d50922b8195a19423454f9ac8ee5' and r['status']=='completed' and r['conclusion']=='success'
+        jobs=json.load(open('jobs.json'))['jobs'];w=next(j for j in jobs if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        report=json.load(open('qa/whatsapp-name-test6.json'));assert report['appCommit']=='f66652135945d50922b8195a19423454f9ac8ee5' and report['windowsRun']==44923416379
+        assert report['gates']['fullGui'] and report['gates']['remarkRestart'] and report['gates']['supplementalGui']
+        for path,digest in report['testFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: 44923416379
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']=='f66652135945d50922b8195a19423454f9ac8ee5' and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-name-test6-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/whatsapp-name-test6.json',root/'QA-summary.json')
+        shutil.copyfile('qa/whatsapp-name-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows x64 WhatsApp 账号昵称显示修复测试版，应用版本 7.3.9。
+
+        修复旧版本本地修改的昵称一直覆盖 WhatsApp 真实昵称的问题。账号卡片与聚合会话的账号名称使用 WhatsApp 实际昵称；账号备注仍可通过“修改备注”编辑。保留历史配置和此前兼容、群发、群组及 FB 网络修复，FB 名称规则不变。
+
+        发布检查：84 组自动测试、931 项通过、2 项既有跳过；类型检查；实际 Electron 隔离界面回归；旧昵称 didddd 与实际昵称 Emir 并存时显示 Emir，并验证编辑备注及完全退出重启后仍正确；Windows 安装升级、包内兼容库和原生打包启动恢复验证。详见附带 QA-summary.json 与 GUI-checks.txt。
+
+        界面检查使用模拟账号和本地服务。真实账号权限、服务器限流、实际代理节点及付费翻译服务未做实号验证。Mac 继续暂停发布。
+        NOTES
+        gh release create test-7.3.9-whatsapp-name-6 release-assets/* --target f66652135945d50922b8195a19423454f9ac8ee5 --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows WhatsApp 真实昵称修复测试版' --notes-file release-notes.md

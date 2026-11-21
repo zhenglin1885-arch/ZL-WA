@@ -1,0 +1,63 @@
+{
+  "appCommit": "f66652135945d50922b8195a19423454f9ac8ee5",
+  "windowsRun": 44923416379,
+  "version": "7.3.9",
+  "businessChange": {
+    "files": [
+      "src/features/accounts/AccountSidebar.tsx",
+      "src/features/conversations/runtime.ts"
+    ],
+    "description": "WhatsApp account display ignores legacy local nickname; actual native nickname used; local remark and historical settings retained; FB behavior unchanged"
+  },
+  "gates": {
+    "fullGui": true,
+    "remarkRestart": true,
+    "supplementalGui": true
+  },
+  "unitTests": {
+    "suitesPassed": 84,
+    "passed": 931,
+    "skipped": 2,
+    "skippedReason": "既有 jsUtils 未定义值与 null 工具函数测试，未新增跳过功能检查"
+  },
+  "gui": {
+    "environment": "Electron 43.3.0 / Chromium on Linux virtual display; actual rendered app, controlled synthetic accounts/messages",
+    "mainPassGroups": 51,
+    "aggregateAssertions": 32,
+    "legacyAlias": "didddd",
+    "nativeName": "Emir",
+    "restartVerified": true,
+    "logs": {
+      "fullgui": "1701b687347244b010c5ac48fd61c6375daa8684e109def5089ff2758ffb3bc6",
+      "seed": "c75e0423f2929f2c0c384de61e40070dc356c5a60f1785d7a0fa80604ef1b48e",
+      "restart": "8cde92391cae6e288dd88d2f2458af34c19673235f5642bcb475c39590da3bbe",
+      "aggregate": "85cd5f04ffd4966f657bf96726295ba543510babc77013dfe23321c83f58684b",
+      "fb": "f6ca9824cbb60bd22cd522d9e38779e79d65ea98847974dc9ca6132ea096ab0e",
+      "sound": "77d01e828b960113ffd08b89576368e5bc75d8e2d9d34c986b739adb12b57792",
+      "business": "599750c463fc9e257789471b7329c0c3d59f82f62aff0b9097cea9a679c3299c",
+      "history": "ca2fe45e400f2290cc32b67c5892f55a2b21f238864a85525e099eadba0ba36c",
+      "media": "59e76f6d56b8d78fbb4e598e9ee26f09f7c9beef0e97fdd9bdb13f16caf38ad5",
+      "backup": "b7bdb00660c39492f7ca6a66d7568ea7d7a77f18b1ed6da48705a99be7a8ee07"
+    }
+  },
+  "scopeLimits": {
+    "realCustomerMessagesSent": false,
+    "realWhatsAppFacebookAccountsUsed": false,
+    "externalPaidTranslationKeysUsed": false,
+    "actualUserProxyNodesTested": false,
+    "description": "已验证本地逻辑、隔离页面、真实 Electron 控件和 Windows 安装包；真实账号权限、服务器限流、实际代理节点和外部翻译服务状态未做实号验证。"
+  },
+  "testFiles": {
+    "scripts/verify-account-tools-ui.mjs": "679a5174879fac6d966bfc57e691b5b878f16b09ea87b03052e74ed758dd359b",
+    "scripts/fixtures/whatsapp-tools.html": "1b32ecdd603eaa3d2c3498d1662527d1f482c92b266db1e38a20f0b9898f1287",
+    "scripts/verify-aggregate-conversations-ui.mjs": "bcbbf9508a1b7a7a4c2a71860070a85981b74067da52def095ffea256d89f63e",
+    "scripts/verify-customer-business-ui.mjs": "d7fb737ccb3dbf7f921a4fbff7f9f060ebb1e79506a96921dc103db7d30bafcc",
+    "scripts/verify-notification-sound-ui.mjs": "905639dba2d27266c5c8a7715020a26962fb602a029a9d082ef4e19dfa886457",
+    "scripts/verify-bulk-history-actions-ui.mjs": "715e7c589bcd294fe0796e9c93518eb8e7632b5fca53ac3c205fa62eccc4f9ba",
+    "scripts/verify-bulk-media-preview-ui.mjs": "15cdda72517a09fbfac2c6f46be5076a8a30a34f9708f540914478cd39135342",
+    "scripts/verify-backup-options-ui.mjs": "3806052b49d2140d35ec6d5db690e6c371d9af69c10ce9e8ea0ea8ef1c7e4203",
+    "scripts/verify-account-remark-persistence-ui.mjs": "cd296ec314e00364ef40b043b5f7e76b8eab4958f18ea425d663bf569b9e1437",
+    "scripts/verify-facebook-network-flags-ui.mjs": "707ba0521f4bad570b95afaedf77ed020498315c7d4f5ad74a7e7846093bc792",
+    "scripts/account-tools-cdp.mjs": "ee8866b843ac15f8a933db8fe0c8bfeee67197620a9290a71e4427fc9223d02a"
+  }
+}
