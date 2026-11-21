@@ -64,6 +64,34 @@ describe('aggregate account isolation and lifecycle', () => {
     (runtime as any).active = true;
   });
   afterEach(() => runtime.dispose());
+  it('uses the actual WhatsApp account nickname despite a legacy local alias and keeps its remark', async () => {
+    stores.settings.app.accountSidebar.accounts.A = {
+      nickname: 'didddd',
+      remark: '个人账号',
+    };
+    stores.services.all[0].accountSnapshot.nickname = 'Emir';
+    await runtime.refresh();
+    const row = runtime.rows.find(item => item.accountId === 'A')!;
+    expect(row.accountName).toBe('Emir');
+    expect(row.accountRemark).toBe('个人账号');
+    expect(stores.settings.app.accountSidebar.accounts.A.nickname).toBe(
+      'didddd',
+    );
+  });
+  it('follows a WhatsApp profile name change without changing the local remark', async () => {
+    stores.settings.app.accountSidebar.accounts.A = {
+      nickname: 'old alias',
+      remark: '个人账号',
+    };
+    stores.services.all[0].accountSnapshot.nickname = 'Emir';
+    await runtime.refresh();
+    stores.services.all[0].accountSnapshot.nickname = 'Emir Updated';
+    await runtime.refresh();
+    expect(runtime.rows.find(item => item.accountId === 'A')).toMatchObject({
+      accountName: 'Emir Updated',
+      accountRemark: '个人账号',
+    });
+  });
   it('skips unready accounts without spending guest-read slots or waiting for their timeouts, and includes them once ready', async () => {
     jest.useFakeTimers();
     try {

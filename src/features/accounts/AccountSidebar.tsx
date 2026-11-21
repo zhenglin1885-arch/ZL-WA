@@ -407,7 +407,9 @@ export default class AccountSidebar extends Component<StoresProps, State> {
     const statusLabel = sleeping
       ? '已休眠（会话页面已关闭）'
       : statusLabels[status];
-    const name = prefs.nickname || profile.nickname || service.name;
+    const name = isWhatsApp
+      ? profile.nickname || service.name
+      : prefs.nickname || profile.nickname || service.name;
     const unread =
       service.unreadDirectMessageCount + service.unreadIndirectMessageCount;
     return (

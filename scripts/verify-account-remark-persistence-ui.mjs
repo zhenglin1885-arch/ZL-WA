@@ -10,7 +10,7 @@ import {
   call,
   socket,
 } from './account-tools-cdp.mjs';
-const manifest = '/tmp/zl-remark-persistence.json';
+const manifest = '/tmp/zl-native-name-persistence.json';
 try {
   await wait(
     'window.ferdium?.stores?.user.localSessionReady && window.ferdium.stores.services.allServicesRequest.wasExecuted',
@@ -28,19 +28,19 @@ try {
     assert.equal(profile, saved.profile);
     const card = `[data-service-id="${saved.id}"]`;
     await wait(
-      `!!document.querySelector(${JSON.stringify(card)})`,
+      `document.querySelector(${JSON.stringify(card + ' .account-card__name')})?.textContent===${JSON.stringify(saved.nativeName)}`,
       'saved account card restored',
     );
     const current = await evaluate(
       `(()=>{const c=document.querySelector(${JSON.stringify(card)});const s=window.ferdium.stores;return {name:c.querySelector('.account-card__name').textContent,remark:c.querySelector('.account-card__remark').textContent.trim(),prefs:{nickname:s.settings.app.accountSidebar.accounts[${JSON.stringify(saved.id)}].nickname,remark:s.settings.app.accountSidebar.accounts[${JSON.stringify(saved.id)}].remark},enabled:s.services.one(${JSON.stringify(saved.id)}).isEnabled}})()`,
     );
-    assert.equal(current.name, saved.nickname);
+    assert.equal(current.name, saved.nativeName);
     assert.equal(current.remark, saved.remark);
     assert.equal(current.prefs.nickname, saved.nickname);
     assert.equal(current.prefs.remark, saved.remark);
     assert.equal(current.enabled, false);
     console.log(
-      'PASS account remark survives a complete application restart; nickname and disabled state preserved',
+      'PASS account remark survives a complete application restart; native WhatsApp nickname displayed despite legacy alias; remark and disabled state preserved',
     );
     await click(card + ' .account-card__more');
     await wait(
@@ -79,15 +79,20 @@ try {
     const id = await evaluate(
       `(async()=>{const s=window.ferdium.stores.services;await s._createService({recipeId:'whatsapp',serviceData:{name:'备注验证账号',isEnabled:false},redirect:false});return s.createServiceRequest.result.data.id})()`,
     );
-    const nickname = '昵称保持不变';
+    const nickname = 'didddd';
+    const nativeName = 'Emir';
     const remark = '菜单修改并重启保留的账号备注';
+    await evaluate(
+      `(async()=>{const id=${JSON.stringify(id)};const profile={status:'online',ownerId:'601129164349@c.us',phone:'601129164349',nickname:${JSON.stringify(nativeName)}};await require('electron').ipcRenderer.invoke('account-tools-profile',id,profile);require('mobx').runInAction(()=>{window.ferdium.stores.services.one(id).accountSnapshot=profile});return true})()`,
+    );
+
     await evaluate(
       `(()=>{const s=window.ferdium.stores.settings;const c=JSON.parse(JSON.stringify(s.app.accountSidebar));c.collapsed=false;c.groups=c.groups.map(g=>({...g,collapsed:false}));c.accounts[${JSON.stringify(id)}]={...c.accounts[${JSON.stringify(id)}],nickname:${JSON.stringify(nickname)},remark:'个人账号'};s._update({type:'app',data:{accountSidebar:c}});return true})()`,
     );
     const card = `[data-service-id="${id}"]`;
     await wait(
-      `document.querySelector(${JSON.stringify(card + ' .account-card__name')})?.textContent===${JSON.stringify(nickname)}`,
-      'seed nickname visible',
+      `document.querySelector(${JSON.stringify(card + ' .account-card__name')})?.textContent===${JSON.stringify(nativeName)}`,
+      'native WhatsApp nickname replaces the legacy alias',
     );
     await click(card + ' .account-card__more');
     const labels = await evaluate(
@@ -139,14 +144,14 @@ try {
       await evaluate(
         `document.querySelector(${JSON.stringify(card + ' .account-card__name')}).textContent`,
       ),
-      nickname,
+      nativeName,
     );
     writeFileSync(
       manifest,
-      JSON.stringify({ profile, id, nickname, remark, before }),
+      JSON.stringify({ profile, id, nickname, nativeName, remark, before }),
     );
     console.log(
-      'PASS menu label, prefilled remark, native text input, remark save and unchanged nickname; restart verification pending',
+      'PASS menu label, prefilled remark, native text input, remark save and native WhatsApp nickname despite legacy alias; restart verification pending',
     );
   }
 } finally {

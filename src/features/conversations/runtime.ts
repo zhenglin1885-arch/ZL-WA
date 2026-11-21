@@ -329,8 +329,7 @@ export class ConversationRuntime {
           accountId: service.id,
           owner: bundle.owner,
           ownerAliases: bundle.ownerAliases || result.context.owners,
-          accountName:
-            prefs?.nickname || service.accountSnapshot.nickname || service.name,
+          accountName: service.accountSnapshot.nickname || service.name,
           accountRemark: prefs?.remark || '',
           remark: summary?.remarkName || '',
           flags: summary?.flags || [],
