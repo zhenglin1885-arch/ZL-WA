@@ -894,6 +894,39 @@ describe('privileged account tools IPC', () => {
     const current = await invoke('network-status', 'account-1');
     expect(current.ip).toBe('203.0.113.5');
   });
+  it('uses direct routing only after an explicit new selection, preserving other accounts and stored manual settings', async () => {
+    await invoke('prepare', 'account-1');
+    await invoke('prepare', 'account-2');
+    const first = sessions.get('persist:service-account-1');
+    const second = sessions.get('persist:service-account-2');
+    first.setProxy.mockClear();
+    second.setProxy.mockClear();
+    const config = defaultTools();
+    config.proxy = {
+      ...config.proxy,
+      mode: 'direct-only',
+      enabled: false,
+      host: 'saved-proxy.example',
+      port: '8888',
+      username: 'saved-user',
+    };
+    await invoke('save', 'account-1', config);
+    expect(first.setProxy).toHaveBeenLastCalledWith({ mode: 'direct' });
+    expect(second.setProxy).not.toHaveBeenCalled();
+    const saved = await invoke('get', 'account-1');
+    expect(saved.proxy).toMatchObject({
+      mode: 'direct-only',
+      enabled: false,
+      host: 'saved-proxy.example',
+      port: '8888',
+      username: 'saved-user',
+    });
+    config.proxy.mode = 'manual';
+    await invoke('save', 'account-1', config);
+    expect(first.setProxy).toHaveBeenLastCalledWith({ mode: 'system' });
+    expect(second.setProxy).not.toHaveBeenCalled();
+  });
+
   it('migrates the removed direct option to disabled without losing manual settings', async () => {
     const config = defaultTools();
     writeFileSync(

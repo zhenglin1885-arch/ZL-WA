@@ -281,10 +281,19 @@ const SettingsPanel = observer(
                 <Switch
                   label="启用代理"
                   value={config.proxy.enabled}
-                  onChange={enabled => proxy({ enabled })}
+                  onChange={enabled =>
+                    proxy({
+                      enabled,
+                      ...(config.proxy.mode === 'direct-only'
+                        ? { mode: 'manual' }
+                        : {}),
+                    })
+                  }
                 />
                 <p className="tools-muted">
-                  关闭后使用系统默认网络环境；应用时会刷新当前账号。
+                  {config.proxy.mode === 'direct-only'
+                    ? '当前选择直连：不使用系统代理或自动代理脚本；应用时会刷新当前账号。'
+                    : '关闭后使用系统默认网络环境；应用时会刷新当前账号。'}
                 </p>
                 <label htmlFor="zl-AccountTools-3">
                   配置方式
@@ -294,11 +303,15 @@ const SettingsPanel = observer(
                     onChange={e =>
                       proxy({
                         mode: e.target.value as ToolsConfig['proxy']['mode'],
+                        ...(e.target.value === 'direct-only'
+                          ? { enabled: false }
+                          : {}),
                       })
                     }
                   >
                     <option value="manual">手动配置</option>
                     <option value="system">自动（系统代理）</option>
+                    <option value="direct-only">直连（不使用系统代理）</option>
                   </select>
                 </label>
                 {config.proxy.mode === 'manual' && (

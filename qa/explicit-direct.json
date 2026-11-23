@@ -1,0 +1,53 @@
+{
+  "sourceBase": "5f86294203e32d97b9bbbe468ebcd42c0adfd08f",
+  "purpose": "Explicit opt-in DIRECT routing comparison; phone-pairing root cause not confirmed",
+  "unitTests": {
+    "suitesPassed": 85,
+    "passed": 939,
+    "skipped": 2
+  },
+  "nativeChecks": {
+    "original": {
+      "https": [
+        "PROXY"
+      ],
+      "wss": [
+        "PROXY"
+      ],
+      "other": [
+        "PROXY"
+      ]
+    },
+    "direct": {
+      "https": [
+        "DIRECT"
+      ],
+      "wss": [
+        "DIRECT"
+      ],
+      "other": [
+        "PROXY"
+      ]
+    },
+    "restored": {
+      "https": [
+        "PROXY"
+      ],
+      "wss": [
+        "PROXY"
+      ],
+      "other": [
+        "PROXY"
+      ]
+    },
+    "realPhonePairingVerified": false
+  },
+  "existingSystemDefaultUnchanged": true,
+  "legacyDirectMigrationPreserved": true,
+  "sourceFiles": {
+    "src/features/accountTools/config.ts": "4983a7970af272709355d1cddcb428df2cef8af53b49e25e5291d4839d05bc33",
+    "src/features/accountTools/AccountTools.tsx": "d78b4c1074c42719f9287040e815f10aa6825b90ea06f5e299679af26770abad",
+    "test/account-tools-ipc.test.ts": "7e79cfa10c9bac3529db0668757c63d4783298ed815871983fbc22882458d8dd",
+    "scripts/verify-explicit-direct-ui.mjs": "5586e6660d71ed3b586fdf139bfa559fbe1ebc29d93292a8a98bbcc5565fa4e7"
+  }
+}

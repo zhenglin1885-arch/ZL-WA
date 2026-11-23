@@ -1,7 +1,7 @@
 // ZL-WA per-account tools. These settings never contain a persisted plaintext password.
 export interface ProxyConfig {
   enabled: boolean;
-  mode: 'system' | 'manual';
+  mode: 'system' | 'manual' | 'direct-only';
   protocol: 'http' | 'https' | 'socks5';
   host: string;
   port: string;
@@ -92,6 +92,8 @@ export function proxyHostMatches(
   return Boolean(expected) && normalizeProxyHost(challenge) === expected;
 }
 export function proxyRules(proxy: ProxyConfig): Electron.ProxyConfig {
+  // A separate value preserves historical 'direct' migration and all existing defaults.
+  if (proxy.mode === 'direct-only') return { mode: 'direct' };
   if (!proxy.enabled || proxy.mode === 'system') return { mode: 'system' };
   if (proxy.mode !== 'manual') throw new Error('无效的代理配置方式');
   if (

@@ -1,0 +1,2 @@
+PASS explicit direct selection resolves HTTPS and WSS to DIRECT only for the selected account; disabled/manual retains original system routing and other Sessions remain unchanged
+{"original":{"https":["PROXY"],"wss":["PROXY"],"other":["PROXY"]},"direct":{"https":["DIRECT"],"wss":["DIRECT"],"other":["PROXY"]},"restored":{"https":["PROXY"],"wss":["PROXY"],"other":["PROXY"]},"realPhonePairingVerified":false}
