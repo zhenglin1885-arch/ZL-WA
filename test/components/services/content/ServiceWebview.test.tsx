@@ -259,17 +259,17 @@ describe('ServiceWebview', () => {
     component._setWebview(createMockWebview(view) as any);
     try {
       await component.pollAccount();
-      expect(view.executeJavaScript).toHaveBeenCalledTimes(4);
-      expect(view.executeJavaScript.mock.calls[0][0]).toContain(
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(5);
+      expect(view.executeJavaScript.mock.calls[1][0]).toContain(
         'configureWhatsAppLayout',
       );
-      expect(view.executeJavaScript.mock.calls[1][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[2][0]).toContain(
         'configureWhatsAppVoice',
       );
-      expect(view.executeJavaScript.mock.calls[2][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[3][0]).toContain(
         'watchWhatsAppUnread',
       );
-      expect(view.executeJavaScript.mock.calls[3][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[4][0]).toContain(
         'readWhatsAppPageHealth',
       );
     } finally {
@@ -483,6 +483,58 @@ describe('ServiceWebview', () => {
     } finally {
       component.componentWillUnmount();
       jest.useRealTimers();
+    }
+  });
+  it('applies global send mode changes in place and avoids repeating unchanged guest work', async () => {
+    const props: any = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isActive: true,
+    });
+    props.stores = { settings: { app: { messageSendMode: 'enter' } } };
+    const component = new ServiceWebview(props) as ServiceWebviewClass;
+    const view: any = Object.assign(createMockWebviewElement(), {
+      executeJavaScript: jest.fn(async () => true),
+      reload: jest.fn(),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      await component.applySendMode();
+      await component.applySendMode();
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(1);
+      expect(view.executeJavaScript.mock.calls[0][0]).toContain('("enter")');
+      props.stores.settings.app.messageSendMode = 'shift-enter';
+      await component.applySendMode();
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(2);
+      expect(view.executeJavaScript.mock.calls[1][0]).toContain(
+        '("shift-enter")',
+      );
+      expect(view.reload).not.toHaveBeenCalled();
+    } finally {
+      component.componentWillUnmount();
+    }
+  });
+
+  it('retries send mode installation after a guest rejects it without caching a failed attempt', async () => {
+    const props: any = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isActive: true,
+    });
+    const component = new ServiceWebview(props) as ServiceWebviewClass;
+    const view: any = Object.assign(createMockWebviewElement(), {
+      executeJavaScript: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Document replaced'))
+        .mockResolvedValue(true),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      await component.applySendMode();
+      await component.applySendMode();
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(2);
+    } finally {
+      component.componentWillUnmount();
     }
   });
 });

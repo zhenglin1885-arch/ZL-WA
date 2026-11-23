@@ -734,3 +734,57 @@
   button:disabled { opacity: .5; cursor: default; }
   [role='alert'] { color: #e35d5d; overflow-wrap: anywhere; }
 }
+
+.settings-send-mode {
+  border: 0;
+  padding: 0;
+  margin: 20px 0 0;
+  min-width: 0;
+  legend {
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  &__choices {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  &__choice {
+    display: flex;
+    flex: 1 1 230px;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    border: 1px solid #a9afb5;
+    border-radius: 9px;
+    cursor: pointer;
+    input {
+      margin-top: 4px;
+      accent-color: #1c542b;
+    }
+    small {
+      display: block;
+      margin-top: 7px;
+      opacity: 0.75;
+    }
+    &.is-selected {
+      border-color: #1c542b;
+      background: #edf6ed;
+      color: #183e23;
+    }
+    &:focus-within {
+      outline: 2px solid #528863;
+      outline-offset: 2px;
+    }
+  }
+  p {
+    opacity: 0.7;
+    font-size: 13px;
+    margin-top: 10px;
+  }
+}
+.theme__dark .settings-send-mode__choice.is-selected {
+  background: #21482f;
+  border-color: #80cf96;
+  color: #f1fff4;
+}

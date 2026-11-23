@@ -633,6 +633,7 @@ export const DEFAULT_APP_SETTINGS = {
   userAgentPref: '',
   downloadFolderPath: '',
   adaptableDarkMode: true,
+  messageSendMode: 'enter',
   translationTextColor: '#ffe45c',
   accentColor: DEFAULT_ACCENT_COLOR,
   lightThemeColor: DEFAULT_ACCENT_COLOR,

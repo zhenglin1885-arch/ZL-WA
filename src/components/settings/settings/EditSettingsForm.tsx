@@ -719,6 +719,46 @@ class EditSettingsForm extends Component<IProps, IState> {
                   </>
                 )}
 
+                <fieldset className="settings-send-mode">
+                  <legend>全局发送模式</legend>
+                  <div className="settings-send-mode__choices">
+                    {[
+                      {
+                        value: 'enter',
+                        title: 'Enter 发送',
+                        hint: 'Shift + Enter 换行',
+                      },
+                      {
+                        value: 'shift-enter',
+                        title: 'Shift + Enter 发送',
+                        hint: 'Enter 换行',
+                      },
+                    ].map(option => (
+                      <label
+                        key={option.value}
+                        className={`settings-send-mode__choice${form.$('messageSendMode').value === option.value ? ' is-selected' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="messageSendMode"
+                          value={option.value}
+                          checked={
+                            form.$('messageSendMode').value === option.value
+                          }
+                          onChange={() => {
+                            form.$('messageSendMode').set(option.value);
+                          }}
+                        />
+                        <span>
+                          <strong>{option.title}</strong>
+                          <small>{option.hint}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p>应用于所有账号，默认使用 Enter 发送</p>
+                </fieldset>
+                <Hr />
                 <Toggle {...form.$('keepAllWorkspacesLoaded').bind()} />
 
                 {isTodosActivated && <Hr />}

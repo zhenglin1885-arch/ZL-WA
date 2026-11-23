@@ -1,6 +1,7 @@
 /* eslint-disable no-void -- Detached account refresh handles errors internally. */
 // ZL-WA modification: independent WhatsApp sessions, live metadata and overlay focus.
 import { join } from 'node:path';
+import { configureMessageSendMode } from '../../../features/accounts/sendMode';
 import { ipcRenderer } from 'electron';
 import {
   type IReactionDisposer,
@@ -234,6 +235,44 @@ class ServiceWebview extends Component<IProps> {
       this.accountNavigationStarted();
   };
 
+  private installedSendMode?: {
+    view: WebviewElement;
+    epoch: number;
+    mode: string;
+  };
+
+  applySendMode = async (): Promise<void> => {
+    const view = this.webview?.view;
+    if (
+      !view ||
+      !this.props.service.isActive ||
+      (this.props.service.recipe?.id !== 'whatsapp' &&
+        !isFacebookBusiness(this.props.service))
+    )
+      return;
+    const mode = this.props.stores?.settings?.app?.messageSendMode || 'enter';
+    const epoch = this.accountDocumentEpoch;
+    const installed = this.installedSendMode;
+    if (
+      installed &&
+      installed.view === view &&
+      installed.epoch === epoch &&
+      installed.mode === mode
+    )
+      return;
+    const ready = await view
+      .executeJavaScript(
+        `(${configureMessageSendMode.toString()})(${JSON.stringify(mode)})`,
+      )
+      .catch(error => debug('Could not configure message send mode', error));
+    if (
+      ready &&
+      this.webview?.view === view &&
+      epoch === this.accountDocumentEpoch
+    )
+      this.installedSendMode = { view, epoch, mode };
+  };
+
   pollFacebookAccount = async (): Promise<void> => {
     const { service } = this.props;
     const view = this.webview?.view;
@@ -250,6 +289,7 @@ class ServiceWebview extends Component<IProps> {
     this.lastAccountPollAt = Date.now();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      await this.applySendMode();
       const snapshot = await Promise.race([
         view.executeJavaScript(`(${readFacebookSnapshot.toString()})()`),
         new Promise<never>((_resolve, reject) => {
@@ -306,6 +346,7 @@ class ServiceWebview extends Component<IProps> {
       this.webview?.view === view &&
       this.accountDocumentEpoch === accountDocumentEpoch;
     try {
+      await this.applySendMode();
       // Background accounts keep receiving messages, but do not need editor,
       // layout or upload UI installation until explicitly opened.
       if (service.isActive && !this.uiAdaptersReady) {
@@ -550,8 +591,10 @@ class ServiceWebview extends Component<IProps> {
         this.props.service.isActive,
         this.props.service.isDarkModeEnabled,
         this.props.stores?.ui?.isDarkThemeActive,
+        this.props.stores?.settings?.app?.messageSendMode,
       ],
       () => {
+        void this.applySendMode();
         if (this.props.service.isActive) void this.pollAccount();
       },
     );
@@ -589,12 +632,16 @@ class ServiceWebview extends Component<IProps> {
   handleAccountDomReady = (): void => {
     const { service, stores } = this.props;
     if (service.recipe?.id !== 'whatsapp' || !service.webview) return;
-    configureTranslation(
-      service,
-      stores?.settings.app.translationTextColor,
-    ).catch(error =>
-      debug('Could not initialize account send protection', error),
-    );
+    this.applySendMode()
+      .then(() =>
+        configureTranslation(
+          service,
+          stores?.settings.app.translationTextColor,
+        ),
+      )
+      .catch(error =>
+        debug('Could not initialize account send protection', error),
+      );
   };
 
   @action handleDidNavigate = (): void => {

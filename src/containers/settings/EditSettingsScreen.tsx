@@ -507,6 +507,10 @@ class EditSettingsScreen extends Component<
         settingsData.useCompactWorkspaceDrawer,
       ),
       hideAllServicesWorkspace: Boolean(settingsData.hideAllServicesWorkspace),
+      messageSendMode:
+        settingsData.messageSendMode === 'shift-enter'
+          ? 'shift-enter'
+          : 'enter',
       translationTextColor: settingsData.translationTextColor,
       accentColor: settingsData.accentColor,
       lightThemeColor: settingsData.lightThemeColor,
@@ -1342,6 +1346,14 @@ class EditSettingsScreen extends Component<
           ),
           default: DEFAULT_APP_SETTINGS.hideAllServicesWorkspace,
           type: 'checkbox',
+        },
+        messageSendMode: {
+          label: '全局发送模式',
+          value:
+            settings.all.app.messageSendMode === 'shift-enter'
+              ? 'shift-enter'
+              : 'enter',
+          default: DEFAULT_APP_SETTINGS.messageSendMode,
         },
         translationTextColor: {
           label: '翻译文字颜色',
