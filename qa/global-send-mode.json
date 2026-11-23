@@ -1,0 +1,64 @@
+{
+  "appCommit": "c48e41bb6468383b8c87c409e3926e12e3970aa9",
+  "feature": "Global Enter/Shift+Enter send mode",
+  "default": "enter",
+  "unitTests": {
+    "suitesPassed": 84,
+    "passed": 935,
+    "skipped": 2
+  },
+  "checks": {
+    "nativeKeyAndTranslationContexts": {
+      "web.whatsapp.com": {
+        "defaultEnter": true,
+        "enterNewline": true,
+        "nativeUndo": true,
+        "shiftEnterSingleSend": true,
+        "heldKeySuppressed": true,
+        "imeIgnored": true,
+        "disabledButtonIgnored": true,
+        "liveModeSwitch": true
+      },
+      "business.facebook.com": {
+        "defaultEnter": true,
+        "enterNewline": true,
+        "nativeUndo": true,
+        "shiftEnterSingleSend": true,
+        "heldKeySuppressed": true,
+        "imeIgnored": true,
+        "disabledButtonIgnored": true,
+        "liveModeSwitch": true
+      },
+      "textTranslation": {
+        "firstShortcutOnlyPreviews": true,
+        "plainEnterDoesNotConfirm": true,
+        "secondShortcutConfirmsExactlyOnce": true
+      },
+      "quoteTranslation": {
+        "firstShortcutOnlyPreviews": true,
+        "plainEnterDoesNotConfirm": true,
+        "secondShortcutConfirmsExactlyOnce": true
+      },
+      "mediaTranslation": {
+        "firstShortcutOnlyPreviews": true,
+        "plainEnterDoesNotConfirm": true,
+        "secondShortcutConfirmsExactlyOnce": true
+      },
+      "editTranslation": {
+        "firstShortcutOnlyPreviews": true,
+        "plainEnterDoesNotConfirm": true,
+        "secondShortcutConfirmsExactlyOnce": true
+      }
+    },
+    "mainGuiPassGroups": 51,
+    "savedSettingAppliedToLiveAccountWithoutReloadOrDraftLoss": true,
+    "settingSurvivesCompleteRestart": true,
+    "lightAndDarkSettingsRendered": true
+  },
+  "scope": "Native Electron/Chromium with isolated synthetic accounts, messages and local providers; no real external accounts were messaged. Existing Enter behavior remains the default.",
+  "testFiles": {
+    "scripts/verify-send-mode-ui.mjs": "91ac75414124a4d9611bdea67caf607521b835ec3c8ebe43b5980505f0fc83ca",
+    "scripts/verify-send-mode-settings-ui.mjs": "e0ad082f32667a8c5628a0f9d601a681c4c85bf8c8e683ca0cb5f88baeb3b424",
+    "test/components/services/content/ServiceWebview.test.tsx": "8e56efda578f0ed78ba87c35376cf4333d63000b4ec3e4c290c176ac1459e4e5"
+  }
+}

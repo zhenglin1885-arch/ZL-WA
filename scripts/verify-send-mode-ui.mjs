@@ -48,6 +48,9 @@ try {
             return r.value;
           };
           const press = async (shift = false, repeat = false) => {
+            win.focus();
+            win.webContents.focus();
+            await js("document.querySelector('#draft').focus()");
             await win.webContents.debugger.sendCommand(
               'Input.dispatchKeyEvent',
               {
@@ -89,6 +92,13 @@ try {
               ))
             )
               throw Error(host + ' Enter did not insert a native newline');
+            win.webContents.undo();
+            if (
+              await js(
+                'document.querySelector("#draft").innerText.includes("\\n")',
+              )
+            )
+              throw Error(host + ' native newline undo failed');
             await press(true);
             if ((await js('sends')) !== 2)
               throw Error(host + ' Shift Enter did not send exactly once');
@@ -110,6 +120,7 @@ try {
             reports[host] = {
               defaultEnter: true,
               enterNewline: true,
+              nativeUndo: true,
               shiftEnterSingleSend: true,
               heldKeySuppressed: true,
               imeIgnored: true,
