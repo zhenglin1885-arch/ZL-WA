@@ -338,6 +338,11 @@ class RecipeController {
           }
           return live;
         },
+        // The legacy WhatsApp helper drops native history transitions. Let
+        // current linking/navigation run unchanged; retain other recipe hooks.
+        recipe.id === 'whatsapp'
+          ? join(recipe.path, 'webview-unsafe.js')
+          : undefined,
       );
       if (existsSync(modulePath)) {
         require(modulePath)(this.recipe, { ...config, recipe });

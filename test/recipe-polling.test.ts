@@ -48,3 +48,73 @@ it('retains other service and custom recipe loops and disposes old reload listen
   expect(custom).toHaveBeenCalledTimes(50);
   expect(ipc.listenerCount('poll')).toBe(0);
 });
+
+it('preserves every native WhatsApp navigation while retaining other unsafe recipe helpers', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { runInNewContext } = require('node:vm');
+  const directory = fs.mkdtempSync(
+    path.join(require('node:os').tmpdir(), 'zl-navigation-'),
+  );
+  try {
+    const excluded = path.join(directory, 'webview-unsafe.js');
+    const other = path.join(directory, 'other.js');
+    const legacy = fs.readFileSync(
+      path.join(process.cwd(), 'recipes/recipes/whatsapp/webview-unsafe.js'),
+      'utf8',
+    );
+    fs.writeFileSync(excluded, legacy);
+    fs.writeFileSync(other, 'window.otherHelperReady=true;');
+    // Reproduce the pinned recipe interference rather than mocking the bug.
+    const oldPush = jest.fn();
+    const oldPage = { history: { pushState: oldPush } };
+    runInNewContext(legacy, {
+      window: oldPage,
+      setTimeout: () => {},
+      console: { log() {} },
+    });
+    oldPage.history.pushState();
+    oldPage.history.pushState();
+    expect(oldPush).toHaveBeenCalledTimes(1);
+    const nativePush = jest.fn();
+    const page: any = { history: { pushState: nativePush } };
+    ipc.sendToHost.mockImplementation((channel, ...scripts) => {
+      if (channel === 'inject-js-unsafe')
+        for (const script of scripts) runInNewContext(script, { window: page });
+    });
+    const recipe = new Recipe({}, {}, {}, {}, () => false, excluded);
+    recipe.injectJSUnsafe(excluded, other);
+    await Promise.resolve();
+    await Promise.resolve();
+    page.history.pushState();
+    page.history.pushState();
+    expect(nativePush).toHaveBeenCalledTimes(2);
+    expect(page.otherHelperReady).toBe(true);
+    recipe.dispose();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('retains unsafe helpers for recipes that do not exclude a navigation script', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const directory = fs.mkdtempSync(
+    path.join(require('node:os').tmpdir(), 'zl-other-recipe-'),
+  );
+  try {
+    const file = path.join(directory, 'webview-unsafe.js');
+    fs.writeFileSync(file, 'window.customRecipeReady=true;');
+    const recipe = new Recipe({}, {}, {}, {});
+    recipe.injectJSUnsafe(file);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ipc.sendToHost).toHaveBeenCalledWith(
+      'inject-js-unsafe',
+      'window.customRecipeReady=true;',
+    );
+    recipe.dispose();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -22,6 +22,7 @@ class RecipeWebview {
     notificationsHandler,
     sessionHandler,
     hasLiveWhatsAppUnread: () => boolean = () => false,
+    private readonly excludedUnsafeScript?: string,
   ) {
     this.badgeHandler = badgeHandler;
     this.dialogTitleHandler = dialogTitleHandler;
@@ -166,13 +167,15 @@ class RecipeWebview {
 
   injectJSUnsafe(...files) {
     Promise.all(
-      files.map(file => {
-        if (existsSync(file)) {
-          return readFileSync(file, 'utf8');
-        }
-        debug('Script not found', file);
-        return null;
-      }),
+      files
+        .filter(file => file !== this.excludedUnsafeScript)
+        .map(file => {
+          if (existsSync(file)) {
+            return readFileSync(file, 'utf8');
+          }
+          debug('Script not found', file);
+          return null;
+        }),
     ).then(scripts => {
       const scriptsFound = scripts.filter(script => script !== null);
       if (scriptsFound.length > 0) {
