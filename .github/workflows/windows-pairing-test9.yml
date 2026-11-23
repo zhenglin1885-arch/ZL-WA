@@ -1,0 +1,168 @@
+name: Windows read-only pairing diagnostics test9
+'on':
+  push:
+    branches:
+    - build/pairing-diagnostics-test9
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+        if-no-files-found: error
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --name-only 5c939840ceb618ee60aa95c350d94835bcbe8823 HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml > changed.txt
+        gh api repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        allowed={'esbuild.mjs','src/components/services/content/ServiceWebview.tsx','src/features/accounts/collectSendDiagnostics.ts','src/features/accounts/sendDiagnostics.ts','src/features/accounts/pairingDiagnostics.ts'}
+        assert set(pathlib.Path('changed.txt').read_text().splitlines())<=allowed
+        jobs=json.load(open('jobs.json'))['jobs'];w=next(j for j in jobs if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        r=json.load(open('qa/pairing-diagnostics.json'));assert r['sourceBase']=='5c939840ceb618ee60aa95c350d94835bcbe8823' and not r['realPhonePairingVerified'] and r['unitTests']['passed']==938
+        assert r['nativeChecks']['qrRefreshObserved']==3
+        for key in ['exceptionTypesObserved','nativeBrowserApisUnchanged','noPageReload','noQrAccountOrChatContent']:assert r['nativeChecks'][key]
+        for path,digest in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: ${{ github.run_id }}
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']==os.environ['GITHUB_SHA'] and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-pairing-test9-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/pairing-diagnostics.json',root/'QA-summary.json')
+        shutil.copyfile('qa/pairing-diagnostics-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows 7.3.9 扫码登录只读诊断版。
+
+        用于进一步定位“同一账号在 Chrome／其他软件能登录，本软件扫码后返回二维码”的问题。这不是已确认解决根因的版本。
+
+        新增诊断：二维码轮换次数、登录/聊天页面状态变化、有限的连接状态和异常类型，以及宿主页面加载／导航事件。只保留有限事件，不读取二维码内容、账号、聊天内容或错误原文；不改写 WebSocket、Fetch、存储 API，不清空账号数据，不改变登录协议。
+
+        保留全局发送模式和其他既有功能，默认 Enter 发送。类型检查、85 组自动测试（938 项通过，2 项既有跳过）、原生只读观察检查及 Windows 安装升级／打包启动恢复通过。
+
+        使用方法：完全退出旧版后安装，在出问题的会话扫码一次；出现二维码重新生成后，立即通过原有“复制诊断”功能导出新日志。新日志应包含 connection.pairing 和 page.transitions 字段。手机实际扫码配对尚需受影响电脑验证。
+        NOTES
+        gh release create test-7.3.9-pairing-diagnostics-9 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 扫码登录只读诊断版' --notes-file release-notes.md
+    needs: windows
+    permissions:
+      contents: write
+      actions: read

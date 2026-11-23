@@ -149,8 +149,82 @@ export function readSendDiagnostics() {
     activeFlagCount:
       activeRow?.querySelectorAll('.zl-customer-flag').length ?? null,
   };
+  const pairing = read(() => page.__zlPairingTrace);
+  const eventNames = [
+    'observing',
+    'login',
+    'chat',
+    'loading',
+    'qr-changed',
+    'exception',
+    'online',
+    'offline',
+    'pagehide',
+  ];
+  const eventCodes = [
+    'CONNECTED',
+    'OPENING',
+    'PAIRING',
+    'UNPAIRED',
+    'UNPAIRED_IDLE',
+    'CONFLICT',
+    'TIMEOUT',
+    'PROXYBLOCK',
+    'TOS_BLOCK',
+    'SMB_TOS_BLOCK',
+    'SecurityError',
+    'QuotaExceededError',
+    'DataError',
+    'OperationError',
+    'UnknownError',
+    'InvalidStateError',
+    'NotSupportedError',
+    'TypeError',
+    'AbortError',
+  ];
+  const pairingEvents = Array.isArray(pairing?.events)
+    ? pairing.events
+        .slice(-64)
+        .filter(
+          (e: any) =>
+            e &&
+            eventNames.includes(e.event) &&
+            Number.isFinite(e.at) &&
+            e.at >= 0,
+        )
+        .map((e: any) => ({
+          at: e.at,
+          event: e.event,
+          code: eventCodes.includes(e.code) ? e.code : null,
+        }))
+    : [];
   return {
-    format: 1,
+    format: 2,
+    pairing: {
+      observing: Boolean(pairing),
+      qrChanges:
+        Number.isInteger(pairing?.qrChanges) &&
+        pairing.qrChanges >= 0 &&
+        pairing.qrChanges <= 10000
+          ? pairing.qrChanges
+          : null,
+      events: pairingEvents,
+    },
+    browserContext: {
+      secure: bool(read(() => page.isSecureContext)),
+      crossOriginIsolated: bool(read(() => page.crossOriginIsolated)),
+      cookiesEnabled: bool(read(() => navigator.cookieEnabled)),
+      browserBrandInUserAgent: bool(
+        read(() => /Electron|Ferdium|ZL-WA/i.test(navigator.userAgent)),
+      ),
+      indexedDBAvailable: bool(
+        read(() => typeof page.indexedDB?.open === 'function'),
+      ),
+      webCryptoAvailable: bool(read(() => Boolean(page.crypto?.subtle))),
+      serviceWorkerControlled: bool(
+        read(() => Boolean(navigator.serviceWorker?.controller)),
+      ),
+    },
     browserOnline: bool(read(() => navigator.onLine)),
     socket: token(socket),
     sdkReady: bool(read(() => wpp.isReady)),

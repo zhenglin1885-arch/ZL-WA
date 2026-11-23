@@ -1,5 +1,16 @@
 import { readSendDiagnostics, readWhatsAppPageHealth } from './sendDiagnostics';
 
+const transitions = new WeakMap<object, { at: number; event: string }[]>();
+export function recordPageTransition(
+  view: object,
+  event: 'loading-started' | 'main-frame-navigated',
+) {
+  const events = transitions.get(view) || [];
+  events.push({ at: Date.now(), event });
+  if (events.length > 32) events.shift();
+  transitions.set(view, events);
+}
+
 // Host diagnostics must survive error documents, a hung guest, and a missing SDK.
 // Never copy raw exception messages: Chromium errors can contain addresses/URLs.
 async function bounded<T>(
@@ -94,6 +105,10 @@ export async function collectSendDiagnostics(
       : proxy,
     page: {
       present: Boolean(view),
+      transitions:
+        !accountChanged && !changed && view
+          ? [...(transitions.get(view) || [])]
+          : [],
       loadFailed: service.isError,
       errorCode: service.isError
         ? /\bERR_[A-Z_]+\b/.exec(service.errorMessage || '')?.[0] || null

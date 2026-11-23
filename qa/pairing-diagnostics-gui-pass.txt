@@ -1,0 +1,2 @@
+PASS native pairing observation records QR rotation and bounded error types without QR contents, browser API replacement, storage mutation or reload
+{"qrRefreshObserved":3,"exceptionTypesObserved":true,"nativeBrowserApisUnchanged":true,"noPageReload":true,"noQrAccountOrChatContent":true}

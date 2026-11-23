@@ -1,6 +1,8 @@
 /* eslint-disable no-void -- Detached account refresh handles errors internally. */
 // ZL-WA modification: independent WhatsApp sessions, live metadata and overlay focus.
 import { join } from 'node:path';
+import { configurePairingDiagnostics } from '../../../features/accounts/pairingDiagnostics';
+import { recordPageTransition } from '../../../features/accounts/collectSendDiagnostics';
 import { configureMessageSendMode } from '../../../features/accounts/sendMode';
 import { ipcRenderer } from 'electron';
 import {
@@ -351,7 +353,9 @@ class ServiceWebview extends Component<IProps> {
       // layout or upload UI installation until explicitly opened.
       if (service.isActive && !this.uiAdaptersReady) {
         const layoutReady = await view
-          .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
+          .executeJavaScript(
+            `(${configurePairingDiagnostics.toString()})();(${configureWhatsAppLayout.toString()})()`,
+          )
           .catch(error =>
             debug('Could not mount WhatsApp split handle', error),
           );
@@ -555,6 +559,8 @@ class ServiceWebview extends Component<IProps> {
   };
 
   accountNavigationStarted = (): void => {
+    if (this.webview?.view && this.props.service.recipe?.id === 'whatsapp')
+      recordPageTransition(this.webview.view, 'loading-started');
     clearTimeout(this.pageRecoveryTimer);
     this.pageRecoveryTimer = undefined;
     this.props.service.accountUnreadLive = false;
@@ -645,6 +651,8 @@ class ServiceWebview extends Component<IProps> {
   };
 
   @action handleDidNavigate = (): void => {
+    if (this.webview?.view && this.props.service.recipe?.id === 'whatsapp')
+      recordPageTransition(this.webview.view, 'main-frame-navigated');
     if (this.props.service._webview) {
       this.props.service.pageTitle = this.props.service._webview.getTitle();
     }

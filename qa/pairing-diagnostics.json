@@ -1,0 +1,26 @@
+{
+  "sourceBase": "5c939840ceb618ee60aa95c350d94835bcbe8823",
+  "purpose": "Read-only investigation of QR pairing failure; not a confirmed fix",
+  "unitTests": {
+    "suitesPassed": 85,
+    "passed": 938,
+    "skipped": 2
+  },
+  "nativeChecks": {
+    "qrRefreshObserved": 3,
+    "exceptionTypesObserved": true,
+    "nativeBrowserApisUnchanged": true,
+    "noPageReload": true,
+    "noQrAccountOrChatContent": true
+  },
+  "realPhonePairingVerified": false,
+  "sourceFiles": {
+    "esbuild.mjs": "5915529fe809d5a3e8b1533b6e7e60387c67565825663f8ec5cd70144ef75767",
+    "src/components/services/content/ServiceWebview.tsx": "d946f93f6effc8b2c536a52022b99e3e11ad6dfdbc111e91746623b29e528cc7",
+    "src/features/accounts/collectSendDiagnostics.ts": "68a52ce05d5aa8b386a9eb9788a827f1b7dfee0c8595837af100b584c5aeae11",
+    "src/features/accounts/sendDiagnostics.ts": "f719b15415103bb3e6be2ae8201294991ca8d41a440e9f343b03f76f6633da15",
+    "src/features/accounts/pairingDiagnostics.ts": "cea356474a3fae71605cfbdaf490f9f241baedf131cee30cdd0d7b09101a14bf",
+    "test/pairing-diagnostics.test.ts": "eeafadc9c7aa681d5a283b6757099cb4dbf15e9f23a45b1b23e5aed54d12dada",
+    "scripts/verify-pairing-diagnostics-ui.mjs": "8f86a70cf4e592a60a6ff151c15004cd0d2a86b18a259983a54cdf7b8963799e"
+  }
+}
