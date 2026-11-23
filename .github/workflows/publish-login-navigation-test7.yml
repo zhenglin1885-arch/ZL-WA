@@ -1,0 +1,71 @@
+name: Publish WhatsApp login navigation diagnostic test
+'on':
+  push:
+    branches:
+    - publish/login-navigation-test7
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --exit-code 26815485d8becdb7130d81d9948eae54b82bdf83 HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml
+        gh api repos/$GH_REPO/actions/runs/45217156813 > run.json
+        gh api repos/$GH_REPO/actions/runs/45217156813/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        r=json.load(open('run.json'));assert r['head_sha']=='26815485d8becdb7130d81d9948eae54b82bdf83' and r['status']=='completed' and r['conclusion']=='success'
+        jobs=json.load(open('jobs.json'))['jobs'];w=next(j for j in jobs if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        report=json.load(open('qa/login-navigation-test7.json'));assert report['appCommit']=='26815485d8becdb7130d81d9948eae54b82bdf83' and report['windowsRun']==45217156813
+        assert report['gates']['fullGui'] and report['gates']['remarkRestart'] and report['gates']['nativeNavigation']
+        for path,digest in report['testFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: 45217156813
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']=='26815485d8becdb7130d81d9948eae54b82bdf83' and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-login-test7-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/login-navigation-test7.json',root/'QA-summary.json')
+        shutil.copyfile('qa/login-navigation-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows 7.3.9 登录导航兼容测试版。
+
+        针对普通 Chrome 能扫码登录、软件扫码后退回二维码的问题，移除旧 WhatsApp 适配脚本对 history.pushState 的 5 秒限流，保留网页原生导航。其他 WhatsApp 适配、账号分区、登录数据及既有功能保持原样。
+
+        已复现旧脚本丢弃连续导航调用，并完成自动测试、实际 Electron 预加载／登录页面导航检查、界面回归及 Windows 原生安装启动验证，详见 QA-summary.json 和 GUI-checks.txt。
+
+        重要验证边界：本次为针对已发现导航干预的诊断测试包，未使用真实手机扫码，尚不能确认此干预是用户配对失败的唯一根因。请在故障电脑用原账号测试，保留失败诊断。不会自动清空会话或登录缓存。
+        NOTES
+        gh release create test-7.3.9-login-navigation-7 release-assets/* --target 26815485d8becdb7130d81d9948eae54b82bdf83 --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 登录导航兼容测试版' --notes-file release-notes.md

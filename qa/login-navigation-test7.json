@@ -1,0 +1,36 @@
+{
+  "appCommit": "26815485d8becdb7130d81d9948eae54b82bdf83",
+  "windowsRun": 45217156813,
+  "version": "7.3.9",
+  "gates": {
+    "fullGui": true,
+    "nativeNavigation": true,
+    "remarkRestart": true
+  },
+  "unitTests": {
+    "suitesPassed": 84,
+    "passed": 933,
+    "skipped": 2
+  },
+  "change": "Skip only the known legacy WhatsApp history.pushState throttling script; retain other recipe adapters and persisted account data.",
+  "evidence": {
+    "legacyScriptDropsSecondNavigation": true,
+    "nativeElectronPreloadRetainsThreeNavigations": true,
+    "loginPageNotReloaded": true,
+    "fullGuiPassGroups": 51,
+    "aggregateChecks": 32
+  },
+  "limits": {
+    "realPhoneQrPairingVerified": false,
+    "allRootCausesIdentified": false,
+    "description": "Diagnostic compatibility build: native navigation interference reproduced and removed. Real phone pairing must still be confirmed on the affected computer."
+  },
+  "testFiles": {
+    "test/recipe-polling.test.ts": "a42d858376683e681db24238b518d3f65dd0fa290aeebe3de46b05a2c709c6c6",
+    "scripts/verify-whatsapp-login-navigation-ui.mjs": "fb5bd6977525c56d43c32d83d6d892fe1fe38283cd2f52aeb593b6197ea693af",
+    "scripts/verify-account-tools-ui.mjs": "679a5174879fac6d966bfc57e691b5b878f16b09ea87b03052e74ed758dd359b",
+    "scripts/verify-account-remark-persistence-ui.mjs": "cd296ec314e00364ef40b043b5f7e76b8eab4958f18ea425d663bf569b9e1437",
+    "scripts/verify-facebook-network-flags-ui.mjs": "707ba0521f4bad570b95afaedf77ed020498315c7d4f5ad74a7e7846093bc792",
+    "scripts/verify-aggregate-conversations-ui.mjs": "bcbbf9508a1b7a7a4c2a71860070a85981b74067da52def095ffea256d89f63e"
+  }
+}
