@@ -1,0 +1,166 @@
+name: Windows global send mode test8 verification and publication
+'on':
+  push:
+    branches:
+    - build/global-send-mode-test8
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+        if-no-files-found: error
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --exit-code c48e41bb6468383b8c87c409e3926e12e3970aa9 HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml
+        gh api repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        jobs=json.load(open('jobs.json'))['jobs'];w=next(j for j in jobs if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        r=json.load(open('qa/global-send-mode.json'));assert r['appCommit']=='c48e41bb6468383b8c87c409e3926e12e3970aa9' and r['default']=='enter' and r['unitTests']['passed']==935
+        assert r['checks']['mainGuiPassGroups']==51 and r['checks']['savedSettingAppliedToLiveAccountWithoutReloadOrDraftLoss'] and r['checks']['settingSurvivesCompleteRestart'] and r['checks']['lightAndDarkSettingsRendered']
+        for checks in r['checks']['nativeKeyAndTranslationContexts'].values():assert all(checks.values())
+        for path,digest in r['testFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: ${{ github.run_id }}
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']==os.environ['GITHUB_SHA'] and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-sendmode-test8-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/global-send-mode.json',root/'QA-summary.json')
+        shutil.copyfile('qa/global-send-mode-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows 7.3.9 全局发送模式测试版。
+
+        设置 → 通用中新增“全局发送模式”：默认 Enter 发送、Shift+Enter 换行；用户主动选择后才切换为 Shift+Enter 发送、Enter 换行。设置自动保存，重启保留，切换账号时应用；设置变更不刷新会话、不丢失草稿。
+
+        保留原有点击发送、翻译预览与二次确认逻辑。已使用隔离 Chromium 页面验证 WhatsApp、FB、输入法、长按、禁用按钮、原生换行撤销，以及文字、引用回复、附件说明和编辑消息的翻译确认。保留此前实际昵称、备注、兼容库和登录导航修复。
+
+        验证：84 组自动测试、935 项通过、2 项既有跳过；51 组默认模式界面回归；设置重启保留、浅色／暗黑显示；Windows 安装升级、包内兼容库与原生打包启动恢复。详细证据见附带 QA-summary.json、GUI-checks.txt 和 windows-startup-verification.json。
+
+        测试使用隔离账号和本地页面，不代表所有真实外部账号、代理和翻译服务均已实测。此前登录导航修复仍需在受影响电脑确认手机扫码结果。不会清空现有登录数据或自动更改发送模式。
+        NOTES
+        gh release create test-7.3.9-global-send-mode-8 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 全局发送模式测试版' --notes-file release-notes.md
+    needs: windows
+    permissions:
+      contents: write
+      actions: read
