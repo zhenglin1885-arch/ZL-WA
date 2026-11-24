@@ -1,0 +1,52 @@
+name: Publish verified independent login probe for Windows
+on:
+  push:
+    branches: [publish/independent-login-probe-01]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Confirm native verification run and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api repos/$GH_REPO/actions/runs/45443447812 > /tmp/run.json
+          node -e "const r=require('/tmp/run.json');if(r.head_sha!=='d3ecf4707d6436e71d02dc447b4fdda9536c1fe5'||r.conclusion!=='success')process.exit(1)"
+      - uses: actions/download-artifact@v4
+        with:
+          name: isolated-login-probe-windows
+          path: release
+          run-id: 45443447812
+          github-token: ${{ github.token }}
+      - name: Verify immutable application bytes and correct documentation names
+        working-directory: release
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS.txt
+          node -e "const r=require('./validation.json');const n=require('./native-verification.json');if(r.sourceCommit!=='d3ecf4707d6436e71d02dc447b4fdda9536c1fe5'||r.nodeTestsPassed!==8||r.realPhoneLoginVerified!==false||!n.startup.passed||!n.resume.passed||!n.startup.packaged||!n.resume.packaged||n.startup.native!=='win32')process.exit(1)"
+          echo '4818fcc49e8fb35c1ffab8b78b102bec777c087af5eecd76e77dc9d8661beb6b  ZL-WA-Login-Probe-0.1.0-win-x64.zip' | sha256sum --check
+          mv 使用说明.md README.md
+          sed -i 's/使用说明.md/README.md/' SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - name: Publish separate verified experimental release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/notes.md <<'NOTES'
+          独立 Windows 登录验证工具，不是 ZL-WA 更新包，不读取原软件账号数据。
+          解压完整 ZIP，运行 ZL-WA Login Probe.exe，点击“开始 / 恢复登录”。使用说明见 README.md。
+          8 项自动检查及 Windows 原生打包程序启动、凭据保存与重启检查通过。
+          真实问题账号配对、同步、收发和重启恢复尚未验证；开发云端连接被拒绝，连接尝试超时，未取得二维码。
+          采用非官方 Baileys 7.0.0-rc14，不是 WhatsApp 官方电脑版接口。仅支持手动文字收发验证，没有原软件整合功能。Windows 未签名。
+          本发布复用 run 45443447812 中验证的同一 ZIP，应用和原生报告字节不变，修正说明附件名称及校验清单。
+          NOTES
+          gh release create test-independent-login-probe-0.1.0-windows --target d3ecf4707d6436e71d02dc447b4fdda9536c1fe5 --title 'Windows 独立登录验证工具 0.1.0' --prerelease --latest=false --notes-file /tmp/notes.md ./*
