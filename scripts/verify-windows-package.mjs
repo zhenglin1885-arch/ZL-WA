@@ -73,7 +73,7 @@ try {
       waiter(message);
     }
   });
-  const evaluate = async expression => {
+  const evaluate = async (expression, strict = false) => {
     sequence += 1;
     const id = sequence;
     let timer;
@@ -97,7 +97,18 @@ try {
           );
         }),
       ]);
-      if (message.error || message.result?.exceptionDetails) return null;
+      if (message.error || message.result?.exceptionDetails) {
+        if (strict)
+          throw new Error(
+            String(
+              message.result?.exceptionDetails?.exception?.description ||
+                message.result?.exceptionDetails?.text ||
+                message.error?.message ||
+                'Packaged evaluation failed',
+            ).slice(0, 1800),
+          );
+        return null;
+      }
       return message.result?.result?.value;
     } finally {
       clearTimeout(timer);
@@ -152,7 +163,9 @@ try {
     confirmed: true,
     otherStillBlocked: true,
   });
-  const protocolBackend = await verifyProtocolBackend(evaluate);
+  const protocolBackend = await verifyProtocolBackend(expression =>
+    evaluate(expression, true),
+  );
   const appPath = await evaluate(
     "require('@electron/remote').app.getAppPath()",
   );

@@ -3,8 +3,8 @@
   "purpose": "Opt-in isolated protocol connection with original web mode and task queue behavior preserved",
   "typecheck": true,
   "unitTests": {
-    "suitesPassed": 93,
-    "passed": 1002,
+    "suitesPassed": 94,
+    "passed": 1004,
     "skipped": 2
   },
   "protocolModelTests": 32,
@@ -29,12 +29,12 @@
     "current synchronized recent messages only; deep history not fully adapted"
   ],
   "sourceFiles": {
-    ".github/workflows/windows-protocol-test15.yml": "f39f0505e5bb8073c6b8a3c701ea5f67d6cd30c116f618557e5ff205db3013c7",
+    ".github/workflows/windows-protocol-test15.yml": "3cbbb6bfa627e1485895a273a08043a630800f0fb75ff96a4c5477b91b1f34fe",
     "docs/PROTOCOL-CONNECTION-TEST15.md": "a68fe0f318afed15ac7c6b0863cb64669e0a6db8da3d042e202aeb9af4810e23",
-    "electron-builder.yml": "184c35b1c87978564f91ec931d57427282684224ffa9b1df025cc25a5bbd6cac",
+    "electron-builder.yml": "fad4867eeaa035681710547e78637fa08ccdb04791a92ae7feb43b7d37b58f6b",
     "scripts/verify-protocol-native.mjs": "81751ad7d31334bf6c8f412ed34a0ea14e15a2004c47972e9f88481bc9e86d2f",
     "scripts/verify-protocol-ui.mjs": "2cbc4220434a8f193ad0a96e6ba4bfc3ae212cc4d0795d27a1ba31ac7f3d09ff",
-    "scripts/verify-windows-package.mjs": "6c751608e20c9587c55346fff845a9c4a5f385eb76f6cc637b1dfe022c6aa636",
+    "scripts/verify-windows-package.mjs": "01f9867b81722f4e3b0b7111107066fca57e811e2491bdec17c905cfc9a6380b",
     "src/components/services/content/ServiceView.tsx": "60b8cf4f9aecdaad539dc5c0ea8c0fcf5ab72a697e986c3c989f6054c731f7b7",
     "src/electron/ProtocolConnections.ts": "b4525df753eaddd18bd79e2245f3b38daa60161f162d061fed45a88b17109e47",
     "src/electron/ipc-api/accountTools.ts": "81a5bf38c8608ee60a7e1a9e4d4da5863bf50f748f1b9438f73e6f87fba47214",
@@ -63,8 +63,12 @@
     "tools/protocol-backend/package.json": "8ad233e4651e203de0d427a73d5b8ff9317ccd1b7b0b1eac406bd1c995f9e033",
     "tools/protocol-backend/test/model.test.mjs": "b7d970fa8d61a59746b35572745cf8ec9116ff8c6f6154fc53eb12e116f33737",
     "tools/protocol-backend/worker.mjs": "35b554820653d46b1926409e9dec2c2b63b6b1d2cb560181210acf8369d2f5b9",
-    "test/protocol-customer-context.test.ts": "cf6af5b419bbb6cef202a90ce46423c370ed83449dbe431752ca223c6f1934e7"
+    "test/protocol-customer-context.test.ts": "cf6af5b419bbb6cef202a90ce46423c370ed83449dbe431752ca223c6f1934e7",
+    "build-helpers/copy-protocol-runtime.cjs": "b0063fe0d56daf133461963a292c872d01d2e30189a9c16eed1cd2d23d280b3e",
+    "test/protocol-packaging.test.ts": "0c517d25d034e16ce589d09f714160e46dde112478dd9f525d3aea3583ba90cc"
   },
   "customerContextRaceGuard": true,
-  "readOnlyReceiptsRequireOwnMessage": true
+  "readOnlyReceiptsRequireOwnMessage": true,
+  "packagedLinuxBackendVerified": true,
+  "runtimeDependencyCopyVerified": true
 }

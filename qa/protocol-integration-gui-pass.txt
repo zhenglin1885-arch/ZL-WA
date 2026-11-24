@@ -65,3 +65,5 @@ Native backend actual process/media checks:
   "realPhoneLoginVerified": false
 }
 Real integrated phone login and server operations are not verified by these synthetic/native tests.
+
+PASS actual packaged Linux application: utility worker imports, isolated profile data, restart, diagnostics privacy, sharp JPEG, FFmpeg Ogg/Opus and H264 after explicit nested dependency copy. Windows packaged verification remains a required CI gate.

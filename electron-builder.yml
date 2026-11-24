@@ -8,6 +8,7 @@ productName: 'ZL-WA'
 
 # Carry upstream licenses and modification/source information in packaged apps.
 beforePack: ./build-helpers/prepare-runtime-aliases.cjs
+afterPack: ./build-helpers/copy-protocol-runtime.cjs
 
 extraResources:
   - from: tools/protocol-backend
