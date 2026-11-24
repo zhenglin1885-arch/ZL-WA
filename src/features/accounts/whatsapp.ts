@@ -29,6 +29,9 @@ export async function readWhatsAppSnapshot(
     ].includes(surface.state)
   )
     return { status: 'error' };
+  if (!navigator.onLine) return { status: 'error' };
+  if (surface && surface.state !== 'chat')
+    return { status: surface.state === 'login' ? 'logged-out' : 'loading' };
   const page = window as any;
   const module = (name: string): any => {
     try {

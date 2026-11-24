@@ -348,33 +348,45 @@ class ServiceWebview extends Component<IProps> {
       this.webview?.view === view &&
       this.accountDocumentEpoch === accountDocumentEpoch;
     try {
-      await this.applySendMode();
-      // Background accounts keep receiving messages, but do not need editor,
-      // layout or upload UI installation until explicitly opened.
-      if (service.isActive && !this.uiAdaptersReady) {
-        const layoutReady = await view
-          .executeJavaScript(
-            `(${configurePairingDiagnostics.toString()})();(${configureWhatsAppLayout.toString()})()`,
-          )
-          .catch(error =>
-            debug('Could not mount WhatsApp split handle', error),
-          );
-        const uploadReady = await view
-          .executeJavaScript(
-            `(${configureWhatsAppVoice.toString()})();(${configureWhatsAppAudioUpload.toString()})(${sendBulkMessage.toString()})`,
-          )
-          .catch(error =>
-            debug('Could not configure WhatsApp voice uploads', error),
-          );
-        if (!current()) return;
-        this.uiAdaptersReady = Boolean(layoutReady && uploadReady);
-      }
-      if (!this.unreadAdapterReady) {
-        const ready = await view.executeJavaScript(
-          `(${watchWhatsAppUnread.toString()})()`,
+      const snapshot = await view.executeJavaScript(
+        `(async()=>{if(${Boolean(service.isActive)})(${configurePairingDiagnostics.toString()})();const surface=(${readWhatsAppPageHealth.toString()})();const snapshot=await (${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)},surface);return {...snapshot,pageHealth:surface.state,pageRecovery:surface.recoveryRecommended};})()`,
+      );
+      if (!current()) return;
+      if (snapshot.pageHealth)
+        this.trackPageHealth(
+          {
+            state: snapshot.pageHealth,
+            recoveryRecommended: snapshot.pageRecovery,
+          },
+          view,
         );
-        if (!current()) return;
-        this.unreadAdapterReady = Boolean(ready);
+      await this.applySendMode();
+      if (snapshot.status === 'online') {
+        // Background accounts keep receiving messages, but do not need editor,
+        // layout or upload UI installation until explicitly opened.
+        if (service.isActive && !this.uiAdaptersReady) {
+          const layoutReady = await view
+            .executeJavaScript(`(${configureWhatsAppLayout.toString()})()`)
+            .catch(error =>
+              debug('Could not mount WhatsApp split handle', error),
+            );
+          const uploadReady = await view
+            .executeJavaScript(
+              `(${configureWhatsAppVoice.toString()})();(${configureWhatsAppAudioUpload.toString()})(${sendBulkMessage.toString()})`,
+            )
+            .catch(error =>
+              debug('Could not configure WhatsApp voice uploads', error),
+            );
+          if (!current()) return;
+          this.uiAdaptersReady = Boolean(layoutReady && uploadReady);
+        }
+        if (!this.unreadAdapterReady) {
+          const ready = await view.executeJavaScript(
+            `(${watchWhatsAppUnread.toString()})()`,
+          );
+          if (!current()) return;
+          this.unreadAdapterReady = Boolean(ready);
+        }
       }
       const dark = Boolean(
         stores?.ui?.isDarkThemeActive || service.isDarkModeEnabled,
@@ -386,22 +398,10 @@ class ServiceWebview extends Component<IProps> {
         if (!current()) return;
         this.lastAccountTheme = dark;
       }
-      if (service.isActive)
+      if (snapshot.status === 'online' && service.isActive)
         await configureTranslation(
           service,
           stores?.settings.app.translationTextColor,
-        );
-      const snapshot = await view.executeJavaScript(
-        `(async()=>{const surface=(${readWhatsAppPageHealth.toString()})();const snapshot=await (${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)},surface);return {...snapshot,pageHealth:surface.state,pageRecovery:surface.recoveryRecommended};})()`,
-      );
-      if (!current()) return;
-      if (snapshot.pageHealth)
-        this.trackPageHealth(
-          {
-            state: snapshot.pageHealth,
-            recoveryRecommended: snapshot.pageRecovery,
-          },
-          view,
         );
       if (snapshot.status === 'online' && service.isActive)
         ensureBulkLibrary(view).catch(error =>

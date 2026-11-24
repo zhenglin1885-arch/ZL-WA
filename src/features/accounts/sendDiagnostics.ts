@@ -18,10 +18,19 @@ export function readSendDiagnostics() {
     typeof value === 'string' && /^\d+(?:\.\d+){1,5}$/.test(value)
       ? value
       : null;
-  const wpp = page.WPP;
+  const chatReady =
+    Boolean(document.querySelector('#pane-side, #side, #main')) &&
+    !document.querySelector(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    );
+  const wpp = chatReady ? page.WPP : undefined;
   const stream = read(() => wpp.conn.getStreamData());
-  const socket = read(() => page.require('WAWebSocketModel').Socket.state);
-  const nativeStore = read(() => page.require('WAWebCollections').Msg);
+  const socket = chatReady
+    ? read(() => page.require('WAWebSocketModel').Socket.state)
+    : undefined;
+  const nativeStore = chatReady
+    ? read(() => page.require('WAWebCollections').Msg)
+    : undefined;
   const store = nativeStore || read(() => wpp.whatsapp.MsgStore);
   const models = read(() => store.getModelsArray());
   const outgoing = {
@@ -62,8 +71,8 @@ export function readSendDiagnostics() {
   }
   // Only booleans/counts leave the page. Native IDs and customer text stay
   // local, including when a virtual row cannot be matched to a chat model.
-  const customer = page.__zlCustomers;
-  const adapter = page.__zlCustomerAdapter;
+  const customer = chatReady ? page.__zlCustomers : undefined;
+  const adapter = chatReady ? page.__zlCustomerAdapter : undefined;
   const customerModels = read(() => adapter.models());
   const active = read(() => customer.activeChatId) || '';
   const canonical = (id: string) => customer?.data?.aliases?.[id] || id;

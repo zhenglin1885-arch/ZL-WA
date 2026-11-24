@@ -3,6 +3,14 @@
 // through native PTT preparation and validate the final media before dispatch.
 export function configureWhatsAppVoice(): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
+  if (
+    typeof document !== 'undefined' &&
+    (!document.querySelector('#pane-side, #side, #main') ||
+      document.querySelector(
+        '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+      ))
+  )
+    return false;
   const page = window as any;
   const previous = page.__zlVoiceMessages;
   if (previous?.revision !== 3) {

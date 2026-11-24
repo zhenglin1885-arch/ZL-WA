@@ -44,6 +44,13 @@ export function watchWhatsAppUnread(): boolean {
   };
   const read = (force = false) => {
     if (state.disposed) return;
+    if (
+      !document.querySelector('#pane-side, #side, #main') ||
+      document.querySelector(
+        '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+      )
+    )
+      return;
     const collection =
       module('WAWebCollections')?.Chat || page.WPP?.whatsapp?.ChatStore;
     if (collection !== state.collection) {

@@ -37,7 +37,8 @@ export function configurePairingDiagnostics(): boolean {
     const chat = Boolean(document.querySelector('#pane-side, #side'));
     let socket: string | undefined;
     try {
-      socket = page.require?.('WAWebSocketModel')?.Socket?.state;
+      if (chat && !login)
+        socket = page.require?.('WAWebSocketModel')?.Socket?.state;
     } catch {
       /* Native login modules may be unavailable. */
     }

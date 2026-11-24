@@ -8,7 +8,11 @@ const run = (page: any, document?: any) =>
         window: page,
         location: { hostname: 'web.whatsapp.com' },
         navigator: { onLine: true },
-        document,
+        document: {
+          querySelector: (selector: string) =>
+            selector === '#pane-side, #side, #main' ? {} : null,
+          ...document,
+        },
       }),
     ),
   );

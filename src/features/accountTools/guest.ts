@@ -28,6 +28,13 @@ export function translationTick(
     !document.head
   )
     return [];
+  if (
+    !document.querySelector('#main, #pane-side, #side') ||
+    document.querySelector(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    )
+  )
+    return [];
   const page = window as any;
   const revision = 21;
   const previous = page.__zlTranslation;
@@ -542,6 +549,13 @@ export function translationTick(
       return context?.input === input ? context.key : undefined;
     };
     const chatKey = () => {
+      if (
+        !document.querySelector('#main, #pane-side, #side') ||
+        document.querySelector(
+          '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+        )
+      )
+        return '';
       try {
         const chat = page.require('WAWebChatGetters').getActiveChat?.();
         if (chat?.id) return chat.id._serialized;

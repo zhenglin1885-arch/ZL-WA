@@ -24,18 +24,20 @@ describe('customer conversation identity fallback', () => {
       crypto: { randomUUID: () => 'test-document' },
       document: {
         querySelector: (selector: string) =>
-          selector === '#main header'
-            ? header
-              ? {
-                  querySelector: (query: string) =>
-                    query === '[title]:not(.zl-customer-flag)'
-                      ? { getAttribute: () => title }
-                      : null,
-                }
-              : null
-            : selector === '#main [data-id]' && messageKey
-              ? { getAttribute: () => messageKey }
-              : null,
+          selector === '#pane-side, #side'
+            ? {}
+            : selector === '#main header'
+              ? header
+                ? {
+                    querySelector: (query: string) =>
+                      query === '[title]:not(.zl-customer-flag)'
+                        ? { getAttribute: () => title }
+                        : null,
+                  }
+                : null
+              : selector === '#main [data-id]' && messageKey
+                ? { getAttribute: () => messageKey }
+                : null,
       },
     };
     for (const [key, value] of Object.entries(values)) {

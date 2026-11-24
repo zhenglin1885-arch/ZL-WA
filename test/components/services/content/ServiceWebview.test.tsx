@@ -241,6 +241,47 @@ describe('ServiceWebview', () => {
     }
   });
 
+  it('defers private adapters on login and initializes them when the same page becomes online', async () => {
+    const props = createProps();
+    Object.assign(props.service, {
+      recipe: { id: 'whatsapp' },
+      isActive: true,
+      accountSnapshot: { status: 'loading' },
+    });
+    let status = 'logged-out';
+    const view = Object.assign(createMockWebviewElement(), {
+      setZoomFactor: jest.fn(),
+      executeJavaScript: jest.fn(async (code: string) =>
+        code.includes('readWhatsAppSnapshot')
+          ? { status, pageHealth: status === 'online' ? 'chat' : 'login' }
+          : true,
+      ),
+    });
+    const component = new ServiceWebview(props as any);
+    component._setWebview(createMockWebview(view) as any);
+    try {
+      await component.pollAccount();
+      expect(
+        view.executeJavaScript.mock.calls.some(([code]) =>
+          /configureWhatsAppVoice|watchWhatsAppUnread|configureWhatsAppLayout/.test(
+            code,
+          ),
+        ),
+      ).toBe(false);
+      view.executeJavaScript.mockClear();
+      status = 'online';
+      await component.pollAccount();
+      const scripts = view.executeJavaScript.mock.calls
+        .map(([code]) => code)
+        .join('\n');
+      expect(scripts).toContain('configureWhatsAppVoice');
+      expect(scripts).toContain('watchWhatsAppUnread');
+      expect(scripts).toContain('configureWhatsAppLayout');
+    } finally {
+      component.componentWillUnmount();
+    }
+  });
+
   it('mounts the split handle before unread adapters that may fail after WhatsApp changes', async () => {
     const props = createProps();
     Object.assign(props.service, {
@@ -253,23 +294,25 @@ describe('ServiceWebview', () => {
       executeJavaScript: jest.fn(async (code: string) => {
         if (code.includes('watchWhatsAppUnread'))
           throw new Error('Unread module not ready');
+        if (code.includes('readWhatsAppSnapshot'))
+          return { status: 'online', pageHealth: 'chat' };
         return true;
       }),
     });
     component._setWebview(createMockWebview(view) as any);
     try {
       await component.pollAccount();
-      expect(view.executeJavaScript).toHaveBeenCalledTimes(5);
-      expect(view.executeJavaScript.mock.calls[1][0]).toContain(
+      expect(view.executeJavaScript).toHaveBeenCalledTimes(6);
+      expect(view.executeJavaScript.mock.calls[2][0]).toContain(
         'configureWhatsAppLayout',
       );
-      expect(view.executeJavaScript.mock.calls[2][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[3][0]).toContain(
         'configureWhatsAppVoice',
       );
-      expect(view.executeJavaScript.mock.calls[3][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[4][0]).toContain(
         'watchWhatsAppUnread',
       );
-      expect(view.executeJavaScript.mock.calls[4][0]).toContain(
+      expect(view.executeJavaScript.mock.calls[0][0]).toContain(
         'readWhatsAppPageHealth',
       );
     } finally {

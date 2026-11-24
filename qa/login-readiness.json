@@ -1,0 +1,85 @@
+{
+  "sourceBase": "9c5c7fc5afa1df3aaaf70750411dc770f6f2c850",
+  "purpose": "Prevent premature private module reads before WhatsApp chat readiness; real phone QR pairing not yet verified",
+  "unitTests": {
+    "suitesPassed": 86,
+    "passed": 943,
+    "skipped": 2
+  },
+  "typecheck": true,
+  "nativeChecks": {
+    "results": [
+      {
+        "state": "loading",
+        "status": "loading",
+        "socket": null,
+        "canInitialize": false,
+        "translationRequests": 0
+      },
+      {
+        "state": "login",
+        "status": "logged-out",
+        "socket": null,
+        "canInitialize": false,
+        "translationRequests": 0
+      }
+    ],
+    "nativeLoaderCalls": 0,
+    "errorReports": 0,
+    "noReload": true,
+    "realPhonePairingVerified": false
+  },
+  "existingGuiPassGroups": 51,
+  "sendModeRegression": {
+    "web.whatsapp.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "business.facebook.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "textTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "quoteTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "mediaTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "editTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    }
+  },
+  "sourceFiles": {
+    "src/components/services/content/ServiceWebview.tsx": "efc3ce1b14ae3bbbd5e8b81007c721214444a7060aa370395cd2b176214e7438",
+    "src/features/accountTools/guest.ts": "0e5143d87f84deba3ef76291459a267e00f02925600f7189845ac77094f4ae18",
+    "src/features/accounts/pairingDiagnostics.ts": "94ba10f6010d1998a7e4b6bbc2b32404660115b8cf4ff80a326df58ed745f732",
+    "src/features/accounts/sendDiagnostics.ts": "bf9606223740d3da46f70601269c9901efdfcf27e6ea275f3d03d5383d26090e",
+    "src/features/accounts/unread.ts": "929d5c6f5decf73139f96896888b0a467e68df37f534903b157b23d045637b90",
+    "src/features/accounts/voice.ts": "48aa09fa7cef2e5b6d4a62ff00e7089800f8ef34539a37662738523899edc7d6",
+    "src/features/accounts/whatsapp.ts": "244aa0e6fad1e451688d2d8d0ae8ddfac975410f5bd30d8d9569b84680968144",
+    "src/features/customers/guest.ts": "5ba964b913b6db2d4aed5df93100ebc12669f7078c4a20853e5ab2698b7c1b1c"
+  }
+}

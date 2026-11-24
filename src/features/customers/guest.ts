@@ -10,6 +10,21 @@ export function readCustomerContext(): CustomerContext {
   const page = window as any;
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     return { token: '', owners: [] };
+  const chatReady = () =>
+    !document.querySelector(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    ) &&
+    Boolean(
+      document.querySelector('#pane-side, #side') ||
+        document.querySelector('#main header'),
+    );
+  if (!chatReady())
+    return {
+      token: page.__zlCustomerToken || '',
+      owners: [],
+      needsLibrary: false,
+      canInitialize: false,
+    };
   page.__zlCustomerToken ??= crypto.randomUUID();
   const module = (name: string) => {
     try {
@@ -45,6 +60,7 @@ export function readCustomerContext(): CustomerContext {
   // Resolve current native ownership on every use. Never borrow identity from
   // another account card, a chat title or previously saved login metadata.
   const readOwners = () => {
+    if (!chatReady()) return [];
     if (
       ['UNPAIRED', 'UNPAIRED_IDLE'].includes(
         module('WAWebSocketModel')?.Socket?.state,
@@ -82,6 +98,7 @@ export function readCustomerContext(): CustomerContext {
     ].filter((id): id is string => id !== undefined);
   };
   const readModels = (): any[] => {
+    if (!chatReady()) return [];
     const direct = module('WAWebChatCollection');
     const candidates = [
       module('WAWebCollections')?.Chat,

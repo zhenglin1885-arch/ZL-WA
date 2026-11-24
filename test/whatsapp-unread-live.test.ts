@@ -31,7 +31,10 @@ describe('live WhatsApp unread signals', () => {
     for (const [key, value] of Object.entries({
       window: page,
       location: { hostname: 'web.whatsapp.com' },
-      document: { querySelector: () => null },
+      document: {
+        querySelector: (selector: string) =>
+          selector === '#pane-side, #side, #main' ? {} : null,
+      },
       setInterval: jest.fn(() => 123),
       clearInterval: jest.fn(),
     })) {
