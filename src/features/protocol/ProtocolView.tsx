@@ -1,6 +1,6 @@
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import type Service from '../../models/Service';
 import type { RealStores } from '../../stores';
 import type { BulkMedia, ToolsConfig } from '../accountTools/config';
@@ -482,17 +482,20 @@ export default observer(function ProtocolView({
     <section
       className={`protocol-chat${stores.ui.isDarkThemeActive ? ' protocol-chat--dark' : ''}`}
       aria-label="新连接聊天"
-      style={{
-        display: 'flex',
-        height: '100%',
-        minHeight: 0,
-        minWidth: 0,
-        overflow: 'hidden',
-        width: '100%',
-        fontSize: 16 * zoom,
-        background: stores.ui.isDarkThemeActive ? '#151a1f' : '#f5f7f6',
-        color: stores.ui.isDarkThemeActive ? '#eee' : '#172c22',
-      }}
+      style={
+        {
+          '--pc-zoom': zoom,
+          display: 'flex',
+          height: '100%',
+          minHeight: 0,
+          minWidth: 0,
+          overflow: 'hidden',
+          width: '100%',
+          fontSize: 16 * zoom,
+          background: stores.ui.isDarkThemeActive ? '#151a1f' : '#f5f7f6',
+          color: stores.ui.isDarkThemeActive ? '#eee' : '#172c22',
+        } as CSSProperties
+      }
     >
       <style>{protocolChatStyles}</style>
       <aside

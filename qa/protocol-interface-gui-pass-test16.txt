@@ -50,7 +50,7 @@ PASS real service downloads: voice/image/document, direct anchors, unnamed/named
 PASS original accounts preserved; all created account fixtures removed
 PASS original forwarding history restored after isolated GUI tests
 
-PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved, compact list filters, fixed visible composer at 1100x720/1400x900, scroll-to-latest and reading-position preservation
+PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved, compact list filters, fixed visible composer at 1100x720/1400x900, scroll-to-latest and reading-position preservation, per-account zoom scales and restores text
 
 Native real utility process/image/voice/video verification:
 {

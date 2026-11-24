@@ -45,7 +45,8 @@
     "originalEnterAndShiftEnterRules": true,
     "originalBulkOrderD_C_B_A": true,
     "noAutomaticResend": true,
-    "originalWebCookiesRetained": true
+    "originalWebCookiesRetained": true,
+    "perAccountTextZoom": true
   },
   "scopeNotes": [
     "UI reference implemented with own protocol renderer; no official desktop SDK",
@@ -56,12 +57,12 @@
   ],
   "sourceFiles": {
     ".github/workflows/windows-protocol-test16.yml": "6192fe7ab57cb4deed89747c916e50d18635cc78fc8873679d9a750b21f686dd",
-    "docs/PROTOCOL-CONNECTION-TEST16.md": "ce64b44b425067b9dcb370851fc1c37f89e5b13698a91454a0ada4adfc039970",
-    "scripts/verify-protocol-ui.mjs": "bf43a3a6698612d9e6d9bad4b75f02503db199e34b0290650fa4eb7eebeac11a",
+    "docs/PROTOCOL-CONNECTION-TEST16.md": "fc79c75c4ff930d1ab890796c3f6c850a90cd74e1f46f05233df7a60a9d43036",
+    "scripts/verify-protocol-ui.mjs": "2937ee853928df274b138d6913532d2627f03881b63ce5c4d3943c72b5f38b24",
     "src/electron/ipc-api/accountTools.ts": "f42fa7a51e0efd2b728afdeada20d846e5b5496b5351c68de8a978c4a4b55252",
     "src/features/protocol/ProtocolAvatar.tsx": "8fb52712491f2ca716e4b002ec70d1760c7ce1d0d7743854af3aa2d11b86e04b",
-    "src/features/protocol/ProtocolView.tsx": "1df37a25dd157484d7964575c8ed4711674aeb802ff632d7e14c30df7a173943",
-    "src/features/protocol/styles.ts": "8a8c5fef714ab2bdeab795d8b803c7b487fbcb469ee3680b9dfe029751dc8d4b",
+    "src/features/protocol/ProtocolView.tsx": "1bf66192d51a66cd282c53b85af468170f5c253b1323c21cf03337abbc09b058",
+    "src/features/protocol/styles.ts": "14450dc4756e7edd327ab33230fa2503995ef362a3e7c2be218afa41b166a15a",
     "src/features/protocol/types.ts": "4dedbf96aefd36a9c3f60ab34f6d98d2eac08c318d8cb442386cf02aabf94078",
     "tools/protocol-backend/device.mjs": "a7cbd9039824554d1fa9b32e377d34f4a6e93898930bf3fbddb84bd283a7cfe1",
     "tools/protocol-backend/model.mjs": "c0ad9bf4ab51ed8742bb3f1f3715064add08963a88841222bcac0284d6ac1773",

@@ -190,6 +190,20 @@ try {
     'new chat has separate phone input',
   );
   await click('[aria-label="新建聊天"]');
+  await evaluate(
+    `(async()=>{const s=window.ferdium.stores.settings;const config=JSON.parse(JSON.stringify(s.app.accountSidebar));config.accounts[${JSON.stringify(id)}].zoom=1.2;await s._update({type:'app',data:{accountSidebar:config}});return true;})()`,
+  );
+  await wait(
+    `parseFloat(getComputedStyle(document.querySelector('.protocol-chat__bubble')).fontSize)>16.7`,
+    'account zoom scales new message bubble text',
+  );
+  await evaluate(
+    `(async()=>{const s=window.ferdium.stores.settings;const config=JSON.parse(JSON.stringify(s.app.accountSidebar));config.accounts[${JSON.stringify(id)}].zoom=1;await s._update({type:'app',data:{accountSidebar:config}});return true;})()`,
+  );
+  await wait(
+    `parseFloat(getComputedStyle(document.querySelector('.protocol-chat__bubble')).fontSize)===14`,
+    'account zoom restores original message size',
+  );
   if (process.env.ZL_PROTOCOL_PREVIEW) {
     // Synthetic data only, never capture a real customer account.
     const screenshot = await call('Page.captureScreenshot', { format: 'png' });
@@ -303,7 +317,7 @@ try {
     'preserved',
   );
   console.log(
-    'PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved, compact list filters, fixed visible composer at 1100x720/1400x900, scroll-to-latest and reading-position preservation',
+    'PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved, compact list filters, fixed visible composer at 1100x720/1400x900, scroll-to-latest and reading-position preservation, per-account zoom scales and restores text',
   );
 } catch (error) {
   if (process.env.ZL_PROTOCOL_PREVIEW) {
