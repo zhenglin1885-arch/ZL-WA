@@ -123,8 +123,8 @@ jobs:
         import pathlib,json,hashlib
         r=json.load(open('qa/protocol-integration-test15.json'))
         assert r['sourceBase']=='d3ecf4707d6436e71d02dc447b4fdda9536c1fe5'
-        assert r['typecheck'] and r['unitTests']['passed']==1000 and r['unitTests']['suitesPassed']==92 and r['unitTests']['skipped']==2
-        assert r['protocolModelTests']==31 and r['existingGuiPassGroups']==51 and r['protocolUiPassed']
+        assert r['typecheck'] and r['unitTests']['passed']==1002 and r['unitTests']['suitesPassed']==93 and r['unitTests']['skipped']==2
+        assert r['protocolModelTests']==32 and r['existingGuiPassGroups']==51 and r['protocolUiPassed']
         assert not r['realIntegratedPhoneLoginVerified']
         assert set(pathlib.Path('changed.txt').read_text().splitlines())==set(r['sourceFiles'])
         for name,digest in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()==digest,name

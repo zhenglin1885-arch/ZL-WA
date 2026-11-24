@@ -111,7 +111,7 @@ try {
     'actual nickname and original remark',
   );
   await evaluate(
-    "[...document.querySelectorAll('[aria-label=\"新连接聊天\"] aside button')].find(button=>button.textContent.includes('QA Contact')).click();true",
+    "[...document.querySelectorAll('[aria-label=\"新连接聊天\"] aside button')].find(button=>(button.textContent.includes('QA Contact') || button.textContent.includes('QA SAVED REMARK'))).click();true",
   );
   await wait(
     "document.querySelector('[aria-label=\"新连接聊天\"]').textContent.includes('hello')",

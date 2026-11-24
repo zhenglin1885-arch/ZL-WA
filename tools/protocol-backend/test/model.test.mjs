@@ -669,3 +669,7 @@ test('corrupt cache remains untouched and prevents silent replacement', async ()
   await assert.rejects(f.account.initialize(), /缓存格式异常/);
   assert.equal(f.writes.length, 0);
 });
+test('an incoming message receipt is never used as proof of an outgoing send',async()=>{
+  const f=fixture();await f.open();f.account.upsertMessage(msg('incoming-only','not sent by me',false));
+  const result=await f.account.reconcile(JID,'incoming-only',PN);assert.equal(result.confirmed,false);assert.equal(result.halt,true);
+});

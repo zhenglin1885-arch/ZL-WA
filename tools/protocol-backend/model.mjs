@@ -776,9 +776,8 @@ export class ProtocolAccount {
         halt: true,
         error: '缺少消息编号，请人工核对，不自动重发',
       };
-    const confirmed =
-      Number(this.messages.get(jid)?.find(row => row.key.id === id)?.status) >=
-      2;
+    const message = this.messages.get(jid)?.find(row => row.key.id === id);
+    const confirmed = message?.key?.fromMe === true && Number(message.status) >= 2;
     return {
       messageId: id,
       confirmed,

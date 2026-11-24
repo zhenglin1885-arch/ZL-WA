@@ -182,6 +182,8 @@ export default observer(function ProtocolView({
     let live = true;
     const current = { chat, owner };
     protocolChats.set(service.id, chat);
+    customer.notify();
+    void customer.refresh();
     void protocolRequest<ProtocolMessage[]>(service.id, 'messages', {
       jid: chat,
     })

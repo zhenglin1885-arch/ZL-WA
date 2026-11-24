@@ -85,9 +85,16 @@ export class CustomerRuntime {
   }
 
   get current() {
-    return this.serviceId === this.stores.services.active?.id
-      ? this.context
-      : undefined;
+    const service = this.stores.services.active;
+    if (this.serviceId !== service?.id) return undefined;
+    if (
+      service?.isProtocol &&
+      (service.accountSnapshot.status !== 'online' ||
+        this.context?.chat?.id !== protocolChats.get(service.id) ||
+        !this.context?.owners.includes(service.accountSnapshot.ownerId || ''))
+    )
+      return undefined;
+    return this.context;
   }
 
   notify() {
@@ -310,12 +317,17 @@ export class CustomerRuntime {
         if (!owners.length) return;
         const id = protocolChats.get(service.id);
         const chat = state?.chats.find(row => row.id === id);
-        const aliases: string[] = id
-          ? await protocolRequest(service.id, 'aliases', {
+        let aliases: string[] = id ? [id] : [];
+        if (id) {
+          try {
+            aliases = await protocolRequest(service.id, 'aliases', {
               jid: id,
               owner: state!.ownerId,
-            })
-          : [];
+            });
+          } catch {
+            /* Optional alias reads must not leave another customer's context active. */
+          }
+        }
         let bundle: CustomerBundle = await ipcRenderer.invoke(
           'customers-bind',
           owners,
@@ -329,7 +341,8 @@ export class CustomerRuntime {
         if (
           this.stores.services.active !== service ||
           !service.isProtocol ||
-          state?.ownerId !== service.accountSnapshot.ownerId
+          state?.ownerId !== service.accountSnapshot.ownerId ||
+          protocolChats.get(service.id) !== id
         )
           return;
         const context: CustomerContext = {
