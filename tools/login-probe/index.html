@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'none'"><title>独立登录验证</title><style>
+body{font:16px system-ui;background:#f3f6f5;color:#183b2c;margin:0;padding:28px}main{max-width:760px;margin:auto}h1{font-size:24px}section{background:white;padding:20px;margin:16px 0;border-radius:12px}button{background:#196238;color:white;border:0;padding:12px 16px;border-radius:6px;margin:4px;cursor:pointer}button:disabled{opacity:.45;cursor:default}input,textarea{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border:1px solid #b9c8c0;border-radius:6px}#qr{display:block;margin:auto;width:300px}#qr[hidden]{display:none}#messages{max-height:160px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}small{color:#52645b}.warning{color:#815100}#notice{min-height:24px;white-space:pre-wrap}</style></head><body><main>
+<h1>ZL-WA 独立登录验证 · 0.1.0</h1>
+<p>用于验证另一种连接方式能否登录。与原软件分开保存数据，不读取原账号资料。</p>
+<p class="warning">这是非官方协议测试工具，兼容性和账号风险尚未验证。请使用测试账号。开发端尚未验证真实手机配对成功。</p>
+<section><strong id="status">尚未连接</strong><p id="counts"></p><button id="start">开始 / 恢复登录</button><button id="stop">断开并保留登录资料</button><button id="diagnostics">复制诊断</button><img id="qr" hidden alt="使用手机 WhatsApp 已关联设备扫码"><p><small>关闭后重新打开，点击“开始 / 恢复登录”检查能否恢复。若提示登录失效，本工具不会自动清除资料或反复扫码。</small></p></section>
+<section><h2>手动测试文字消息</h2><input id="number" placeholder="收件人国际号码，例如 +5511999999999" maxlength="16"><textarea id="text" placeholder="输入测试内容；只有点击下面的按钮才会发送" maxlength="2000"></textarea><button id="send" disabled>发送一次测试消息</button><p><small>返回消息编号只代表提交有结果，仍需收件人在手机上确认收到。结果不明时不会自动重发。</small></p><div id="notice" role="status"></div></section>
+<section><h2>本次收到的消息</h2><p><small>让另一个测试账号向已登录账号发送文字，检查这里是否出现。仅显示本次运行收到的通知，不提供完整聊天历史。</small></p><div id="messages"></div></section>
+</main><script src="renderer.js"></script></body></html>

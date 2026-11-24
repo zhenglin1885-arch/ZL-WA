@@ -1,0 +1,68 @@
+name: Independent protocol login probe 0.1.0
+on:
+  push:
+    branches: [build/independent-login-probe-01]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: tools/login-probe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.1'
+      - run: npm ci
+      - run: npm test
+      - run: npm run pack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: node verify-package.mjs "dist/win-unpacked/ZL-WA Login Probe.exe"
+      - name: Prepare verified files and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path release | Out-Null
+          Copy-Item dist/ZL-WA-Login-Probe-0.1.0-win-x64.zip release/
+          Copy-Item native-verification.json release/
+          Copy-Item README.md release/使用说明.md
+          $report = @{ sourceCommit = $env:GITHUB_SHA; nodeTestsPassed = 8; realPhoneLoginVerified = $false; mainAppModified = $false; backend = 'Baileys 7.0.0-rc14'; cloudConnectionAttempt = 'timeout-408-no-qr'; signed = $false }
+          $report | ConvertTo-Json | Set-Content release/validation.json -Encoding utf8
+          Get-ChildItem release -File | Sort-Object Name | ForEach-Object { ((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + '  ' + $_.Name) } | Set-Content release/SHA256SUMS.txt -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-login-probe-windows
+          path: tools/login-probe/release/*
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: isolated-login-probe-windows
+          path: release
+      - name: Publish separate experimental release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS.txt
+          node -e "const x=require('./validation.json');if(x.sourceCommit!==process.env.GITHUB_SHA||x.realPhoneLoginVerified!==false||x.nodeTestsPassed!==8)process.exit(1);const n=require('./native-verification.json');if(!n.startup.passed||!n.resume.passed||!n.startup.packaged||n.startup.native!=='win32')process.exit(1)"
+          cat > /tmp/probe-notes.md <<'NOTES'
+          独立的 Windows 登录路线验证工具，不是现有 ZL-WA 的升级包。
+          解压完整 ZIP，运行 ZL-WA Login Probe.exe。请先阅读“使用说明.md”。
+          使用独立账号数据目录，现有多开软件不变。非官方 Baileys 连接实现，不是 WhatsApp 电脑版 API。
+          自动检查和 Windows 原生打包启动、凭据落盘与重启验证通过；真实手机配对、问题账号收发及会话恢复尚未验证。
+          开发云端连接尝试 408 超时，尚未取得二维码；用户电脑连接结果仍待验证。
+          仅提供手动文字收发验证，没有群发、语音、群管理等整合功能。Windows 未签名。
+          NOTES
+          gh release create test-independent-login-probe-0.1.0 --target "$GITHUB_SHA" --title '独立登录路线验证工具 0.1.0（Windows）' --prerelease --latest=false --notes-file /tmp/probe-notes.md ./*
