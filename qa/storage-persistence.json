@@ -1,0 +1,95 @@
+{
+  "sourceBase": "b1837882c644f5a889121d5ce510afad919e4d5b",
+  "purpose": "Fix reproduced official WhatsApp persistent-storage denial in current permission callbacks; real phone pairing unverified",
+  "unitTests": {
+    "suitesPassed": 88,
+    "passed": 966,
+    "skipped": 2
+  },
+  "typecheck": true,
+  "nativeChecks": {
+    "electron": "43.3.0",
+    "baseline": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "officialWhatsApp": {
+      "originPersist": true,
+      "bucketPersist": true,
+      "bucketPersisted": true
+    },
+    "officialWorker": {
+      "canRequestPersistence": false,
+      "persisted": true
+    },
+    "actualServiceWebview": {
+      "originPersist": true,
+      "bucketPersist": true,
+      "bucketPersisted": true
+    },
+    "servicePermissionHandlersInstalled": true,
+    "unrelatedOrigin": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "facebookUnchanged": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "recordsRetainedAfterReload": true,
+    "accountSessionsIsolated": true,
+    "persistentPermissionObserved": true,
+    "realPhonePairingVerified": false
+  },
+  "existingGuiPassGroups": 51,
+  "sendModeRegression": {
+    "web.whatsapp.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "business.facebook.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "textTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "quoteTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "mediaTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "editTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    }
+  },
+  "sourceFiles": {
+    "src/index.ts": "ebdf8e3a20f5a4a23ba6dde23b421193ee1cdfcec3dab0336f73861eac6b5c78",
+    "src/electron/whatsappStoragePermission.ts": "8c32f17c1e02e86eed5529edab381cfb1501c1cec6aa1695a749ffbad7f3ef0a",
+    "scripts/verify-whatsapp-storage-ui.mjs": "a8f86d338da17c5c7a0eabf0586763ad6518d88266d12cb09ad3868bd02ebd40"
+  }
+}

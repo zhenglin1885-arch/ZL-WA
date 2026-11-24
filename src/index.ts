@@ -2,6 +2,7 @@
 /* eslint-disable import/first */
 
 import { EventEmitter } from 'node:events';
+import { allowWhatsAppPersistentStorage } from './electron/whatsappStoragePermission';
 import { join, dirname } from 'node:path';
 import {
   BrowserWindow,
@@ -473,48 +474,67 @@ const createWindow = () => {
       if (!(ses as any)._permissionHandlersSet) {
         (ses as any)._permissionHandlersSet = true;
 
-        ses.setPermissionRequestHandler((webContents, permission, callback) => {
-          const allowedPermissions = [
-            'media',
-            'notifications',
-            'fullscreen',
-            'pointerLock',
-            'display-capture',
-            'idle-detection',
-            'clipboard-read',
-            'clipboard-sanitized-write',
-            'speaker-selection',
-          ];
+        ses.setPermissionRequestHandler(
+          (webContents, permission, callback, details) => {
+            const allowedPermissions = [
+              'media',
+              'notifications',
+              'fullscreen',
+              'pointerLock',
+              'display-capture',
+              'idle-detection',
+              'clipboard-read',
+              'clipboard-sanitized-write',
+              'speaker-selection',
+            ];
 
-          if (allowedPermissions.includes(permission)) {
-            callback(true);
-            return;
-          }
+            if (
+              allowedPermissions.includes(permission) ||
+              allowWhatsAppPersistentStorage(
+                permission,
+                details.requestingUrl,
+                webContents?.getURL(),
+              )
+            ) {
+              callback(true);
+              return;
+            }
 
-          debug(
-            `Denied permission request: ${permission} from ${webContents?.getURL()}`,
-          );
-          callback(false);
-        });
+            debug(
+              `Denied permission request: ${permission} from ${webContents?.getURL()}`,
+            );
+            callback(false);
+          },
+        );
 
-        ses.setPermissionCheckHandler((_webContents, permission) => {
-          const allowedChecks = [
-            'media',
-            'notifications',
-            'fullscreen',
-            'pointerLock',
-            'display-capture',
-            'idle-detection',
-            'clipboard-read',
-            'clipboard-sanitized-write',
-            'hid',
-            'serial',
-            'usb',
-            'speaker-selection',
-          ];
+        ses.setPermissionCheckHandler(
+          (webContents, permission, requestingOrigin, details) => {
+            const allowedChecks = [
+              'media',
+              'notifications',
+              'fullscreen',
+              'pointerLock',
+              'display-capture',
+              'idle-detection',
+              'clipboard-read',
+              'clipboard-sanitized-write',
+              'hid',
+              'serial',
+              'usb',
+              'speaker-selection',
+            ];
 
-          return allowedChecks.includes(permission);
-        });
+            return (
+              allowedChecks.includes(permission) ||
+              allowWhatsAppPersistentStorage(
+                permission,
+                requestingOrigin,
+                webContents?.getURL(),
+                details.embeddingOrigin,
+              )
+            );
+          },
+        );
       }
 
       contents.setWindowOpenHandler(({ url, disposition, features }) => {
