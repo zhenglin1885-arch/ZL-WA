@@ -1,0 +1,91 @@
+{
+  "sourceBase": "6aae8a2a5db8f0ead3678e80162c98137c261452",
+  "purpose": "Fix confirmed preload theme/MobX error and record passive navigation provenance; QR pairing root cause unresolved",
+  "unitTests": {
+    "suitesPassed": 87,
+    "passed": 947,
+    "skipped": 2
+  },
+  "typecheck": true,
+  "nativeChecks": {
+    "actualRecipePreload": true,
+    "rootAbsentAtPreload": true,
+    "threeNavigations": true,
+    "settingsIpcAfterReady": true,
+    "mobxErrors": 0,
+    "mobxWarnings": 0,
+    "realPhonePairingVerified": false
+  },
+  "existingGuiPassGroups": 51,
+  "sendModeRegression": {
+    "web.whatsapp.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "business.facebook.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "textTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "quoteTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "mediaTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "editTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    }
+  },
+  "preloginRegression": {
+    "results": [
+      {
+        "state": "loading",
+        "status": "loading",
+        "socket": null,
+        "canInitialize": false,
+        "translationRequests": 0
+      },
+      {
+        "state": "login",
+        "status": "logged-out",
+        "socket": null,
+        "canInitialize": false,
+        "translationRequests": 0
+      }
+    ],
+    "nativeLoaderCalls": 0,
+    "errorReports": 0,
+    "noReload": true,
+    "realPhonePairingVerified": false
+  },
+  "sourceFiles": {
+    "src/components/services/content/ServiceWebview.tsx": "1b03be37950a9bc845541711657a35aafe2aa3904826b065fbcdcd84987fc67c",
+    "src/features/accounts/collectSendDiagnostics.ts": "e01bf6e947941b12b27900ddeedefe0cc40794cb789662bbfa4f7ac3000afe6e",
+    "src/stores/ServicesStore.ts": "96a8bd45e28cb87cb49af755b1938cde1bd42afbc5a94e9810c681ce667532ee",
+    "src/webview/recipe.ts": "d59bdcdba8fea5a4d5ec2af044789121687af39d469b3af2b430e3dfe66e3f1d",
+    "scripts/verify-send-mode-ui.mjs": "6e4db96b8824ae8488123ede69d65890314925c8429bc58478fbdb5669b8ccf9"
+  }
+}

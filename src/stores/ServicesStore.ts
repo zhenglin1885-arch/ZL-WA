@@ -1,5 +1,6 @@
 // ZL-WA modification: keep the active service window title under our own name.
 import { join } from 'node:path';
+import { recordPageTransition } from '../features/accounts/collectSendDiagnostics';
 import { ipcRenderer, shell } from 'electron';
 import { ensureFileSync, pathExistsSync, writeFileSync } from 'fs-extra';
 import { debounce, remove } from 'lodash';
@@ -1099,6 +1100,8 @@ export default class ServicesStore extends TypedStore {
     }
 
     if (!service.webview) return;
+    if (service.recipe.id === 'whatsapp')
+      recordPageTransition(service.webview, 'host-reload-requested');
     // eslint-disable-next-line consistent-return
     return service.webview.loadURL(service.url);
   }

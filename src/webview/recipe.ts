@@ -10,7 +10,7 @@ import {
 import { contextBridge, ipcRenderer } from 'electron';
 import { pathExistsSync, readFileSync } from 'fs-extra';
 import { noop } from 'lodash';
-import { autorun, computed, makeObservable, observable } from 'mobx';
+import { action, autorun, computed, makeObservable, observable } from 'mobx';
 
 import AutomaticLanguageDetection from './AutomaticLanguageDetection';
 import customDarkModeCss from './darkmode/custom';
@@ -203,6 +203,13 @@ ipcRenderer.sendToHost(
 );
 
 class RecipeController {
+  @observable documentReady = Boolean(document.documentElement);
+
+  private markDocumentReady = action(() => {
+    this.documentReady = true;
+  });
+
+  private stopSettingsReaction?: () => void;
   @observable settings: {
     overrideSpellcheckerLanguage: boolean;
     app: AppStore;
@@ -282,7 +289,12 @@ class RecipeController {
       () => this.settings.app.translatorLanguage,
     );
 
-    autorun(() => this.update());
+    document.addEventListener('DOMContentLoaded', this.markDocumentReady, {
+      once: true,
+    });
+    this.stopSettingsReaction = autorun(() => {
+      if (this.documentReady) this.update();
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
       this.findInPage = new FindInPage({
@@ -308,12 +320,14 @@ class RecipeController {
   }
 
   destroy() {
+    document.removeEventListener('DOMContentLoaded', this.markDocumentReady);
+    this.stopSettingsReaction?.();
     this.recipe?.dispose();
     notificationsHandler.dispose();
     this.automaticLanguageDetection.destroy();
   }
 
-  loadRecipeModule(_event, config, recipe) {
+  @action loadRecipeModule(_event, config, recipe) {
     debug('loadRecipeModule');
     const modulePath = join(recipe.path, 'webview.js');
     debug('module path', modulePath);
@@ -401,6 +415,9 @@ class RecipeController {
   }
 
   update() {
+    // Preload starts before the parser creates <html>. Dark Reader cleanup
+    // requires that node; apply the latest settings when DOMContentLoaded fires.
+    if (!this.documentReady) return;
     debug('enableSpellchecking', this.settings.app.enableSpellchecking);
     debug('isDarkModeEnabled', this.settings.service.isDarkModeEnabled);
     debug(
@@ -540,11 +557,11 @@ class RecipeController {
     }
   }
 
-  updateAppSettings(_event, data) {
+  @action updateAppSettings(_event, data) {
     this.settings.app = Object.assign(this.settings.app, data);
   }
 
-  updateServiceSettings(_event, data) {
+  @action updateServiceSettings(_event, data) {
     this.settings.service = Object.assign(this.settings.service, data);
   }
 

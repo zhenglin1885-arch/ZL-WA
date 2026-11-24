@@ -3,7 +3,13 @@ import { readSendDiagnostics, readWhatsAppPageHealth } from './sendDiagnostics';
 const transitions = new WeakMap<object, { at: number; event: string }[]>();
 export function recordPageTransition(
   view: object,
-  event: 'loading-started' | 'main-frame-navigated',
+  event:
+    | 'loading-started'
+    | 'main-frame-navigated'
+    | 'page-navigation-requested'
+    | 'server-redirect'
+    | 'host-reload-requested'
+    | 'startup-recovery-requested',
 ) {
   const events = transitions.get(view) || [];
   events.push({ at: Date.now(), event });

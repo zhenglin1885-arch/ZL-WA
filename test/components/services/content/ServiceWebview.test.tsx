@@ -1,5 +1,6 @@
 /* eslint-disable no-await-in-loop -- Sequential account setup isolates per-account cache expectations. */
 import { observable, runInAction } from 'mobx';
+import { collectSendDiagnostics } from '../../../../src/features/accounts/collectSendDiagnostics';
 import type ServiceWebviewClass from '../../../../src/components/services/content/ServiceWebview';
 
 type Listener = (...args: any[]) => void;
@@ -84,6 +85,38 @@ const ServiceWebview = jest.requireActual<
 >('../../../../src/components/services/content/ServiceWebview').default;
 
 describe('ServiceWebview', () => {
+  it('records renderer navigation and main-frame redirects without cancelling navigation or retaining URLs', async () => {
+    const props = createProps();
+    Object.assign(props.service, { recipe: { id: 'whatsapp' } });
+    const component = new ServiceWebview(props as any);
+    const view = Object.assign(createMockWebviewElement(), {
+      executeJavaScript: jest.fn(async () => ({ unavailable: true })),
+    });
+    component._setWebview(createMockWebview(view) as any);
+    const event = {
+      isMainFrame: true,
+      url: 'https://web.whatsapp.com/private?secret=PRIVATE',
+      preventDefault: jest.fn(),
+    };
+    try {
+      (component.recordPageNavigation as any)(event);
+      component.recordServerRedirect({ isMainFrame: false });
+      component.recordServerRedirect(event);
+      const r = await collectSendDiagnostics(
+        { isError: false, errorMessage: '', webview: component.webview!.view! },
+        async () => ({}),
+      );
+      expect(r.page.transitions.map(x => x.event)).toEqual([
+        'page-navigation-requested',
+        'server-redirect',
+      ]);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(JSON.stringify(r.page.transitions)).not.toContain('PRIVATE');
+    } finally {
+      component.componentWillUnmount();
+    }
+  });
+
   it('retries only a confirmed startup error document, at most twice, using the same webview', async () => {
     jest.useFakeTimers();
     const props = createProps();

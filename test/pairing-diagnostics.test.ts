@@ -144,3 +144,31 @@ it('keeps host loading observations scoped to the selected guest and bounded wit
   );
   expect(changed.page.transitions).toEqual([]);
 });
+
+it('keeps navigation provenance without URLs, private request data or navigation side effects', async () => {
+  const view = {
+    executeJavaScript: jest.fn(async () => ({ unavailable: true })),
+  };
+  for (const event of [
+    'host-reload-requested',
+    'page-navigation-requested',
+    'server-redirect',
+    'startup-recovery-requested',
+  ] as const)
+    recordPageTransition(view, event);
+  const result = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(result.page.transitions.map(event => event.event)).toEqual([
+    'host-reload-requested',
+    'page-navigation-requested',
+    'server-redirect',
+    'startup-recovery-requested',
+  ]);
+  expect(
+    result.page.transitions.every(
+      event => Object.keys(event).sort().join(',') === 'at,event',
+    ),
+  ).toBe(true);
+});

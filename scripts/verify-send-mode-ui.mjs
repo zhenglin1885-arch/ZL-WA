@@ -93,12 +93,18 @@ try {
             )
               throw Error(host + ' Enter did not insert a native newline');
             win.webContents.undo();
-            if (
+            // undo() dispatches native IPC and returns before the edit is applied.
+            // Wait for that same action; never issue a second undo or change the assertion.
+            const undoDeadline = Date.now() + 1500;
+            while (
               await js(
                 'document.querySelector("#draft").innerText.includes("\\n")',
               )
-            )
-              throw Error(host + ' native newline undo failed');
+            ) {
+              if (Date.now() >= undoDeadline)
+                throw Error(host + ' native newline undo failed');
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
             await press(true);
             if ((await js('sends')) !== 2)
               throw Error(host + ' Shift Enter did not send exactly once');

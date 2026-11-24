@@ -217,7 +217,8 @@ class ServiceWebview extends Component<IProps> {
             live?.state === 'error-document' &&
             live.recoveryRecommended
           )
-            await view.loadURL('https://web.whatsapp.com/');
+            recordPageTransition(view, 'startup-recovery-requested');
+          await view.loadURL('https://web.whatsapp.com/');
         } catch {
           /* Keep the error page and manual recovery available. */
         } finally {
@@ -635,6 +636,20 @@ class ServiceWebview extends Component<IProps> {
     debug('Service logged a message:', e.message);
   };
 
+  recordPageNavigation = (): void => {
+    if (this.webview?.view && this.props.service.recipe?.id === 'whatsapp')
+      recordPageTransition(this.webview.view, 'page-navigation-requested');
+  };
+
+  recordServerRedirect = (event: { isMainFrame?: boolean }): void => {
+    if (
+      event.isMainFrame &&
+      this.webview?.view &&
+      this.props.service.recipe?.id === 'whatsapp'
+    )
+      recordPageTransition(this.webview.view, 'server-redirect');
+  };
+
   handleAccountDomReady = (): void => {
     const { service, stores } = this.props;
     if (service.recipe?.id !== 'whatsapp' || !service.webview) return;
@@ -736,6 +751,11 @@ class ServiceWebview extends Component<IProps> {
     this.lastAccountPollAt = 0;
     this.lastAppliedZoom = null;
 
+    webview.addEventListener('will-navigate', this.recordPageNavigation);
+    webview.addEventListener(
+      'did-redirect-navigation',
+      this.recordServerRedirect,
+    );
     webview.addEventListener('dom-ready', this.handleAccountDomReady);
     webview.addEventListener('did-stop-loading', this.startupStopped);
     webview.addEventListener('did-fail-load', this.startupFailed);
@@ -784,6 +804,11 @@ class ServiceWebview extends Component<IProps> {
       return;
     }
 
+    webview.removeEventListener('will-navigate', this.recordPageNavigation);
+    webview.removeEventListener(
+      'did-redirect-navigation',
+      this.recordServerRedirect,
+    );
     webview.removeEventListener('dom-ready', this.handleAccountDomReady);
     webview.removeEventListener('did-stop-loading', this.startupStopped);
     webview.removeEventListener('did-fail-load', this.startupFailed);
