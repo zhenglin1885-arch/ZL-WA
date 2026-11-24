@@ -187,6 +187,44 @@ describe('ServiceWebview', () => {
     }
   });
 
+  it.each(['login', 'chat', 'error-overlay'])(
+    'does not recover by reloading when the awaited page check already reports %s',
+    async state => {
+      jest.useFakeTimers();
+      const props = createProps();
+      Object.assign(props.service, {
+        recipe: { id: 'whatsapp' },
+        isActive: true,
+        isEnabled: true,
+      });
+      const component = new ServiceWebview(props as any);
+      const raw: any = {
+        ...createMockWebviewElement(),
+        executeJavaScript: jest.fn(async () => ({
+          state,
+          recoveryRecommended: false,
+        })),
+        loadURL: jest.fn(async () => {}),
+      };
+      runInAction(() => {
+        component.webview = { view: raw } as any;
+      });
+      const view = component.webview!.view!;
+      try {
+        component.trackPageHealth(
+          { state: 'error-document', recoveryRecommended: true },
+          view,
+        );
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(raw.executeJavaScript).toHaveBeenCalledTimes(1);
+        expect(raw.loadURL).not.toHaveBeenCalled();
+      } finally {
+        component.componentWillUnmount();
+        jest.useRealTimers();
+      }
+    },
+  );
+
   it('invalidates the aggregate cache when a WhatsApp document starts navigating', () => {
     const props = createProps();
     Object.assign(props.service, {

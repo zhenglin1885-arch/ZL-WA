@@ -135,6 +135,47 @@ contextBridge.exposeInMainWorld('ferdium', {
     )
       ipcRenderer.send('download-service-media', url);
   },
+  pushWhatsAppConnectionEvent: (value: {
+    event: string;
+    code: string | null;
+  }) => {
+    if (
+      process.isMainFrame &&
+      globalThis.location.hostname === 'web.whatsapp.com' &&
+      value &&
+      [
+        'backend-observed',
+        'socket-state',
+        'socket-open',
+        'main-ready',
+        'critical-sync',
+        'socket-disconnected',
+        'storage-error',
+        'logout',
+        'phone-link-error',
+        'phone-link-hello',
+        'phone-link-refresh',
+      ].includes(value.event)
+    )
+      ipcRenderer.sendToHost('zl-wa-connection-event', {
+        event: value.event,
+        code: [
+          'CONNECTED',
+          'OPENING',
+          'PAIRING',
+          'UNPAIRED',
+          'UNPAIRED_IDLE',
+          'UNLAUNCHED',
+          'CONFLICT',
+          'TIMEOUT',
+          'PROXYBLOCK',
+          'TOS_BLOCK',
+          'SMB_TOS_BLOCK',
+        ].includes(value.code || '')
+          ? value.code
+          : null,
+      });
+  },
   pushWhatsAppUnread: (value: {
     ownerId: string;
     count: number;

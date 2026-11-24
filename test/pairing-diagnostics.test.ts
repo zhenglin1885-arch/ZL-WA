@@ -3,6 +3,7 @@ import { configurePairingDiagnostics } from '../src/features/accounts/pairingDia
 import { readSendDiagnostics } from '../src/features/accounts/sendDiagnostics';
 import {
   recordPageTransition,
+  recordNativeConnection,
   collectSendDiagnostics,
 } from '../src/features/accounts/collectSendDiagnostics';
 
@@ -171,4 +172,54 @@ it('keeps navigation provenance without URLs, private request data or navigation
       event => Object.keys(event).sort().join(',') === 'at,event',
     ),
   ).toBe(true);
+});
+
+it('retains bounded native pairing events across navigations and isolates account diagnostics without copying arbitrary payloads', async () => {
+  const view = {
+    executeJavaScript: jest.fn(async () => ({ unavailable: true })),
+  };
+  for (let n = 0; n < 80; n++)
+    recordNativeConnection(view, {
+      event: 'socket-state',
+      code: 'PAIRING',
+      secret: 'PRIVATE_TOKEN',
+    });
+  recordNativeConnection(view, {
+    event: 'PRIVATE_EVENT',
+    code: 'PRIVATE_CODE',
+  });
+  recordNativeConnection(view, {
+    event: 'phone-link-error',
+    code: 'PRIVATE_CODE',
+    phone: 'PRIVATE_PHONE',
+  });
+  recordPageTransition(view, 'main-frame-navigated');
+  const result = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(result.page.nativeTransitions).toHaveLength(64);
+  expect(result.page.nativeTransitions.at(-1)).toMatchObject({
+    event: 'phone-link-error',
+    code: null,
+  });
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+  const other = { executeJavaScript: view.executeJavaScript };
+  expect(
+    (
+      await collectSendDiagnostics(
+        { isError: false, errorMessage: '', webview: other },
+        async () => ({}),
+      )
+    ).page.nativeTransitions,
+  ).toEqual([]);
+  expect(
+    (
+      await collectSendDiagnostics(
+        { isError: false, errorMessage: '', webview: view },
+        async () => ({}),
+        () => false,
+      )
+    ).page.nativeTransitions,
+  ).toEqual([]);
 });

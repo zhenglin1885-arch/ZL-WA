@@ -25,9 +25,15 @@ export function readSendDiagnostics() {
     );
   const wpp = chatReady ? page.WPP : undefined;
   const stream = read(() => wpp.conn.getStreamData());
-  const socket = chatReady
-    ? read(() => page.require('WAWebSocketModel').Socket.state)
-    : undefined;
+  const native = read(() => page.__zlWaNativeConnection.read());
+  const socket =
+    native?.socket ??
+    (chatReady
+      ? (read(
+          () =>
+            page.require('WAWebBackendEventBus')?.BackendEventBus?.socketState,
+        ) ?? read(() => page.require('WAWebSocketModel').Socket.state))
+      : undefined);
   const nativeStore = chatReady
     ? read(() => page.require('WAWebCollections').Msg)
     : undefined;
@@ -208,7 +214,40 @@ export function readSendDiagnostics() {
         }))
     : [];
   return {
-    format: 2,
+    format: 3,
+    nativeConnection: {
+      source: ['backend-event-bus', 'legacy-socket', 'unavailable'].includes(
+        native?.source,
+      )
+        ? native.source
+        : null,
+      mainReady: bool(native?.mainReady),
+      events: (read(() => page.__zlWaNativeConnection.trace) || [])
+        .slice(-64)
+        .filter((row: any) =>
+          [
+            'backend-observed',
+            'socket-state',
+            'socket-open',
+            'main-ready',
+            'critical-sync',
+            'socket-disconnected',
+            'storage-error',
+            'logout',
+            'phone-link-error',
+            'phone-link-hello',
+            'phone-link-refresh',
+          ].includes(row?.event),
+        )
+        .map((row: any) => ({
+          at:
+            Number.isFinite(row.at) && row.at >= 0
+              ? Math.min(row.at, 86400000)
+              : 0,
+          event: row.event,
+          code: eventCodes.includes(row.code) ? row.code : null,
+        })),
+    },
     pairing: {
       observing: Boolean(pairing),
       qrChanges:

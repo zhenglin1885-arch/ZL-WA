@@ -2205,7 +2205,17 @@ export async function sendTextToChat(
     chat.isReadOnly
   )
     throw new Error('所选聊天不可用或没有发送权限');
-  if (req('WAWebSocketModel').Socket.state !== 'CONNECTED')
+  let socketState = page.__zlWaNativeConnection?.read()?.socket;
+  if (!socketState) {
+    try {
+      socketState = req('WAWebBackendEventBus')?.BackendEventBus?.socketState;
+    } catch {}
+  }
+  if (!socketState) socketState = req('WAWebSocketModel').Socket.state;
+  if (
+    socketState !== 'CONNECTED' ||
+    (await page.__zlWaNativeConnection?.ready?.()) === false
+  )
     throw new Error('账号未连接');
   const prefs = req('WAWebUserPrefsMeUser');
   const lidMode =

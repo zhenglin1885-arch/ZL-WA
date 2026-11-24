@@ -68,7 +68,15 @@ export function watchWhatsAppUnread(): boolean {
         module('WAWebConnModel')?.Conn?.wid,
     );
     if (!/^\d{5,30}@(c\.us|lid)$/.test(ownerId)) return;
-    const socket = module('WAWebSocketModel')?.Socket?.state;
+    const native = page.__zlWaNativeConnection?.read();
+    const backend = native
+      ? undefined
+      : module('WAWebBackendEventBus')?.BackendEventBus;
+    const socket = native
+      ? native.socket
+      : backend
+        ? backend.socketState
+        : module('WAWebSocketModel')?.Socket?.state;
     const now = Date.now() / 1000;
     const live =
       !force && state.soundOwner === ownerId && now - state.soundAt < 15;

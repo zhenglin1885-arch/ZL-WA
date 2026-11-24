@@ -30,13 +30,23 @@ it('sends ordinary zero-delay text through current WhatsApp preparation, without
       },
     },
     require: (name: string) =>
-      name === 'WAWebSocketModel' ? { Socket: { state: 'CONNECTED' } } : raw(),
+      name === '__debug'
+        ? { modulesMap: { WAWebSocketModel: {} } }
+        : name === 'WAWebSocketModel'
+          ? { Socket: { state: 'CONNECTED' } }
+          : raw(),
   };
+  (page as any).addEventListener = jest.fn();
   const context = vm.createContext({
     window: page,
     location: { hostname: 'web.whatsapp.com' },
     setTimeout,
     clearTimeout,
+    setInterval: jest.fn(() => 1),
+    clearInterval: jest.fn(),
+    document: {
+      querySelector: (s: string) => (s === '#pane-side, #side' ? {} : null),
+    },
   });
   const view = {
     executeJavaScript: jest.fn(async (code: string) =>

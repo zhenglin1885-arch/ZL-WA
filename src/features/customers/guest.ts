@@ -57,14 +57,23 @@ export function readCustomerContext(): CustomerContext {
       return undefined;
     }
   };
+  const socketStateNow = () => {
+    const native = page.__zlWaNativeConnection?.read();
+    const backend = native
+      ? undefined
+      : module('WAWebBackendEventBus')?.BackendEventBus;
+    return native
+      ? native.socket
+      : backend
+        ? backend.socketState
+        : module('WAWebSocketModel')?.Socket?.state;
+  };
   // Resolve current native ownership on every use. Never borrow identity from
   // another account card, a chat title or previously saved login metadata.
   const readOwners = () => {
     if (!chatReady()) return [];
     if (
-      ['UNPAIRED', 'UNPAIRED_IDLE'].includes(
-        module('WAWebSocketModel')?.Socket?.state,
-      ) ||
+      ['UNPAIRED', 'UNPAIRED_IDLE'].includes(socketStateNow()) ||
       document.querySelector('[data-ref] canvas, [data-testid="qrcode"]')
     )
       return [];
@@ -141,7 +150,7 @@ export function readCustomerContext(): CustomerContext {
           '#pane-side [role="row"], #pane-side [data-testid="cell-frame-container"]',
         ),
       ));
-  const socketState = module('WAWebSocketModel')?.Socket?.state;
+  const socketState = socketStateNow();
   const canInitialize =
     !['UNPAIRED', 'UNPAIRED_IDLE'].includes(socketState) &&
     !document.querySelector(

@@ -1,8 +1,12 @@
 /* eslint-disable no-void -- Detached account refresh handles errors internally. */
 // ZL-WA modification: independent WhatsApp sessions, live metadata and overlay focus.
 import { join } from 'node:path';
+import { configureNativeConnection } from '../../../features/accounts/nativeConnection';
 import { configurePairingDiagnostics } from '../../../features/accounts/pairingDiagnostics';
-import { recordPageTransition } from '../../../features/accounts/collectSendDiagnostics';
+import {
+  recordNativeConnection,
+  recordPageTransition,
+} from '../../../features/accounts/collectSendDiagnostics';
 import { configureMessageSendMode } from '../../../features/accounts/sendMode';
 import { ipcRenderer } from 'electron';
 import {
@@ -216,9 +220,10 @@ class ServiceWebview extends Component<IProps> {
             this.isRecoveryCurrent(view) &&
             live?.state === 'error-document' &&
             live.recoveryRecommended
-          )
+          ) {
             recordPageTransition(view, 'startup-recovery-requested');
-          await view.loadURL('https://web.whatsapp.com/');
+            await view.loadURL('https://web.whatsapp.com/');
+          }
         } catch {
           /* Keep the error page and manual recovery available. */
         } finally {
@@ -350,7 +355,7 @@ class ServiceWebview extends Component<IProps> {
       this.accountDocumentEpoch === accountDocumentEpoch;
     try {
       const snapshot = await view.executeJavaScript(
-        `(async()=>{if(${Boolean(service.isActive)})(${configurePairingDiagnostics.toString()})();const surface=(${readWhatsAppPageHealth.toString()})();const snapshot=await (${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)},surface);return {...snapshot,pageHealth:surface.state,pageRecovery:surface.recoveryRecommended};})()`,
+        `(async()=>{(${configureNativeConnection.toString()})();if(${Boolean(service.isActive)})(${configurePairingDiagnostics.toString()})();const surface=(${readWhatsAppPageHealth.toString()})();const snapshot=await (${readWhatsAppSnapshot.toString()})(${Boolean(service.accountSnapshot?.avatar)},surface);return {...snapshot,pageHealth:surface.state,pageRecovery:surface.recoveryRecommended};})()`,
       );
       if (!current()) return;
       if (snapshot.pageHealth)
@@ -501,6 +506,15 @@ class ServiceWebview extends Component<IProps> {
   };
 
   handleUnread = (event: Electron.IpcMessageEvent): void => {
+    if (
+      event.channel === 'zl-wa-connection-event' &&
+      event.currentTarget === this.webview?.view &&
+      !this.disposed &&
+      this.props.service.recipe?.id === 'whatsapp'
+    ) {
+      recordNativeConnection(this.webview!.view!, event.args?.[0]);
+      return;
+    }
     if (
       event.channel === 'zl-wa-unread-stale' &&
       event.currentTarget === this.webview?.view &&
@@ -653,6 +667,9 @@ class ServiceWebview extends Component<IProps> {
   handleAccountDomReady = (): void => {
     const { service, stores } = this.props;
     if (service.recipe?.id !== 'whatsapp' || !service.webview) return;
+    void service.webview
+      .executeJavaScript(`(${configureNativeConnection.toString()})()`)
+      .catch(() => {});
     this.applySendMode()
       .then(() =>
         configureTranslation(

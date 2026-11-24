@@ -1,6 +1,48 @@
 import { readSendDiagnostics, readWhatsAppPageHealth } from './sendDiagnostics';
 
 const transitions = new WeakMap<object, { at: number; event: string }[]>();
+const nativeTransitions = new WeakMap<
+  object,
+  { at: number; event: string; code: string | null }[]
+>();
+export function recordNativeConnection(view: object, value: any) {
+  const allowed = [
+    'backend-observed',
+    'socket-state',
+    'socket-open',
+    'main-ready',
+    'critical-sync',
+    'socket-disconnected',
+    'storage-error',
+    'logout',
+    'phone-link-error',
+    'phone-link-hello',
+    'phone-link-refresh',
+  ];
+  const states = [
+    'CONNECTED',
+    'OPENING',
+    'PAIRING',
+    'UNPAIRED',
+    'UNPAIRED_IDLE',
+    'UNLAUNCHED',
+    'CONFLICT',
+    'TIMEOUT',
+    'PROXYBLOCK',
+    'TOS_BLOCK',
+    'SMB_TOS_BLOCK',
+  ];
+  if (!value || !allowed.includes(value.event)) return;
+  const rows = nativeTransitions.get(view) || [];
+  rows.push({
+    at: Date.now(),
+    event: value.event,
+    code: states.includes(value.code) ? value.code : null,
+  });
+  if (rows.length > 64) rows.shift();
+  nativeTransitions.set(view, rows);
+}
+
 export function recordPageTransition(
   view: object,
   event:
@@ -114,6 +156,10 @@ export async function collectSendDiagnostics(
       transitions:
         !accountChanged && !changed && view
           ? [...(transitions.get(view) || [])]
+          : [],
+      nativeTransitions:
+        !accountChanged && !changed && view
+          ? [...(nativeTransitions.get(view) || [])]
           : [],
       loadFailed: service.isError,
       errorCode: service.isError

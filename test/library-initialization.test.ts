@@ -74,7 +74,10 @@ it('replaces an existing legacy SDK before using a group interface', async () =>
   const view: any = {
     executeJavaScript: jest.fn(async (code: string) =>
       runInNewContext(code, {
-        window: page,
+        window: Object.assign(page, { addEventListener: jest.fn() }),
+        document: { querySelector: () => null },
+        setInterval: jest.fn(() => 1),
+        clearInterval: jest.fn(),
         location: { hostname: 'web.whatsapp.com' },
       }),
     ),
@@ -105,7 +108,10 @@ it('blocks a still-incompatible SDK after injection instead of exposing a raw gu
   const view: any = {
     executeJavaScript: jest.fn(async (code: string) =>
       runInNewContext(code, {
-        window: page,
+        window: Object.assign(page, { addEventListener: jest.fn() }),
+        document: { querySelector: () => null },
+        setInterval: jest.fn(() => 1),
+        clearInterval: jest.fn(),
         location: { hostname: 'web.whatsapp.com' },
       }),
     ),
@@ -132,7 +138,10 @@ it('does not replace the interface while an earlier group request is pending', a
   const view: any = {
     executeJavaScript: jest.fn(async (code: string) =>
       runInNewContext(code, {
-        window: page,
+        window: Object.assign(page, { addEventListener: jest.fn() }),
+        document: { querySelector: () => null },
+        setInterval: jest.fn(() => 1),
+        clearInterval: jest.fn(),
         location: { hostname: 'web.whatsapp.com' },
       }),
     ),

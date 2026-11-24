@@ -1,0 +1,60 @@
+{
+  "sourceBase": "1f5081f8444cb88751f851564e833493d9b52c26",
+  "purpose": "Original-web new BackendEventBus compatibility and guarded startup recovery; retired login experiments absent",
+  "typecheck": true,
+  "unitTests": {
+    "suitesPassed": 89,
+    "passed": 976,
+    "skipped": 2
+  },
+  "existingGuiPassGroups": 51,
+  "originalWebUiPreserved": true,
+  "realPhonePairingVerified": false,
+  "recoveryRegressionReproducedBeforeFix": true,
+  "compiledGuestVerified": true,
+  "nativePublicContract": {
+    "realPublicNativeModuleEvaluated": true,
+    "publicModuleSHA256": "dab794eb009bb14af4baaec473f82204c85a8ec946ebd16b39b23de0173eb03f",
+    "compiledAdapterObservedActualNativeClass": true,
+    "noNativeCallsFromObservation": true,
+    "nativeEmitterUnchanged": true,
+    "realPhonePairingVerified": false
+  },
+  "privacyTargetedTestsPassed": 16,
+  "sourceFiles": {
+    ".github/workflows/windows-web-compat-test17.yml": "995eb8ad43c14b9ca94fd792089b0948e35373e3a5c7588d54e1d9cbf2d71d16",
+    "build-helpers/prepare-whatsapp-library.cjs": "4e7d807dcf13388cb7c9204374045431e12c0bbe155cd64e0e73a43c334ad15d",
+    "docs/WEB-LOGIN-COMPAT-TEST17.md": "b9b9bb8e25f8cccc55c34bf5a82278713053fc80c44be442e89b26031a2d1194",
+    "esbuild.mjs": "1def46cedafe0b73ce6583789e23a7cfef752c59f25d039a6e8def4106b78b70",
+    "scripts/verify-send-mode-ui.mjs": "6441da7e255a188344c300728fa16b8bb24dc3254228a323990da9006a3c5417",
+    "scripts/verify-whatsapp-library.cjs": "2c6a7cb3ec759113eab2f6022ee792c0d6978831b2fe4b95fd9ff11514db162c",
+    "src/components/services/content/ServiceWebview.tsx": "17f7c5ef292491f8ae81ff958f4cae95ea92355b46cf47fc3079a4a298889344",
+    "src/features/accountTools/bulkGuest.ts": "ab64ab0775f251405b9af74c56ab65e54ee210ab51c2b420fd983633234f3b36",
+    "src/features/accountTools/bulkRuntime.ts": "f346f1bb29ea616f6b3a8474e492f9bb7f13651cc5edbefaa8604d82ebed21d9",
+    "src/features/accountTools/guest.ts": "df281f9c126f8bfb15da282c29376ccd5680dae5f06013d2273218a822859c6e",
+    "src/features/accounts/collectSendDiagnostics.ts": "b5a2730d95d5cf056a32085940d6bb2b15810a1e891a9e30f97639731bb3f193",
+    "src/features/accounts/nativeConnection.ts": "cfc2b71da5ad9a232429058684e28cf40be437180e8fa7f7c8b1ae72b71bda9b",
+    "src/features/accounts/pairingDiagnostics.ts": "82c354f055f5b1dc9c60db5388b091308ff4774e408147ac988f6d598e588160",
+    "src/features/accounts/sendDiagnostics.ts": "8a17fdf525ad21a505c3059154b4f0678f29e5c1f09fcc2b6713f685f8df4820",
+    "src/features/accounts/unread.ts": "9edb03f42fdbe2449e640382acc421fef5894c49492589fdc8c28686f59e7dd3",
+    "src/features/accounts/whatsapp.ts": "e65e2765e4e0cc6889ba27fc4e1985394c1a1b2e7e79f4643674ad9785c833e9",
+    "src/features/customers/guest.ts": "d43306359625419b8c21aa4425c77c911b4650df20e4b41b44a76ab99ade8fa1",
+    "src/webview/recipe.ts": "6c0d30bbb1e4b440fb197a527dea8448bee9129b306816df4fef7a8ccfb995ea",
+    "test/bulk-runtime.test.ts": "13af80fd3f2a3c1a19184072aa836bde9024f09447c26149e672ca9a79531b10",
+    "test/components/services/content/ServiceWebview.test.tsx": "6909539bbec4d6a5a7943353324b5defc14f985be860a301a7b2100b8d344c9b",
+    "test/library-initialization.test.ts": "0964d6ca7e3a889780eb46187b012b300118797c3584843d4bc800f618ded0c6",
+    "test/native-connection.test.ts": "8751953fe9d8b84c56a59263e26e5d21ba90b3975df75e5a1d5c4081961c5030",
+    "test/pairing-diagnostics.test.ts": "859f98aa124af9e6d9b89ac0ec2a6a7693fcc73dcc379e4d5b524cf4c1641648"
+  },
+  "upstreamReferences": [
+    "https://github.com/wwebjs/whatsapp-web.js/pull/201990",
+    "https://github.com/wppconnect-team/wa-js/blob/9004c34f54dfd29412b6412955bf0bfd3b97233f/src/whatsapp/misc/BackendEventBus.ts"
+  ],
+  "notes": [
+    "original web mode only; no new UI, proxy or account preferences",
+    "native page require, event bus and storage are not overwritten",
+    "observation reads existing native exports and skips unresolved modules",
+    "readiness checks and no-automatic-resend task policy remain",
+    "no claim that actual phone pairing is fixed; user acceptance still required"
+  ]
+}

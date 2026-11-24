@@ -200,16 +200,28 @@ export async function sendBulkMessage(
   if (!wpp?.isReady)
     throw new Error('WhatsApp 消息接口尚未就绪，请刷新账号后重试');
   let socketState: unknown;
-  try {
-    socketState = (window as any).require?.('WAWebSocketModel')?.Socket?.state;
-  } catch {
-    /* Some versions only expose connection state through WPP. */
+  const page = window as any;
+  const native = page.__zlWaNativeConnection?.read();
+  if (native) socketState = native.socket;
+  else {
+    let backend;
+    try {
+      backend = page.require?.('WAWebBackendEventBus')?.BackendEventBus;
+    } catch {}
+    if (backend) socketState = backend.socketState;
+    else
+      try {
+        socketState = page.require?.('WAWebSocketModel')?.Socket?.state;
+      } catch {}
   }
   if (typeof socketState === 'string' && socketState !== 'CONNECTED')
     throw new Error('WhatsApp 账号未连接，未提交消息；请先恢复账号连接');
   // Background accounts initialize advanced helpers on demand. A loaded SDK
   // alone does not prove that linked-device history/encryption sync is ready.
-  if (wpp.conn?.isMainReady?.() === false)
+  if (
+    (await (window as any).__zlWaNativeConnection?.ready?.()) === false ||
+    wpp.conn?.isMainReady?.() === false
+  )
     return {
       messageId: '',
       notSubmitted: true,

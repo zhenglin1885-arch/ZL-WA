@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron';
+import { configureNativeConnection } from '../accounts/nativeConnection';
 import type { RealStores } from '../../stores';
 import type { Recipient } from './config';
 import BulkQueue from './BulkQueue';
@@ -34,11 +35,13 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
     )
       throw new Error('当前会话不是 WhatsApp');
     checkDeadline();
+    await view.executeJavaScript(`(${configureNativeConnection.toString()})()`);
+    checkDeadline();
     const exists = await view.executeJavaScript('Boolean(window.WPP)');
     checkDeadline();
     // A recipe or another initializer can already have installed an older SDK.
     // Presence alone must not skip the app's tested LID compatibility build.
-    const compatible = `(()=>{const getter=window.WPP?.conn?.getMyUserLid;if(typeof getter!=='function')return true;const source=Function.prototype.toString.call(getter);return !source.includes('getMeLidUserOrThrow')||source.includes('ZL_LID_UNAVAILABLE')})()`;
+    const compatible = `(()=>{if(window.__zlWaNativeConnection?.read()?.source==='backend-event-bus'&&window.WPP?.__zlNativeConnectionCompat!==1)return false;const getter=window.WPP?.conn?.getMyUserLid;if(typeof getter!=='function')return true;const source=Function.prototype.toString.call(getter);return (!source.includes('getMeLidUserOrThrow')||source.includes('ZL_LID_UNAVAILABLE'))})()`;
     const stale = exists && !(await view.executeJavaScript(compatible));
     checkDeadline();
     if (!exists || stale) {

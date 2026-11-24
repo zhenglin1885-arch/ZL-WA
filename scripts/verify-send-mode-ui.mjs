@@ -51,6 +51,22 @@ try {
             win.focus();
             win.webContents.focus();
             await js("document.querySelector('#draft').focus()");
+            // Native focus changes are asynchronous on desktop window managers.
+            // Dispatch only after this fixture's editor really owns focus.
+            const focusDeadline = Date.now() + 2000;
+            while (
+              !(await js(
+                'document.hasFocus() && document.activeElement === document.querySelector("#draft")',
+              ))
+            ) {
+              if (Date.now() >= focusDeadline)
+                throw Error('Fixture editor did not receive native focus');
+              win.focus();
+              win.webContents.focus();
+              await js("document.querySelector('#draft').focus()");
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
             await win.webContents.debugger.sendCommand(
               'Input.dispatchKeyEvent',
               {
@@ -145,7 +161,15 @@ try {
             await press(true);
             const jobs = await js('tick(cfg)');
             if (jobs.length !== 1 || (await js('sends')) !== 0)
-              throw Error('Translation preview bypassed');
+              throw Error(
+                'Translation preview bypassed in ' +
+                  context +
+                  ' (jobs=' +
+                  jobs.length +
+                  ', sends=' +
+                  (await js('sends')) +
+                  ')',
+              );
             const job = jobs[0];
             await js(
               `result(${job.id},${JSON.stringify(job.token)},{text:'Hello translated',error:false},'prepare')`,

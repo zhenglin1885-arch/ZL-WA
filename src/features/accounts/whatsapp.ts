@@ -40,8 +40,21 @@ export async function readWhatsAppSnapshot(
       return undefined;
     }
   };
-  const socket = module('WAWebSocketModel')?.Socket;
-  const socketState = socket?.state;
+  const connection = page.__zlWaNativeConnection;
+  const native = connection?.read();
+  const backend = native
+    ? undefined
+    : module('WAWebBackendEventBus')?.BackendEventBus;
+  const socketState = native
+    ? native.socket
+    : backend
+      ? backend.socketState
+      : module('WAWebSocketModel')?.Socket?.state;
+  if (
+    native?.source === 'backend-event-bus' &&
+    (await connection.ready()) === false
+  )
+    return { status: 'loading' };
   if (
     !navigator.onLine ||
     [
