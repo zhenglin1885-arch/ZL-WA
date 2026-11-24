@@ -39,6 +39,7 @@ try {
     'window.ferdium?.stores?.settings.loaded&&window.ferdium.stores.services.allServicesRequest.wasExecuted',
     'app ready',
   );
+  await evaluate("require('@electron/remote').getCurrentWindow().webContents.closeDevTools();require('@electron/remote').getCurrentWindow().setSize(1400,900);true");
   assert.equal(
     await evaluate('window.ferdium.stores.services.all.some(s=>s.isEnabled)'),
     false,

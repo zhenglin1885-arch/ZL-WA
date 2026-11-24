@@ -450,6 +450,7 @@ export default observer(function ProtocolView({
   const selected = state?.chats.find(row => row.id === chat);
   return (
     <section
+      className="protocol-chat"
       aria-label="新连接聊天"
       style={{
         display: 'flex',
@@ -460,6 +461,7 @@ export default observer(function ProtocolView({
         color: stores.ui.isDarkThemeActive ? '#eee' : '#172c22',
       }}
     >
+      <style>{`.protocol-chat button{padding:7px 10px;margin:3px 2px;border:1px solid #9cb6a8;border-radius:6px;background:#edf5f0;color:#173b29;font:inherit;line-height:1.3;cursor:pointer}.protocol-chat button:hover:not(:disabled){background:#d6e9dd}.protocol-chat button:disabled{opacity:.5;cursor:default}.protocol-chat input,.protocol-chat textarea{padding:9px;border:1px solid #9cb6a8;border-radius:6px;background:#fff;color:#172c22;font:inherit;line-height:1.4}.protocol-chat aside button{font-size:.9em}.protocol-chat footer{flex-shrink:0}.protocol-chat audio,.protocol-chat video{max-width:100%}`}</style>
       <aside
         style={{
           width: 280,
