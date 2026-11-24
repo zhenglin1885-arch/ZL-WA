@@ -1,0 +1,82 @@
+name: Publish verified protocol integration test15
+'on':
+  push:
+    branches: [publish/protocol-test15-verified]
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_COMMIT: 04634bf2c1747d5da81f969f880f47d18dcaee1a
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: 04634bf2c1747d5da81f969f880f47d18dcaee1a
+    - name: Verify successful native Windows job for the exact source
+      run: |
+        set -euo pipefail
+        gh api repos/$GH_REPO/actions/runs/45467261762 > /tmp/build-run.json
+        gh api repos/$GH_REPO/actions/runs/45467261762/jobs > /tmp/build-jobs.json
+        python3 - <<'VERIFY'
+        import json,os
+        r=json.load(open('/tmp/build-run.json'));assert r['head_sha']==os.environ['SOURCE_COMMIT']
+        w=next(j for j in json.load(open('/tmp/build-jobs.json'))['jobs'] if j['name']=='windows');assert w['conclusion']=='success'
+        steps={s['name']:s['conclusion'] for s in w['steps']}
+        for name in ['Install protocol runtime for native Windows','Test protocol model','Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert steps[name]=='success',name
+        VERIFY
+    - name: Verify scope and recorded native UI checks
+      run: |
+        set -euo pipefail
+        git diff --name-only d3ecf4707d6436e71d02dc447b4fdda9536c1fe5 HEAD -- src scripts build-helpers electron-builder.yml package.json pnpm-lock.yaml tools/protocol-backend test .github/workflows/windows-protocol-test15.yml docs/PROTOCOL-CONNECTION-TEST15.md > changed.txt
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib
+        r=json.load(open('qa/protocol-integration-test15.json'))
+        assert r['sourceBase']=='d3ecf4707d6436e71d02dc447b4fdda9536c1fe5'
+        assert r['typecheck'] and r['unitTests']['passed']==1004 and r['unitTests']['suitesPassed']==94 and r['unitTests']['skipped']==2
+        assert r['protocolModelTests']==32 and r['existingGuiPassGroups']==51 and r['protocolUiPassed']
+        assert not r['realIntegratedPhoneLoginVerified']
+        assert set(pathlib.Path('changed.txt').read_text().splitlines())==set(r['sourceFiles'])
+        for name,digest in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()==digest,name
+        for key in ['workerStarted','isolatedProfiles','persistedWorkerReload','diagnosticsRedacted','accountPathsValidated','imageCodec','voiceCodec','videoCodec']:assert r['nativeBackend'][key],key
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: 45467261762
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate native packaged backend and final artifacts
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets');r=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert r['commit']==os.environ['SOURCE_COMMIT'] and r['nativePackagedStartup'] and r['mainProcessResumeReload']
+        n=r['protocolBackend']
+        for key in ['workerStarted','isolatedProfiles','persistedWorkerReload','diagnosticsRedacted','accountPathsValidated','imageCodec','voiceCodec','videoCodec']:assert n[key],key
+        assert not n['realPhoneLoginVerified']
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        for name in expected:
+          p=root/name;assert p.stat().st_size>1000000 and p.open('rb').read(2)==b'MZ';p.rename(root/name.replace('7.3.9-x64','7.3.9-protocol-test15-x64'))
+        shutil.copyfile('qa/protocol-integration-test15.json',root/'QA-summary.json');shutil.copyfile('qa/protocol-integration-gui-pass.txt',root/'GUI-checks.txt');shutil.copyfile('docs/PROTOCOL-CONNECTION-TEST15.md',root/'README-test15.md')
+        (root/'SHA256SUMS.txt').write_text(''.join(hashlib.file_digest(p.open('rb'),'sha256').hexdigest()+'  '+p.name+'\n' for p in sorted(root.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt'))
+        VERIFY
+    - name: Publish separate Windows integration test
+      run: |
+        set -euo pipefail
+        cat > /tmp/notes.md <<'NOTES'
+        在 ZL-WA 内接入已获得用户登录确认的新连接路线的首个 Windows 整合测试版。非官方协议实现，不是 WhatsApp 电脑版接口。
+        使用：完全退出 ZL-WA 和独立验证工具，安装后在 WhatsApp 账户卡片菜单选择“使用新连接（测试）”，在软件内扫码。默认仍是原网页方式，原网页 Cookie、账号、备注和其他账号保留；可随时“切回网页连接”。
+        接入基础聊天、附件/语音、翻译、原群发/群管理队列、备注/客户资料/本地置顶、聚合会话、匹配点赞和当前同步记录保存。群发仍按所选列表从下到上，未知发送结果不自动重发。
+        限制：本轮新连接仅支持直连；自建聊天界面没有整体移植官方网页的通话、状态、频道、完整通讯录和深历史等功能。查找、引用及历史保存限于当前已同步的最近消息。请完整阅读 README-test15.md。
+        原功能自动测试、协议模型测试、受控 GUI、新连接界面和原生进程/图片/音视频编码检查通过；Windows 安装、原生打包启动和恢复检查通过。独立工具的真实登录已获用户反馈成功，本整合版的真实账号收发、媒体、群操作和重启仍需验收，不等同于全部功能已获真实服务器验证。
+        Windows 未签名测试包。未覆盖正式版资产，未发布 Mac。
+        NOTES
+        gh release create test-7.3.9-protocol-integration-15 release-assets/* --target "$SOURCE_COMMIT" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 新连接整合测试版 test15' --notes-file /tmp/notes.md
