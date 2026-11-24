@@ -1,3 +1,4 @@
+import { protocolRequest, protocolTarget } from '../protocol/client';
 import { ipcRenderer } from 'electron';
 import { runInAction } from 'mobx';
 import type { RealStores } from '../../stores';
@@ -29,11 +30,15 @@ export class GroupRuntime {
         s.recipe.id === 'whatsapp' &&
         s.isEnabled &&
         !s.isHibernating &&
-        s.webview,
+        (s.webview || s.isProtocol),
     );
     const results = await Promise.allSettled(
       services.map(async current => {
         const service = current;
+        if (service.isProtocol) {
+          await protocolRequest(service.id, 'state');
+          return;
+        }
         const view = service.webview!;
         const snapshot = await this.withTimeout<AccountSnapshot>(
           view.executeJavaScript(`(${readWhatsAppSnapshot.toString()})()`),
@@ -110,6 +115,22 @@ export class GroupRuntime {
     await this.queue.load();
     if (this.queue.speechCooldown(target.ownerId))
       throw new Error(this.queue.speechCooldownMessage(target.ownerId));
+    const protocolService = this.stores.services.all.find(
+      s => s.id === target.accountId,
+    );
+    if (protocolService?.isProtocol) {
+      protocolTarget(protocolService, target.ownerId);
+      const groups = await protocolRequest(target.accountId, 'groups', {
+        owner: target.ownerId,
+      });
+      return groups.map((g: any) => ({
+        ...target,
+        target: g.id,
+        name: g.name,
+        admin: g.admin,
+        announce: g.announce,
+      }));
+    }
     const view = this.viewFor(target);
     await this.withTimeout(
       ensureBulkLibrary(view),
@@ -141,6 +162,16 @@ export class GroupRuntime {
     task: GroupTask,
     execute: boolean,
   ): Promise<GroupResult> {
+    const protocolService = this.stores.services.all.find(
+      s => s.id === task.accountId,
+    );
+    if (protocolService?.isProtocol) {
+      protocolTarget(protocolService, task.ownerId);
+      return protocolRequest(task.accountId, 'group-operation', {
+        task,
+        execute,
+      });
+    }
     const view = this.viewFor(task);
     await ensureBulkLibrary(view);
     if (this.viewFor(task) !== view)

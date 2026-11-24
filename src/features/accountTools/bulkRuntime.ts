@@ -1,3 +1,4 @@
+import { protocolRequest, protocolTarget } from '../protocol/client';
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import type { Recipient } from './config';
@@ -121,6 +122,27 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
         save: record => ipcRenderer.invoke('account-tools-history', record),
         remove: ids => ipcRenderer.invoke('account-tools-history-delete', ids),
         send: async (target, spec) => {
+          const protocolService = stores.services.all.find(
+            s => s.id === target.accountId,
+          );
+          if (protocolService?.isProtocol) {
+            protocolTarget(protocolService, target.ownerId);
+            try {
+              return await protocolRequest(target.accountId, 'send', {
+                jid: target.id,
+                spec: { ...spec, operationToken: crypto.randomUUID() },
+                owner:
+                  target.ownerId || protocolService.accountSnapshot.ownerId,
+              });
+            } catch (error) {
+              return {
+                messageId: '',
+                confirmed: false,
+                halt: true,
+                error: String(error),
+              };
+            }
+          }
           const view = viewFor(target);
           const config = await ipcRenderer.invoke(
             'account-tools-get',
@@ -161,6 +183,17 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           return outcome;
         },
         reconcile: async (target, messageId, spec, started, ended) => {
+          const protocolService = stores.services.all.find(
+            s => s.id === target.accountId,
+          );
+          if (protocolService?.isProtocol) {
+            protocolTarget(protocolService, target.ownerId);
+            return protocolRequest(target.accountId, 'reconcile', {
+              jid: target.id,
+              id: messageId,
+              owner: target.ownerId || protocolService.accountSnapshot.ownerId,
+            });
+          }
           const view = viewFor(target);
           await ensureBulkLibrary(view);
           if (viewFor(target) !== view)
@@ -183,6 +216,19 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
               : outcome;
         },
         edit: async (target, messageId, text) => {
+          const protocolService = stores.services.all.find(
+            s => s.id === target.accountId,
+          );
+          if (protocolService?.isProtocol) {
+            protocolTarget(protocolService, target.ownerId);
+            await protocolRequest(target.accountId, 'edit', {
+              jid: target.id,
+              id: messageId,
+              text,
+              owner: target.ownerId || protocolService.accountSnapshot.ownerId,
+            });
+            return;
+          }
           const view = viewFor(target);
           const config = await ipcRenderer.invoke(
             'account-tools-get',
@@ -198,6 +244,18 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           );
         },
         revoke: async (target, messageId) => {
+          const protocolService = stores.services.all.find(
+            s => s.id === target.accountId,
+          );
+          if (protocolService?.isProtocol) {
+            protocolTarget(protocolService, target.ownerId);
+            await protocolRequest(target.accountId, 'revoke', {
+              jid: target.id,
+              id: messageId,
+              owner: target.ownerId || protocolService.accountSnapshot.ownerId,
+            });
+            return;
+          }
           const view = viewFor(target);
           await ensureBulkLibrary(view);
           await view.executeJavaScript(

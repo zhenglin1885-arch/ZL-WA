@@ -1,3 +1,4 @@
+import { protocolRequest, protocolTarget } from '../protocol/client';
 /* eslint-disable no-void -- UI operations catch and display asynchronous errors. */
 import { ipcRenderer } from 'electron';
 import { observer } from 'mobx-react';
@@ -192,7 +193,7 @@ const BulkSend = observer(
         s.isEnabled &&
         !s.isHibernating &&
         s.accountSnapshot.status === 'online' &&
-        s.webview,
+        (s.webview || s.isProtocol),
     );
     const displayName = (s: (typeof online)[number]) =>
       profiles[s.id]?.nickname || s.accountSnapshot.nickname || s.name;
@@ -242,6 +243,17 @@ const BulkSend = observer(
         const results = await Promise.all(
           accounts.map(async id => {
             const service = online.find(s => s.id === id);
+            if (service?.isProtocol) {
+              protocolTarget(service);
+              const items = await protocolRequest(id, 'recipients', {
+                kind: source,
+              });
+              return items.map((r: Recipient) => ({
+                ...r,
+                accountId: id,
+                ownerId: service.accountSnapshot.ownerId,
+              }));
+            }
             if (!service?.webview) throw new Error('账号已离线，请重新选择');
             if (source === 'contact') await ensureBulkLibrary(service.webview);
             const fn = source === 'contact' ? listBulkContacts : listRecipients;

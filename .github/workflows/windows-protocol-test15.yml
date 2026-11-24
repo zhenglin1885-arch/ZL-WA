@@ -1,0 +1,163 @@
+name: Windows protocol integration test15
+'on':
+  push:
+    branches:
+    - build/protocol-integration-test15
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Install protocol runtime for native Windows
+      run: npm ci --prefix tools/protocol-backend
+    - name: Test protocol model
+      run: npm test --prefix tools/protocol-backend
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+        if-no-files-found: error
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Verify scope and recorded native UI checks
+      run: |
+        set -euo pipefail
+        git diff --name-only d3ecf4707d6436e71d02dc447b4fdda9536c1fe5 HEAD -- src scripts build-helpers electron-builder.yml package.json pnpm-lock.yaml tools/protocol-backend test .github/workflows/windows-protocol-test15.yml > changed.txt
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib
+        r=json.load(open('qa/protocol-integration-test15.json'))
+        assert r['sourceBase']=='d3ecf4707d6436e71d02dc447b4fdda9536c1fe5'
+        assert r['typecheck'] and r['unitTests']['passed']==1000 and r['unitTests']['suitesPassed']==92 and r['unitTests']['skipped']==2
+        assert r['protocolModelTests']==31 and r['existingGuiPassGroups']==51 and r['protocolUiPassed']
+        assert not r['realIntegratedPhoneLoginVerified']
+        assert set(pathlib.Path('changed.txt').read_text().splitlines())==set(r['sourceFiles'])
+        for name,digest in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()==digest,name
+        for key in ['workerStarted','isolatedProfiles','persistedWorkerReload','diagnosticsRedacted','accountPathsValidated','imageCodec','voiceCodec','videoCodec']:assert r['nativeBackend'][key],key
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: release-assets
+    - name: Validate native packaged backend and final artifacts
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets');r=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert r['commit']==os.environ['GITHUB_SHA'] and r['nativePackagedStartup'] and r['mainProcessResumeReload']
+        n=r['protocolBackend']
+        for key in ['workerStarted','isolatedProfiles','persistedWorkerReload','diagnosticsRedacted','accountPathsValidated','imageCodec','voiceCodec','videoCodec']:assert n[key],key
+        assert not n['realPhoneLoginVerified']
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        for name in expected:
+          p=root/name;assert p.stat().st_size>1000000 and p.open('rb').read(2)==b'MZ';p.rename(root/name.replace('7.3.9-x64','7.3.9-protocol-test15-x64'))
+        shutil.copyfile('qa/protocol-integration-test15.json',root/'QA-summary.json');shutil.copyfile('qa/protocol-integration-gui-pass.txt',root/'GUI-checks.txt');shutil.copyfile('docs/PROTOCOL-CONNECTION-TEST15.md',root/'README-test15.md')
+        (root/'SHA256SUMS.txt').write_text(''.join(hashlib.file_digest(p.open('rb'),'sha256').hexdigest()+'  '+p.name+'\n' for p in sorted(root.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt'))
+        VERIFY
+    - name: Publish separate Windows integration test
+      run: |
+        set -euo pipefail
+        cat > /tmp/notes.md <<'NOTES'
+        在 ZL-WA 内接入已获得用户登录确认的新连接路线的首个 Windows 整合测试版。非官方协议实现，不是 WhatsApp 电脑版接口。
+        使用：完全退出 ZL-WA 和独立验证工具，安装后在 WhatsApp 账户卡片菜单选择“使用新连接（测试）”，在软件内扫码。默认仍是原网页方式，原网页 Cookie、账号、备注和其他账号保留；可随时“切回网页连接”。
+        接入基础聊天、附件/语音、翻译、原群发/群管理队列、备注/客户资料/本地置顶、聚合会话、匹配点赞和当前同步记录保存。群发仍按所选列表从下到上，未知发送结果不自动重发。
+        限制：本轮新连接仅支持直连；自建聊天界面没有整体移植官方网页的通话、状态、频道、完整通讯录和深历史等功能。查找、引用及历史保存限于当前已同步的最近消息。请完整阅读 README-test15.md。
+        原功能自动测试、协议模型测试、受控 GUI、新连接界面和原生进程/图片/音视频编码检查通过；Windows 安装、原生打包启动和恢复检查通过。独立工具的真实登录已获用户反馈成功，本整合版的真实账号收发、媒体、群操作和重启仍需验收，不等同于全部功能已获真实服务器验证。
+        Windows 未签名测试包。未覆盖正式版资产，未发布 Mac。
+        NOTES
+        gh release create test-7.3.9-protocol-integration-15 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 新连接整合测试版 test15' --notes-file /tmp/notes.md

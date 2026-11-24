@@ -1,3 +1,8 @@
+import {
+  protocolRequest,
+  protocolStates,
+  protocolChats,
+} from '../protocol/client';
 /* eslint-disable no-void -- The runtime reports asynchronous errors in its own state. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
@@ -51,6 +56,8 @@ export class CustomerRuntime {
     Electron.WebviewTag,
     { token: string; at: number }
   >();
+
+  private protocolBusy = false;
 
   private serviceId = '';
 
@@ -288,6 +295,80 @@ export class CustomerRuntime {
 
   private async tick() {
     const service = this.stores.services.active;
+    if (service?.isProtocol) {
+      if (
+        this.protocolBusy ||
+        service.isHibernating ||
+        !service.isEnabled ||
+        service.accountSnapshot.status !== 'online'
+      )
+        return;
+      this.protocolBusy = true;
+      try {
+        const state = protocolStates.get(service.id);
+        const owners = state?.ownerIds || [];
+        if (!owners.length) return;
+        const id = protocolChats.get(service.id);
+        const chat = state?.chats.find(row => row.id === id);
+        const aliases: string[] = id
+          ? await protocolRequest(service.id, 'aliases', {
+              jid: id,
+              owner: state!.ownerId,
+            })
+          : [];
+        let bundle: CustomerBundle = await ipcRenderer.invoke(
+          'customers-bind',
+          owners,
+        );
+        if (id && aliases.length > 1)
+          bundle = await ipcRenderer.invoke(
+            'customers-link',
+            bundle.owner,
+            aliases,
+          );
+        if (
+          this.stores.services.active !== service ||
+          !service.isProtocol ||
+          state?.ownerId !== service.accountSnapshot.ownerId
+        )
+          return;
+        const context: CustomerContext = {
+          token: `protocol:${service.id}:${state!.ownerId}`,
+          owners,
+          ...(id
+            ? {
+                chat: {
+                  id,
+                  aliases,
+                  name: chat?.name || id.split('@')[0],
+                  phone:
+                    aliases
+                      .find(value => value.endsWith('@c.us'))
+                      ?.split('@')[0] || '',
+                  group: id.endsWith('@g.us'),
+                },
+              }
+            : {}),
+        };
+        const key = JSON.stringify([context, bundle.revision]);
+        if (this.contextKey !== key) {
+          if (this.context?.chat?.id !== id) this.editor = undefined;
+          this.context = context;
+          this.bundle = bundle;
+          this.serviceId = service.id;
+          this.contextKey = key;
+          this.bundles.set(bundle.owner, bundle);
+          this.error = '';
+          this.notify();
+        }
+      } catch (error) {
+        this.error = String(error);
+        this.notify();
+      } finally {
+        this.protocolBusy = false;
+      }
+      return;
+    }
     const view = service?.webview;
     if (this.serviceId !== service?.id && this.editor) {
       this.editor = undefined;

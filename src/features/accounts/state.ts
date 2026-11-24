@@ -8,6 +8,7 @@ export interface AccountGroup {
 }
 
 export interface AccountPreferences {
+  connectionMode?: 'web' | 'protocol';
   groupId?: string;
   remark?: string;
   nickname?: string;
@@ -37,6 +38,8 @@ export function serializeAccountConfig(
       Object.entries(config.accounts).map(([id, prefs]) => [
         id,
         {
+          connectionMode:
+            prefs.connectionMode === 'protocol' ? 'protocol' : undefined,
           groupId: prefs.groupId,
           remark: prefs.remark,
           nickname: prefs.nickname,

@@ -62,7 +62,7 @@ export default observer(function ReactionTools({
       s.recipe.id === 'whatsapp' &&
       s.isEnabled &&
       !s.isHibernating &&
-      s.webview &&
+      (s.webview || s.isProtocol) &&
       s.accountSnapshot.status === 'online' &&
       s.accountSnapshot.ownerId,
   );

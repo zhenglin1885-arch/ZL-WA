@@ -1,3 +1,4 @@
+import { verifyProtocolBackend } from './verify-protocol-native.mjs';
 /* eslint-disable no-console, no-await-in-loop -- Verify a disposable native Windows application process and its packaged renderer. */
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -151,6 +152,7 @@ try {
     confirmed: true,
     otherStillBlocked: true,
   });
+  const protocolBackend = await verifyProtocolBackend(evaluate);
   const appPath = await evaluate(
     "require('@electron/remote').app.getAppPath()",
   );
@@ -185,6 +187,7 @@ try {
     version: expectedVersion,
     commit: process.env.GITHUB_SHA,
     nativePackagedStartup: true,
+    protocolBackend,
     mainProcessResumeReload: true,
     zeroFilledConfigurationRebuilt: true,
     zeroFilledOriginalPreserved: true,

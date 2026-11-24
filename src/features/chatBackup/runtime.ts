@@ -1,3 +1,9 @@
+import {
+  protocolRequest,
+  protocolTarget,
+  protocolChats,
+} from '../protocol/client';
+import type { ProtocolMessage, ProtocolState } from '../protocol/types';
 /* eslint-disable no-void, no-await-in-loop -- History reads and writes are sequential and cancellable. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
@@ -23,6 +29,46 @@ export class BackupRuntime {
   private seenPages = new Set<string>();
 
   private async read(service: any, input: any, expectedOwner?: string) {
+    if (service.isProtocol) {
+      protocolTarget(service, expectedOwner);
+      const state = await protocolRequest<ProtocolState>(service.id, 'state');
+      if (input.mode === 'list')
+        return state.chats.map(chat => ({ id: chat.id, name: chat.name }));
+      if (input.mode === 'ack') return true;
+      const id = input.chatId || protocolChats.get(service.id);
+      if (!id) return {};
+      const rows = await protocolRequest<ProtocolMessage[]>(
+        service.id,
+        'messages',
+        { jid: id },
+      );
+      if (service.accountSnapshot.ownerId !== state.ownerId)
+        throw new Error('账号身份已变化，停止保存');
+      const filtered = rows.filter(
+        row => !input.cutoff || row.timestamp * 1000 >= input.cutoff,
+      );
+      return {
+        complete: true,
+        packet: {
+          ownerId: state.ownerId,
+          accountName: state.nickname || service.name,
+          ...(state.phone ? { accountPhone: state.phone } : {}),
+          chatId: id,
+          chatName:
+            state.chats.find(chat => chat.id === id)?.name ||
+            input.chatName ||
+            id,
+          messages: filtered.map(row => ({
+            id: row.id,
+            time: row.timestamp * 1000,
+            sender: row.fromMe ? state.ownerId : row.participant || id,
+            outgoing: row.fromMe,
+            text: row.text,
+            hasImage: row.kind === 'image',
+          })),
+        },
+      };
+    }
     const view = service.webview;
     const { ownerId } = service.accountSnapshot;
     if (expectedOwner && ownerId !== expectedOwner)
@@ -182,7 +228,7 @@ export class BackupRuntime {
       this.error = failures.join('；');
       this.progress = this.stopped
         ? `已停止，本次读取 ${saved} 条消息`
-        : `同步结束${failures.length > 0 ? `，${failures.length} 个账号未完成` : ''}，本次读取 ${saved} 条消息；仅包含网页版可获取的历史`;
+        : `同步结束${failures.length > 0 ? `，${failures.length} 个账号未完成` : ''}，本次读取 ${saved} 条消息；仅包含当前连接可获取的历史`;
     } catch (error) {
       this.error = String(error);
       this.progress = '同步中断，可重新开始，已保存内容保留';

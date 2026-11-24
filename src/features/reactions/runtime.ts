@@ -1,3 +1,4 @@
+import { protocolRequest, protocolTarget } from '../protocol/client';
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import { ensureBulkLibrary } from '../accountTools/bulkRuntime';
@@ -52,12 +53,63 @@ export class ReactionRuntime {
     return s.webview as unknown as Electron.WebviewTag;
   }
 
+  private async protocolRequest(
+    target: GroupTarget,
+    rules: ReactionPreferences,
+    task?: ReactionTask,
+    verifyOnly = false,
+  ) {
+    const service = this.stores.services.all.find(
+      s => s.id === target.accountId,
+    );
+    protocolTarget(service, target.ownerId);
+    if (rules.content === 'image' && !task) {
+      if (!rules.picture) return { error: '请选择参考图片' };
+      const candidates = await protocolRequest(
+        target.accountId,
+        'reaction-candidates',
+        { jid: target.target, owner: target.ownerId },
+      );
+      for (const candidate of candidates) {
+        const data = await protocolRequest(target.accountId, 'media', {
+          jid: target.target,
+          id: candidate.messageId,
+          owner: target.ownerId,
+        });
+        protocolTarget(service, target.ownerId);
+        const bytes = Uint8Array.from(atob(data.data), character =>
+          character.charCodeAt(0),
+        );
+        const image = await prepareReactionImage(
+          new Blob([bytes], { type: data.mime }),
+          rules.picture,
+        );
+        if (image.matches) return { ...candidate, imagePreview: image.preview };
+      }
+      return { error: '当前已同步消息中未找到匹配图片' };
+    }
+    return protocolRequest(target.accountId, 'reaction', {
+      jid: target.target,
+      owner: target.ownerId,
+      rules,
+      task,
+      verifyOnly,
+    });
+  }
+
   private async request(
     target: GroupTarget,
     rules: ReactionPreferences,
     task?: ReactionTask,
     verifyOnly = false,
   ) {
+    const service = this.stores.services.all.find(
+      s => s.id === target.accountId,
+    );
+    if (service?.isProtocol) {
+      protocolTarget(service, target.ownerId);
+      return this.protocolRequest(target, rules, task, verifyOnly);
+    }
     const view = this.viewFor(target);
     await ensureBulkLibrary(view);
     if (view !== this.viewFor(target)) throw new Error('账号窗口已变化');
@@ -98,6 +150,15 @@ export class ReactionRuntime {
     task: ReactionTask,
     rules: ReactionPreferences,
   ): Promise<ReactionResult> {
+    const service = this.stores.services.all.find(s => s.id === task.accountId);
+    if (service?.isProtocol) {
+      protocolTarget(service, task.ownerId);
+      try {
+        return await this.protocolRequest(task, rules, task);
+      } catch (error) {
+        return { status: 'uncertain', message: String(error) };
+      }
+    }
     if (this.pendingMutation)
       return {
         status: 'failed',

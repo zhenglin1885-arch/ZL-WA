@@ -1,3 +1,9 @@
+import {
+  protocolRequest,
+  protocolTarget,
+  openProtocolChat,
+} from '../protocol/client';
+import type { ProtocolState } from '../protocol/types';
 /* eslint-disable no-void, no-await-in-loop, no-continue -- Bounded workers and readiness polling intentionally serialize per-account operations. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
@@ -105,7 +111,7 @@ export class ConversationRuntime {
       !service.isHibernating &&
       !service.isLoading &&
       !service.isError &&
-      Boolean(service.webview) &&
+      (Boolean(service.webview) || service.isProtocol) &&
       profile?.status === 'online' &&
       Boolean(profile.ownerId || profile.ownerIds?.some(Boolean))
     );
@@ -115,6 +121,7 @@ export class ConversationRuntime {
     service: Account,
     source = this.sources.get(service.id),
   ) {
+    if (service.isProtocol) return this.ready(service);
     if (!this.ready(service) || !source || service.webview !== source.view)
       return false;
     const profile = service.accountSnapshot;
@@ -266,6 +273,58 @@ export class ConversationRuntime {
     generation: number,
     revision: number,
   ) {
+    if (service.isProtocol) {
+      try {
+        protocolTarget(service);
+        const state = await protocolRequest<ProtocolState>(service.id, 'state');
+        const bundle: CustomerBundle = await ipcRenderer.invoke(
+          'customers-bind',
+          state.ownerIds,
+        );
+        if (
+          generation !== this.generation ||
+          revision !== (this.revisions.get(service.id) || 0) ||
+          !this.ready(service) ||
+          service.accountSnapshot.ownerId !== state.ownerId
+        )
+          return;
+        const prefs = normalizeAccountConfig(
+          this.stores.settings.app.accountSidebar,
+        ).accounts[service.id];
+        this.snapshots.set(
+          service.id,
+          state.chats.map(chat => ({
+            id: chat.id,
+            aliases: [chat.id],
+            name: chat.name,
+            phone: chat.id.endsWith('@c.us') ? chat.id.split('@')[0] : '',
+            group: chat.group,
+            archived: Boolean(chat.archived),
+            unread: chat.unread,
+            preview: chat.lastText || '',
+            timestamp: chat.timestamp * 1000,
+            key: `${service.id}:${bundle.owner}:${chat.id}`,
+            membershipKey: `${bundle.owner}:${bundle.aliases[chat.id] || chat.id}`,
+            accountId: service.id,
+            owner: bundle.owner,
+            ownerAliases: state.ownerIds,
+            accountName: state.nickname || service.name,
+            accountRemark: prefs?.remark || '',
+            remark:
+              bundle.summaries[bundle.aliases[chat.id] || chat.id]
+                ?.remarkName || '',
+            flags:
+              bundle.summaries[bundle.aliases[chat.id] || chat.id]?.flags || [],
+          })),
+        );
+        this.lastReadAt.set(service.id, Date.now());
+        this.errors.delete(service.id);
+        this.notify();
+      } catch (error) {
+        this.errors.set(service.id, String(error));
+      }
+      return;
+    }
     const view = service.webview;
     if (!view) return;
     const valid = () =>
@@ -548,6 +607,19 @@ export class ConversationRuntime {
         const view = service?.webview;
         let offset = 0;
         try {
+          if (service?.isProtocol) {
+            protocolTarget(service);
+            for (const target of targets) {
+              try {
+                await protocolRequest(id, 'read', { jid: target.id });
+                read++;
+              } catch {
+                failed++;
+              }
+              offset++;
+            }
+            continue;
+          }
           if (!service?.isEnabled || service.isHibernating || !view)
             throw new Error('账号尚未就绪');
           while (
@@ -619,6 +691,11 @@ export class ConversationRuntime {
     if (service.isHibernating)
       this.stores.services._awake({ serviceId: service.id });
     this.activate(service.id);
+    if (service.isProtocol) {
+      protocolTarget(service, row.owner);
+      openProtocolChat(service.id, row.id);
+      return;
+    }
     await this.syncLayout();
     const until = Date.now() + 20_000;
     while (Date.now() < until) {

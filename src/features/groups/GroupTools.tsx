@@ -84,7 +84,7 @@ export default observer(function GroupTools({
       s.isEnabled &&
       !s.isHibernating &&
       s.accountSnapshot.status === 'online' &&
-      s.webview &&
+      (s.webview || s.isProtocol) &&
       s.accountSnapshot.ownerId,
   );
   const accountTargets = online.map(s => ({

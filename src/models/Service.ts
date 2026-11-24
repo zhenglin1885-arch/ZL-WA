@@ -55,6 +55,14 @@ export default class Service {
   @observable isActive: boolean = false; // Is current webview active
 
   // ZL-WA: last confirmed identity, with session status from live observations.
+  @computed get isProtocol(): boolean {
+    return (
+      this.recipe.id === 'whatsapp' &&
+      window['ferdium'].stores.settings.app.accountSidebar?.accounts?.[this.id]
+        ?.connectionMode === 'protocol'
+    );
+  }
+
   @observable accountSnapshot: AccountSnapshot = { status: 'loading' };
 
   accountUnreadLive = false;

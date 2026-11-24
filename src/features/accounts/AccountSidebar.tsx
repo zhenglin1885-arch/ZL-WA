@@ -1,3 +1,4 @@
+import { protocolRequest } from '../protocol/client';
 // ZL-WA grouped account cards. All preferences are persisted through app settings.
 import {
   Button,
@@ -374,6 +375,10 @@ export default class AccountSidebar extends Component<StoresProps, State> {
       const view = service.webview as unknown as Electron.WebviewTag | null;
       const current = this.config.accounts[service.id]?.zoom ?? 1;
       const zoom = delta === undefined ? 1 : nextZoom(current, delta);
+      if (service.isProtocol) {
+        await this.save(updateAccount(this.config, service.id, { zoom }));
+        return;
+      }
       if (!view) throw new Error('请先打开会话，再调整窗口');
       view.setZoomFactor(zoom);
       if (delta === undefined)
@@ -385,6 +390,13 @@ export default class AccountSidebar extends Component<StoresProps, State> {
 
   markRead = (service: Service): void => {
     this.perform(async () => {
+      if (service.isProtocol) {
+        const result = await protocolRequest(service.id, 'read-all');
+        this.setState({
+          notice: `已标记 ${result.read} 个聊天，${result.failed} 个失败`,
+        });
+        return;
+      }
       if (!service.webview || accountStatus(service) !== 'online')
         throw new Error('请先登录并连接 WhatsApp');
       const result = await (
@@ -571,9 +583,17 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                 mdiReload,
                 () => {
                   this.setState({ menu: null });
-                  this.props.actions.service.reload({ serviceId: service.id });
+                  if (service.isProtocol)
+                    this.perform(async () => {
+                      await protocolRequest(service.id, 'stop');
+                      await protocolRequest(service.id, 'start');
+                    });
+                  else
+                    this.props.actions.service.reload({
+                      serviceId: service.id,
+                    });
                 },
-                !service.webview,
+                !service.webview && !service.isProtocol,
               ),
               item(
                 '全部已读',
@@ -586,19 +606,19 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                 '放大10%',
                 mdiMagnifyPlusOutline,
                 () => this.zoom(service, 0.1),
-                !service.webview,
+                !service.webview && !service.isProtocol,
               ),
               item(
                 '缩小10%',
                 mdiMagnifyMinusOutline,
                 () => this.zoom(service, -0.1),
-                !service.webview,
+                !service.webview && !service.isProtocol,
               ),
               item(
                 '重置窗口',
                 mdiFullscreen,
                 () => this.zoom(service),
-                !service.webview,
+                !service.webview && !service.isProtocol,
               ),
               item('移动分组', mdiFolderMoveOutline, () =>
                 this.openDialog(
@@ -607,6 +627,30 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                   accountGroupId(this.config, service.id),
                 ),
               ),
+              ...(service.recipe.id === 'whatsapp'
+                ? [
+                    item(
+                      service.isProtocol
+                        ? '切回网页连接'
+                        : '使用新连接（测试）',
+                      mdiWhatsapp,
+                      () =>
+                        this.perform(async () => {
+                          const next = service.isProtocol ? 'web' : 'protocol';
+                          await protocolRequest(service.id, 'stop');
+                          await this.save(
+                            updateAccount(this.config, service.id, {
+                              connectionMode: next,
+                            }),
+                          );
+                          runInAction(() => {
+                            service.accountSnapshot = { status: 'loading' };
+                            service.isLoading = next === 'web';
+                          });
+                        }),
+                    ),
+                  ]
+                : []),
               item('修改备注', mdiAccountEditOutline, () =>
                 this.openDialog(
                   'remark',

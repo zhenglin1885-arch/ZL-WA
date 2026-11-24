@@ -10,6 +10,12 @@ productName: 'ZL-WA'
 beforePack: ./build-helpers/prepare-runtime-aliases.cjs
 
 extraResources:
+  - from: tools/protocol-backend
+    to: protocol-backend
+    filter:
+      - "**/*"
+      - "!test/**/*"
+      - "!.gitignore"
   - from: build-runtime/node_modules
     to: node_modules
   - from: LICENSE.md

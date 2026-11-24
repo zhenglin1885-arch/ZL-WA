@@ -44,6 +44,7 @@ import {
 } from '../../features/accounts/whatsapp';
 
 import OfficialWhatsAppLogin from '../OfficialWhatsAppLogin';
+import ProtocolConnections from '../ProtocolConnections';
 import initGroupTools from './groupTools';
 import initReactions from './reactions';
 import AccountToolsFile, { AccountToolsFileError } from '../AccountToolsFile';
@@ -121,6 +122,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     if (id !== undefined && !/^[\da-z-]{1,100}$/i.test(id))
       throw new Error('无效账号');
   };
+  const protocol = new ProtocolConnections(mainWindow);
   initGroupTools(check);
   initReactions(check);
   const get = (id: string): StoredConfig => {
@@ -186,12 +188,18 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     string,
     Awaited<ReturnType<typeof createSocksBridge>>
   >();
-  app.on('before-quit', () => {
+  let protocolQuitting = false;
+  app.on('before-quit', event => {
     officialLogin.dispose();
     translations.dispose();
     translationCache.flush();
     for (const bridge of bridges.values()) bridge.close();
     bridges.clear();
+    if (!protocolQuitting && protocol.active) {
+      event.preventDefault();
+      protocolQuitting = true;
+      protocol.dispose().finally(() => app.quit());
+    }
   });
   const authFailures = new Map<string, { code: string; at: number }>();
   const networkCache = new Map<string, AccountNetworkStatus>();
@@ -307,6 +315,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   );
   ipcMain.handle('account-tools-remove', async (event, id: string) => {
     check(event, id);
+    await protocol.close(id);
     officialLogin.close(id);
     translationCache.removeAccount(id);
     data.accounts = Object.fromEntries(
@@ -368,6 +377,80 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         }
       }
       return structuredClone(profile);
+    },
+  );
+  ipcMain.handle(
+    'protocol-request',
+    async (event, id: string, action: string, input: any = {}) => {
+      check(event, id);
+      const allowed = [
+        'state',
+        'start',
+        'stop',
+        'messages',
+        'recipients',
+        'groups',
+        'group-operation',
+        'send',
+        'reconcile',
+        'edit',
+        'revoke',
+        'read',
+        'read-all',
+        'media',
+        'aliases',
+        'reaction',
+        'reaction-candidates',
+        'diagnostics',
+      ];
+      if (!allowed.includes(action)) throw new Error('无效连接操作');
+      if (!input || typeof input !== 'object' || Array.isArray(input))
+        throw new Error('无效操作参数');
+      if (
+        input.jid !== undefined &&
+        !/^(?:\d{5,30}@(c\.us|lid)|\d{1,40}(?:-\d{1,30})?@g\.us)$/.test(
+          input.jid,
+        )
+      )
+        throw new Error('无效聊天编号');
+      if (action === 'stop') {
+        await protocol.close(id);
+        return true;
+      }
+      const config = get(id);
+      const args = { ...input };
+      if (action === 'start') {
+        if (requiresProxyReview(id))
+          throw new Error('请先核对并应用账号网络配置');
+        const proxy = config.proxy;
+        if (proxy.enabled && proxy.mode !== 'direct-only')
+          throw new Error(
+            '本轮新连接测试只支持直连；请在此账号关闭代理后重试。原网页连接仍保留原代理功能。',
+          );
+        args.network = {};
+      }
+      if (action === 'send') {
+        if (
+          !args.spec ||
+          ![
+            'text',
+            'image',
+            'caption',
+            'video',
+            'audio',
+            'document',
+            'contact',
+          ].includes(args.spec.type)
+        )
+          throw new Error('无效消息类型');
+        args.media = args.spec.media
+          ? protocol.media(args.spec.media.id)
+          : undefined;
+        args.blockChinese = config.translation.blockChinese === true;
+      }
+      if (action === 'edit')
+        args.blockChinese = config.translation.blockChinese === true;
+      return protocol.request(id, action, args);
     },
   );
   ipcMain.handle('account-tools-get', (event, id: string) => {

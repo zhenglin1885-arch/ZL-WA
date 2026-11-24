@@ -17,6 +17,7 @@ import StatusBarTargetUrl from '../../ui/StatusBarTargetUrl';
 import WebviewLoader from '../../ui/WebviewLoader';
 import ServiceDisabled from './ServiceDisabled';
 import ServiceWebview from './ServiceWebview';
+import ProtocolView from '../../../features/protocol/ProtocolView';
 import WebviewCrashHandler from './WebviewCrashHandler';
 import WebviewErrorHandler from './WebviewErrorHandler';
 
@@ -127,7 +128,7 @@ class ServiceView extends Component<IProps, IState> {
         data-name={service.name}
         style={{ order: service.order }}
       >
-        {service.isActive && service.isEnabled && (
+        {service.isActive && service.isEnabled && !service.isProtocol && (
           <>
             {service.hasCrashed && (
               <WebviewCrashHandler
@@ -194,6 +195,12 @@ class ServiceView extends Component<IProps, IState> {
                   <div role="status" className="account-startup-wait">
                     等待前面的账号启动…
                   </div>
+                ) : service.isProtocol ? (
+                  <ProtocolView
+                    service={service}
+                    stores={stores!}
+                    onReady={this.props.onStartupReady}
+                  />
                 ) : (
                   <ServiceWebview
                     service={service}

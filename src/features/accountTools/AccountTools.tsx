@@ -1,3 +1,4 @@
+import { protocolRequest } from '../protocol/client';
 /* eslint-disable no-void -- UI event handlers start internally handled asynchronous operations. */
 import {
   mdiAccountGroupOutline,
@@ -157,6 +158,10 @@ const SettingsPanel = observer(
     const translation = (change: Partial<ToolsConfig['translation']>) =>
       setConfig(c => ({ ...c, translation: { ...c.translation, ...change } }));
     const pageStatus = async () => {
+      if (service.isProtocol) {
+        const state = await protocolRequest(service.id, 'state');
+        return state.status === 'connected' ? '新连接已建立' : '新连接尚未就绪';
+      }
       if (!service.webview) throw new Error('请先打开已登录的 WhatsApp 聊天');
       const status = await service.webview.executeJavaScript(
         `(()=>({ ...(${translationDiagnostics.toString()})(), surfaces:(${translationSurfaceDiagnostics.toString()})() }))()`,
@@ -209,7 +214,13 @@ const SettingsPanel = observer(
           saved.proxy,
           input.proxy,
         );
-        if (test !== true && proxyChanged) service.webview?.reload();
+        const reloadConnection = async () => {
+          if (service.isProtocol) {
+            await protocolRequest(service.id, 'stop');
+            await protocolRequest(service.id, 'start');
+          } else service.webview?.reload();
+        };
+        if (test !== true && proxyChanged) await reloadConnection();
         if (typeof test === 'string') {
           const result = await ipcRenderer.invoke(
             'account-tools-test-translation',
@@ -227,7 +238,7 @@ const SettingsPanel = observer(
             service.id,
             !proxyChanged,
           );
-          service.webview?.reload();
+          await reloadConnection();
           setNotice(
             `页面正文可访问 · ${result.milliseconds}ms · 已重新载入；后续资源及聊天连接仍以页面状态为准`,
           );
@@ -682,6 +693,21 @@ const SettingsPanel = observer(
             void (async () => {
               setBusy(true);
               try {
+                if (service.isProtocol) {
+                  const diagnostic = await protocolRequest(
+                    service.id,
+                    'diagnostics',
+                  );
+                  clipboard.writeText(
+                    JSON.stringify(
+                      { runtime: buildInfo, connection: diagnostic },
+                      null,
+                      2,
+                    ),
+                  );
+                  setNotice('新连接诊断已复制，不包含正文、号码或密钥');
+                  return;
+                }
                 const diagnostics = await collectSendDiagnostics(
                   service,
                   () =>
@@ -727,6 +753,7 @@ const SettingsPanel = observer(
           检查并复制发送诊断
         </button>
         {service.recipe.id === 'whatsapp' &&
+          !service.isProtocol &&
           service.accountSnapshot?.status !== 'online' && (
             <>
               <button
