@@ -1,0 +1,172 @@
+name: Windows official login handoff and frame diagnostics test14
+'on':
+  push:
+    branches:
+    - build/official-login-test14
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+        if-no-files-found: error
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate completed Windows and GUI checks
+      run: |
+        set -euo pipefail
+        git diff --name-only 1f5081f8444cb88751f851564e833493d9b52c26 HEAD -- src build-helpers esbuild.mjs package.json pnpm-lock.yaml > changed.txt
+        gh api repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs > jobs.json
+        python3 - <<'VERIFY'
+        import json,hashlib,pathlib
+        assert set(pathlib.Path('changed.txt').read_text().splitlines())=={'src/electron/OfficialWhatsAppLogin.ts','src/electron/ipc-api/accountTools.ts','src/features/accountTools/AccountTools.tsx','src/features/accounts/sendDiagnostics.ts'}
+        w=next(j for j in json.load(open('jobs.json'))['jobs'] if j['name']=='windows');assert w['conclusion']=='success'
+        s={x['name']:x['conclusion'] for x in w['steps']}
+        for n in ['Check types and tests','Verify process isolation and installation from the old app directory','Build Windows x64','Verify tested WhatsApp adapter inside packaged application','Verify packaged Windows startup and resume reload','Run actions/upload-artifact@v4']:assert s[n]=='success',n
+        r=json.load(open('qa/official-login.json'));assert r['sourceBase']=='1f5081f8444cb88751f851564e833493d9b52c26' and r['unitTests']['passed']==989 and r['unitTests']['suitesPassed']==90
+        n=r['nativeChecks'];assert n['sameSession'] and n['sameUA'] and n['sameTransport'] and n['noPreloadOrSDK'] and n['noNodeInLoginWindow']
+        assert n['cookieLocalStorageAndDatabaseRetained'] and n['normalFeaturesRestored'] and n['sandboxedLoadingFrameRecognized'] and n['opaqueStorageRestrictionReported'] and n['loadingPageNeverInterrupted'] and n['privateFrameContentExcluded'] and not n['realPhonePairingVerified']
+        assert r['existingGuiPassGroups']==51
+        for path,digest in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()==digest,path
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-Windows-x64
+        run-id: ${{ github.run_id }}
+        github-token: ${{ github.token }}
+        path: release-assets
+    - name: Validate actual packages and preserve test evidence
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'};assert {p.name for p in root.glob('*.exe')}==expected
+        v=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'));assert v['version']=='7.3.9' and v['commit']==os.environ['GITHUB_SHA'] and v['nativePackagedStartup'] and v['mainProcessResumeReload']
+        lines=[]
+        for name in sorted(expected):
+         p=root/name;assert p.stat().st_size>1000000
+         with p.open('rb') as f:
+          assert f.read(2)==b'MZ';f.seek(0);digest=hashlib.file_digest(f,'sha256').hexdigest()
+         renamed=name.replace('7.3.9-x64','7.3.9-official-test14-x64');p.rename(root/renamed);lines.append(f'{digest}  {renamed}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n')
+        shutil.copyfile('qa/official-login.json',root/'QA-summary.json')
+        shutil.copyfile('qa/official-login-gui-pass.txt',root/'GUI-checks.txt')
+        VERIFY
+    - name: Publish independently verified Windows test build
+      run: |
+        set -euo pipefail
+        cat > release-notes.md <<'NOTES'
+        Windows 7.3.9 独立登录窗口与加载诊断测试版 test14。
+
+        针对手机已关联、桌面长时间加载对话或返回二维码的反馈，新增可选的“打开官方登录窗口”。复用所选账号的同一 Session、代理、浏览器标识和 WebRTC 网络策略，先暂停原二维码页，再在不加载软件 preload、桥接、SDK 或功能适配器的窗口访问 WhatsApp 官网。关闭后恢复原会话，继续沿用原功能。不清除或迁移 Cookie、数据库、备注或其他账号设置。
+
+        入口仅允许在二维码页使用；已进入聊天、正在加载或出现覆盖页面时拒绝切换，以保护当前会话。重复打开会聚焦已有窗口；错误账号/Session/窗口归属不允许交接。
+
+        “检查并复制发送诊断”新增由主进程读取可信 WhatsApp 子页面的固定状态、存储限制和数据库计数；不读取内部 SDK，不复制聊天文字、凭据、URL 查询参数或数据库名称。未修改现有群发顺序、群管理规则、备注、翻译或默认 Enter 发送。
+
+        用法：如果仍卡在加载对话，先使用新版复制诊断；若回到二维码，可在右侧“代理”中点击“打开官方登录窗口”，完成后关闭窗口返回。无需 Console 命令。请保留手机已有的关联设备和本地账号数据。
+
+        已验证：类型检查；90 组自动测试、989 项通过、2 项既有跳过；真实 Electron UI 窗口交接、Session/UA/代理/网络策略保持、Cookie/IDB/localStorage 回接、原适配器恢复、沙箱子页加载/存储诊断与加载中禁止切换；51 组既有界面功能回归；Windows 安装升级、内置兼容库、成品启动与恢复加载。
+
+        真实手机配对和该账号同步恢复尚未验证。测试窗口与受控页面的检查通过不等同于已解决真实账号故障。
+        NOTES
+        gh release create test-7.3.9-official-login-14 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 独立登录窗口与加载诊断测试版' --notes-file release-notes.md
+    needs: windows
+    permissions:
+      contents: write
+      actions: read

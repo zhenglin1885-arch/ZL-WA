@@ -43,6 +43,7 @@ import {
   type AccountSnapshot,
 } from '../../features/accounts/whatsapp';
 
+import OfficialWhatsAppLogin from '../OfficialWhatsAppLogin';
 import initGroupTools from './groupTools';
 import initReactions from './reactions';
 import AccountToolsFile, { AccountToolsFileError } from '../AccountToolsFile';
@@ -186,6 +187,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
     Awaited<ReturnType<typeof createSocksBridge>>
   >();
   app.on('before-quit', () => {
+    officialLogin.dispose();
     translations.dispose();
     translationCache.flush();
     for (const bridge of bridges.values()) bridge.close();
@@ -291,8 +293,21 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
       }
     });
   };
+  const officialLogin = new OfficialWhatsAppLogin(mainWindow, async id => {
+    requireReviewedProxy(id);
+    attachAuth(id);
+    await prepared.get(id);
+  });
+  ipcMain.handle(
+    'account-tools-official-login',
+    async (event, id: string, contentsId: number) => {
+      check(event, id);
+      return officialLogin.open(id, contentsId);
+    },
+  );
   ipcMain.handle('account-tools-remove', async (event, id: string) => {
     check(event, id);
+    officialLogin.close(id);
     translationCache.removeAccount(id);
     data.accounts = Object.fromEntries(
       Object.entries(data.accounts).filter(([key]) => key !== id),
@@ -534,7 +549,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   );
   ipcMain.handle(
     'account-tools-proxy-diagnostics',
-    async (event, id: string) => {
+    async (event, id: string, contentsId?: number) => {
       check(event, id);
       const config = get(id).proxy;
       let route = 'unavailable';
@@ -555,6 +570,11 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         route,
         bridge: bridges.get(id)?.diagnostics() || null,
         lastAuthenticationFailure: authFailures.get(id) || null,
+        officialLogin: officialLogin.diagnostics(id),
+        frameInspection:
+          contentsId === undefined
+            ? undefined
+            : await officialLogin.inspect(id, contentsId),
       };
     },
   );

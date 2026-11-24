@@ -377,3 +377,74 @@ export function readWhatsAppPageHealth() {
         (state === 'unexpected-origin' && origin === 'whatsapp-site')),
   };
 }
+
+// Invoked by the host in trusted WhatsApp frames, including sandboxed frames.
+// Only fixed flags/counts leave the frame; no SDK loading or storage writes.
+export async function readOfficialFrameState() {
+  if (globalThis.location.hostname !== 'web.whatsapp.com')
+    return { unavailable: true, reason: 'unexpected-origin' };
+  const present = (selector: string) =>
+    Boolean(document.querySelector(selector));
+  const text = (document.body?.innerText || '').slice(0, 16000);
+  const result = {
+    documentState: ['loading', 'interactive', 'complete'].includes(
+      document.readyState,
+    )
+      ? document.readyState
+      : null,
+    online: Boolean(navigator.onLine),
+    chatPresent: present('#pane-side, #side, #main footer [contenteditable]'),
+    loginPresent: present(
+      '[data-ref] canvas, [data-testid="qrcode"], [data-testid="link-device-phone-number-code-screen"]',
+    ),
+    loadingChats:
+      /正在加载.{0,10}(对话|聊天)|loading your chats|carregando.{0,16}conversas|cargando.{0,12}chats/i.test(
+        text,
+      ),
+    storagePersisted: null as boolean | null,
+    databaseCount: null as number | null,
+    modelStoragePresent: null as boolean | null,
+    storageError: null as string | null,
+  };
+  try {
+    if (navigator.storage?.persisted) {
+      const persisted = await navigator.storage.persisted();
+      if (typeof persisted === 'boolean') result.storagePersisted = persisted;
+    }
+  } catch (error) {
+    const name = (error as Error)?.name;
+    if (
+      [
+        'SecurityError',
+        'InvalidStateError',
+        'UnknownError',
+        'QuotaExceededError',
+        'TypeError',
+      ].includes(name)
+    )
+      result.storageError = name;
+  }
+  try {
+    if (indexedDB?.databases) {
+      const databases = await indexedDB.databases();
+      if (!Array.isArray(databases)) return result;
+      result.databaseCount = Math.min(databases.length, 10000);
+      result.modelStoragePresent = databases.some(
+        database => database.name === 'model-storage',
+      );
+    }
+  } catch (error) {
+    const name = (error as Error)?.name;
+    if (
+      [
+        'SecurityError',
+        'InvalidStateError',
+        'UnknownError',
+        'QuotaExceededError',
+        'TypeError',
+      ].includes(name)
+    )
+      result.storageError = name;
+  }
+  return result;
+}

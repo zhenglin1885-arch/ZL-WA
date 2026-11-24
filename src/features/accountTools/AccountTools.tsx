@@ -688,6 +688,7 @@ const SettingsPanel = observer(
                     ipcRenderer.invoke(
                       'account-tools-proxy-diagnostics',
                       service.id,
+                      service.webview?.getWebContentsId(),
                     ),
                   () => currentService.current === service,
                 );
@@ -725,6 +726,44 @@ const SettingsPanel = observer(
         >
           检查并复制发送诊断
         </button>
+        {service.recipe.id === 'whatsapp' &&
+          service.accountSnapshot?.status !== 'online' && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      const view = service.webview;
+                      if (!view)
+                        throw new Error('请先打开这个账号的二维码登录页');
+                      await ipcRenderer.invoke(
+                        'account-tools-official-login',
+                        service.id,
+                        view.getWebContentsId(),
+                      );
+                      setNotice(
+                        '已打开官方登录窗口。请在新窗口扫码，进入聊天界面后关闭窗口，返回原会话。期间请勿刷新原账号。',
+                      );
+                    } catch (error) {
+                      setNotice(
+                        error instanceof Error ? error.message : String(error),
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                打开官方登录窗口
+              </button>
+              <p className="tools-info">
+                二维码显示时可打开。沿用当前账号与代理；完成后关闭窗口，返回原会话。
+              </p>
+            </>
+          )}
         {pageProblem && (
           <button
             type="button"

@@ -1,0 +1,112 @@
+{
+  "sourceBase": "1f5081f8444cb88751f851564e833493d9b52c26",
+  "purpose": "Opt-in isolated official-page login handoff and trusted child-frame diagnostics; preserve existing workflows; real phone pairing/sync remains unverified",
+  "unitTests": {
+    "suitesPassed": 90,
+    "passed": 989,
+    "skipped": 2
+  },
+  "typecheck": true,
+  "nativeChecks": {
+    "realPhonePairingVerified": false,
+    "sameSession": true,
+    "sameUA": true,
+    "sameTransport": true,
+    "noPreloadOrSDK": true,
+    "noNodeInLoginWindow": true,
+    "cookieLocalStorageAndDatabaseRetained": true,
+    "normalFeaturesRestored": true,
+    "sandboxedLoadingFrameRecognized": true,
+    "opaqueStorageRestrictionReported": true,
+    "loadingPageNeverInterrupted": true,
+    "privateFrameContentExcluded": true
+  },
+  "existingGuiPassGroups": 51,
+  "sendModeRegression": {
+    "web.whatsapp.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "business.facebook.com": {
+      "defaultEnter": true,
+      "enterNewline": true,
+      "nativeUndo": true,
+      "shiftEnterSingleSend": true,
+      "heldKeySuppressed": true,
+      "imeIgnored": true,
+      "disabledButtonIgnored": true,
+      "liveModeSwitch": true
+    },
+    "textTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "quoteTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "mediaTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    },
+    "editTranslation": {
+      "firstShortcutOnlyPreviews": true,
+      "plainEnterDoesNotConfirm": true,
+      "secondShortcutConfirmsExactlyOnce": true
+    }
+  },
+  "storageRegression": {
+    "electron": "43.3.0",
+    "baseline": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "officialWhatsApp": {
+      "originPersist": true,
+      "bucketPersist": true,
+      "bucketPersisted": true
+    },
+    "officialWorker": {
+      "canRequestPersistence": false,
+      "persisted": true
+    },
+    "actualServiceWebview": {
+      "originPersist": true,
+      "bucketPersist": true,
+      "bucketPersisted": true
+    },
+    "servicePermissionHandlersInstalled": true,
+    "unrelatedOrigin": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "facebookUnchanged": {
+      "originPersist": false,
+      "bucketPersist": false,
+      "bucketPersisted": false
+    },
+    "recordsRetainedAfterReload": true,
+    "accountSessionsIsolated": true,
+    "persistentPermissionObserved": true,
+    "realPhonePairingVerified": false
+  },
+  "sourceFiles": {
+    "src/electron/OfficialWhatsAppLogin.ts": "8bf927a416bafe1212b966393823b0f1158fbc47c7c9ef417bf6f54611b4174e",
+    "src/electron/ipc-api/accountTools.ts": "953216dc83633311dfd6845b294369b9100a3e96a00d3229c8b283521fed1703",
+    "src/features/accountTools/AccountTools.tsx": "e06841690ba928e6fc2dc31bb9de947fe4a4f4b3e3428128d67f264f4a7af505",
+    "src/features/accounts/sendDiagnostics.ts": "33c777a1bebaf8997ee6086db3f090ca3d10e2fe2186577bbe9ff5d93ccb6180",
+    "scripts/verify-official-login-ui.mjs": "5efb53795f8b5f7a102499698a3482a527978499773c08e05765f488ae22e2da",
+    "scripts/verify-send-mode-ui.mjs": "6441da7e255a188344c300728fa16b8bb24dc3254228a323990da9006a3c5417"
+  }
+}
