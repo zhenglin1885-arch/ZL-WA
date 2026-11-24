@@ -1,0 +1,72 @@
+{
+  "sourceBase": "04634bf2c1747d5da81f969f880f47d18dcaee1a",
+  "purpose": "WhatsApp-style compact chat UI; isolate inherited div height, visible composer, preserve original queues and web mode",
+  "typecheck": true,
+  "unitTests": {
+    "suitesPassed": 94,
+    "passed": 1004,
+    "skipped": 2
+  },
+  "protocolModelTests": 34,
+  "existingGuiPassGroups": 51,
+  "protocolUiPassed": true,
+  "userConfirmedStandaloneLogin": true,
+  "userReportedIntegratedLogin": true,
+  "realIntegratedPhoneLoginVerified": false,
+  "realIntegratedMessagingVerified": false,
+  "nativeBackend": {
+    "workerStarted": true,
+    "isolatedProfiles": true,
+    "persistedWorkerReload": true,
+    "diagnosticsRedacted": true,
+    "accountPathsValidated": true,
+    "imageCodec": true,
+    "voiceCodec": true,
+    "videoCodec": true,
+    "realPhoneLoginVerified": false
+  },
+  "interfaceChecks": {
+    "chatCount": 65,
+    "historyMessages": 102,
+    "windowSizes": [
+      [
+        1400,
+        900
+      ],
+      [
+        1100,
+        720
+      ]
+    ],
+    "initialLatest": true,
+    "readingPositionPreserved": true,
+    "independentScrollRegions": true,
+    "visibleComposer": true,
+    "originalEnterAndShiftEnterRules": true,
+    "originalBulkOrderD_C_B_A": true,
+    "noAutomaticResend": true,
+    "originalWebCookiesRetained": true
+  },
+  "scopeNotes": [
+    "UI reference implemented with own protocol renderer; no official desktop SDK",
+    "No changes to original BulkQueue, GroupQueue, ReactionQueue",
+    "Device metadata follows host OS; existing linked label may retain old name",
+    "Avatar availability depends on peer privacy; no live account verified by developer",
+    "Direct only; recent synced messages, no full official feature parity"
+  ],
+  "sourceFiles": {
+    ".github/workflows/windows-protocol-test16.yml": "6192fe7ab57cb4deed89747c916e50d18635cc78fc8873679d9a750b21f686dd",
+    "docs/PROTOCOL-CONNECTION-TEST16.md": "ce64b44b425067b9dcb370851fc1c37f89e5b13698a91454a0ada4adfc039970",
+    "scripts/verify-protocol-ui.mjs": "bf43a3a6698612d9e6d9bad4b75f02503db199e34b0290650fa4eb7eebeac11a",
+    "src/electron/ipc-api/accountTools.ts": "f42fa7a51e0efd2b728afdeada20d846e5b5496b5351c68de8a978c4a4b55252",
+    "src/features/protocol/ProtocolAvatar.tsx": "8fb52712491f2ca716e4b002ec70d1760c7ce1d0d7743854af3aa2d11b86e04b",
+    "src/features/protocol/ProtocolView.tsx": "1df37a25dd157484d7964575c8ed4711674aeb802ff632d7e14c30df7a173943",
+    "src/features/protocol/styles.ts": "8a8c5fef714ab2bdeab795d8b803c7b487fbcb469ee3680b9dfe029751dc8d4b",
+    "src/features/protocol/types.ts": "4dedbf96aefd36a9c3f60ab34f6d98d2eac08c318d8cb442386cf02aabf94078",
+    "tools/protocol-backend/device.mjs": "a7cbd9039824554d1fa9b32e377d34f4a6e93898930bf3fbddb84bd283a7cfe1",
+    "tools/protocol-backend/model.mjs": "c0ad9bf4ab51ed8742bb3f1f3715064add08963a88841222bcac0284d6ac1773",
+    "tools/protocol-backend/test/device.test.mjs": "473ad49bcb87f57c3bc3f153196fa6b7a7376fde688efdd838eb2939c9a595e9",
+    "tools/protocol-backend/test/model.test.mjs": "254c5daceb53661964b5d6d57d2a5ee92829aec682f7e47a05d2ebb1ddd09447",
+    "tools/protocol-backend/worker.mjs": "69abdd0ac58b2a53105cba027d82459b822551f8eef8016d95b6eba5f94a85db"
+  }
+}

@@ -9,6 +9,8 @@ import { getCustomerRuntime } from '../customers/runtime';
 import { customerFlagNames } from '../customers/types';
 import { protocolRequest, subscribeProtocol, protocolChats } from './client';
 import type { ProtocolMessage, ProtocolState } from './types';
+import { protocolChatStyles } from './styles';
+import ProtocolAvatar from './ProtocolAvatar';
 
 const statusNames: Record<string, string> = {
   idle: '等待连接',
@@ -50,6 +52,12 @@ export default observer(function ProtocolView({
   const [messages, setMessages] = useState<ProtocolMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const messageList = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const [unseen, setUnseen] = useState(false);
   const [remarkEditor, setRemarkEditor] = useState<{
     id: string;
     value: string;
@@ -167,6 +175,9 @@ export default observer(function ProtocolView({
     };
   }, [service.id]);
   useEffect(() => {
+    followLatest.current = true;
+    setUnseen(false);
+    setNotice('');
     setDraft(drafts.get(draftKey) || '');
     setPendingSend(pendingOutgoing.get(draftKey));
     setMedia(undefined);
@@ -219,6 +230,14 @@ export default observer(function ProtocolView({
     state?.chats.find(row => row.id === chat)?.unread,
     service.isActive,
   ]);
+  useEffect(() => {
+    const list = messageList.current;
+    if (!list) return;
+    if (followLatest.current) {
+      list.scrollTop = list.scrollHeight;
+      setUnseen(false);
+    } else setUnseen(true);
+  }, [chat, messages.length, messages[messages.length - 1]?.id]);
   const translate = async (message: ProtocolMessage, manual = true) => {
     if (!message.text || translationPending.current.has(message.id)) return;
     translationPending.current.add(message.id);
@@ -445,6 +464,15 @@ export default observer(function ProtocolView({
       );
     })
     .filter(row =>
+      filter === 'unread'
+        ? row.unread > 0
+        : filter === 'groups'
+          ? row.group
+          : filter === 'archived'
+            ? row.archived
+            : !row.archived,
+    )
+    .filter(row =>
       `${row.name} ${row.id} ${summary?.summaries[row.id]?.remarkName || ''}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -452,176 +480,301 @@ export default observer(function ProtocolView({
   const selected = state?.chats.find(row => row.id === chat);
   return (
     <section
-      className="protocol-chat"
+      className={`protocol-chat${stores.ui.isDarkThemeActive ? ' protocol-chat--dark' : ''}`}
       aria-label="新连接聊天"
       style={{
         display: 'flex',
         height: '100%',
+        minHeight: 0,
+        minWidth: 0,
+        overflow: 'hidden',
         width: '100%',
         fontSize: 16 * zoom,
         background: stores.ui.isDarkThemeActive ? '#151a1f' : '#f5f7f6',
         color: stores.ui.isDarkThemeActive ? '#eee' : '#172c22',
       }}
     >
-      <style>{`.protocol-chat button{padding:7px 10px;margin:3px 2px;border:1px solid #9cb6a8;border-radius:6px;background:#edf5f0;color:#173b29;font:inherit;line-height:1.3;cursor:pointer}.protocol-chat button:hover:not(:disabled){background:#d6e9dd}.protocol-chat button:disabled{opacity:.5;cursor:default}.protocol-chat input,.protocol-chat textarea{padding:9px;border:1px solid #9cb6a8;border-radius:6px;background:#fff;color:#172c22;font:inherit;line-height:1.4}.protocol-chat aside button{font-size:.9em}.protocol-chat footer{flex-shrink:0}.protocol-chat audio,.protocol-chat video{max-width:100%}`}</style>
+      <style>{protocolChatStyles}</style>
       <aside
+        className="protocol-chat__sidebar"
         style={{
-          width: 280,
-          minWidth: 220,
+          width: 300,
+          minWidth: 210,
+          maxWidth: '34%',
+          flexShrink: 0,
+          minHeight: 0,
           borderRight: '1px solid #879b8c',
-          overflowY: 'auto',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
           padding: 12,
         }}
       >
-        <h3>{state?.nickname || service.name}</h3>
-        <p role="status">
-          {statusNames[state?.status || 'idle'] || state?.status} · 同步{' '}
-          {state?.syncEvents || 0}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            void protocolRequest(service.id, 'start').catch(error =>
-              setNotice(String(error)),
-            );
-          }}
-        >
-          连接 / 恢复
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            void protocolRequest(service.id, 'groups', { owner }).catch(error =>
-              setNotice(String(error)),
-            );
-          }}
-          disabled={state?.status !== 'connected'}
-        >
-          刷新群组
-        </button>
+        <div className="protocol-chat__account">
+          <div className="protocol-chat__title">
+            <h3>WhatsApp</h3>
+            <button
+              type="button"
+              aria-label="连接设置"
+              onClick={() => {
+                const el = document.querySelector(
+                  `[data-protocol-settings="${service.id}"]`,
+                ) as HTMLDetailsElement;
+                if (el) el.open = !el.open;
+              }}
+            >
+              ⋮
+            </button>
+            <button
+              type="button"
+              aria-label="新建聊天"
+              onClick={() => setShowNewChat(value => !value)}
+            >
+              ＋
+            </button>
+          </div>
+          <p role="status" className="protocol-chat__account-status">
+            {state?.nickname || service.name} ·{' '}
+            {statusNames[state?.status || 'idle'] || state?.status}
+          </p>
+          <details
+            className="protocol-chat__connection-menu"
+            data-protocol-settings={service.id}
+          >
+            <summary>连接选项</summary>
+            <button
+              type="button"
+              onClick={() => {
+                void protocolRequest(service.id, 'start').catch(error =>
+                  setNotice(String(error)),
+                );
+              }}
+            >
+              连接 / 恢复
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void protocolRequest(service.id, 'groups', { owner }).catch(
+                  error => setNotice(String(error)),
+                );
+              }}
+              disabled={state?.status !== 'connected'}
+            >
+              刷新群组
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void protocolRequest(service.id, 'diagnostics')
+                  .then(result => {
+                    clipboard.writeText(JSON.stringify(result, null, 2));
+                    setNotice('诊断已复制，不包含账号号码、正文或密钥');
+                  })
+                  .catch(error => setNotice(String(error)));
+              }}
+            >
+              复制连接诊断
+            </button>
+          </details>
+        </div>
         <input
+          className="protocol-chat__search"
           aria-label="搜索聊天"
           placeholder="搜索名称、号码或备注"
           value={search}
           onChange={event => setSearch(event.target.value)}
           style={{ width: '100%', margin: '12px 0', boxSizing: 'border-box' }}
         />
-        <form
-          onSubmit={event => {
-            event.preventDefault();
-            if (!/^\+?[1-9]\d{6,14}$/.test(search.trim())) {
-              setNotice('请输入含国家码的完整手机号码');
-              return;
-            }
-            setChat(`${search.trim().replace(/^\+/, '')}@c.us`);
-          }}
-        >
-          <button type="submit">按号码打开聊天</button>
-        </form>
-        {rows.map(row => (
-          <div key={row.id}>
-            <button
-              type="button"
-              aria-pressed={chat === row.id}
-              onClick={() => {
-                setChat(row.id);
-                protocolChats.set(service.id, row.id);
-              }}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: 12,
-                marginTop: 4,
-                background: chat === row.id ? '#b9d9c8' : undefined,
-                color: '#152c21',
-              }}
-            >
-              <strong>
-                {summary?.summaries[row.id]?.remarkName || row.name}
-              </strong>
-              {row.unread > 0 && ` (${row.unread})`}
-              <small>
-                {summary?.summaries[summary.aliases[row.id] || row.id]?.flags
-                  .map(flag => customerFlagNames[flag])
-                  .join(' · ')}
-              </small>
-              <br />
-              <small>
-                {row.group ? '群聊' : '私聊'} · {row.lastText}
-              </small>
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setRemarkEditor({
-                  id: row.id,
-                  value:
-                    summary?.summaries[summary.aliases[row.id] || row.id]
-                      ?.remarkName || '',
-                })
+        {showNewChat && (
+          <form
+            className="protocol-chat__new-chat"
+            onSubmit={event => {
+              event.preventDefault();
+              if (!/^\+?[1-9]\d{6,14}$/.test(newPhone.trim())) {
+                setNotice('请输入含国家码的完整手机号码');
+                return;
               }
+              const jid = `${newPhone.trim().replace(/^\+/, '')}@c.us`;
+              setChat(jid);
+              protocolChats.set(service.id, jid);
+              setSearch('');
+              setNotice('');
+              setNewPhone('');
+              setShowNewChat(false);
+            }}
+          >
+            <input
+              aria-label="新聊天号码"
+              placeholder="国家码＋手机号"
+              value={newPhone}
+              onChange={event => setNewPhone(event.target.value)}
+            />
+            <button type="submit">开始聊天</button>
+          </form>
+        )}
+        <div className="protocol-chat__filters">
+          {[
+            ['all', '全部'],
+            ['unread', '未读'],
+            ['groups', '群聊'],
+            ['archived', '已归档'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
             >
-              备注
+              {label}
             </button>
-            {summary && (
-              <>
+          ))}
+        </div>
+        <div className="protocol-chat__chat-list" aria-label="聊天列表">
+          {rows.map(row => (
+            <div className="protocol-chat__chat-row" key={row.id}>
+              <button
+                type="button"
+                aria-pressed={chat === row.id}
+                onClick={() => {
+                  setChat(row.id);
+                  setNotice('');
+                  protocolChats.set(service.id, row.id);
+                }}
+                className="protocol-chat__chat-button"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: 12,
+                  marginTop: 4,
+                  background: chat === row.id ? '#b9d9c8' : undefined,
+                  color: '#152c21',
+                }}
+              >
+                <ProtocolAvatar
+                  serviceId={service.id}
+                  owner={owner}
+                  jid={row.id}
+                  name={row.name}
+                  group={row.group}
+                  connected={state?.status === 'connected'}
+                />
+                <span className="protocol-chat__row-content">
+                  <span className="protocol-chat__row-title">
+                    <strong>{row.name}</strong>
+                    <span className="protocol-chat__row-time">
+                      {row.timestamp
+                        ? new Date(row.timestamp * 1000).toLocaleDateString(
+                            undefined,
+                            { month: 'numeric', day: 'numeric' },
+                          )
+                        : ''}
+                    </span>
+                  </span>
+                  <span className="protocol-chat__remark">
+                    {summary?.summaries[summary.aliases[row.id] || row.id]
+                      ?.remarkName || '添加备注'}{' '}
+                    {summary?.summaries[
+                      summary.aliases[row.id] || row.id
+                    ]?.flags
+                      .map(flag => customerFlagNames[flag])
+                      .join(' · ')}
+                  </span>
+                  <span className="protocol-chat__preview">
+                    <span>
+                      {row.lastText || (row.group ? '群聊' : '点击开始聊天')}
+                    </span>
+                    {row.unread > 0 && (
+                      <span className="protocol-chat__unread">
+                        {row.unread > 99 ? '99+' : row.unread}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </button>
+              <details className="protocol-chat__row-actions">
+                <summary aria-label="聊天操作">⌄</summary>
                 <button
                   type="button"
-                  onClick={() => {
-                    const pinned = summary.pins.includes(
-                      summary.aliases[row.id] || row.id,
-                    );
-                    void ipcRenderer
-                      .invoke(
-                        'customers-pin',
-                        summary.owner,
-                        row.id,
-                        pinned ? 'unpin' : 'pin',
-                      )
-                      .then(() => customer.refresh())
-                      .catch(error => setNotice(String(error)));
-                  }}
+                  onClick={() =>
+                    setRemarkEditor({
+                      id: row.id,
+                      value:
+                        summary?.summaries[summary.aliases[row.id] || row.id]
+                          ?.remarkName || '',
+                    })
+                  }
                 >
-                  {summary.pins.includes(summary.aliases[row.id] || row.id)
-                    ? '取消置顶'
-                    : '置顶'}
+                  备注
                 </button>
-                {summary.pins.includes(summary.aliases[row.id] || row.id) && (
+                {summary && (
                   <>
                     <button
                       type="button"
                       onClick={() => {
-                        void ipcRenderer
-                          .invoke('customers-pin', summary.owner, row.id, 'up')
-                          .then(() => customer.refresh())
-                          .catch(error => setNotice(String(error)));
-                      }}
-                    >
-                      上移
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
+                        const pinned = summary.pins.includes(
+                          summary.aliases[row.id] || row.id,
+                        );
                         void ipcRenderer
                           .invoke(
                             'customers-pin',
                             summary.owner,
                             row.id,
-                            'down',
+                            pinned ? 'unpin' : 'pin',
                           )
                           .then(() => customer.refresh())
                           .catch(error => setNotice(String(error)));
                       }}
                     >
-                      下移
+                      {summary.pins.includes(summary.aliases[row.id] || row.id)
+                        ? '取消置顶'
+                        : '置顶'}
                     </button>
+                    {summary.pins.includes(
+                      summary.aliases[row.id] || row.id,
+                    ) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void ipcRenderer
+                              .invoke(
+                                'customers-pin',
+                                summary.owner,
+                                row.id,
+                                'up',
+                              )
+                              .then(() => customer.refresh())
+                              .catch(error => setNotice(String(error)));
+                          }}
+                        >
+                          上移
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void ipcRenderer
+                              .invoke(
+                                'customers-pin',
+                                summary.owner,
+                                row.id,
+                                'down',
+                              )
+                              .then(() => customer.refresh())
+                              .catch(error => setNotice(String(error)));
+                          }}
+                        >
+                          下移
+                        </button>
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            )}
-          </div>
-        ))}
+              </details>
+            </div>
+          ))}
+        </div>
         {remarkEditor && (
           <fieldset>
             <label>
@@ -664,19 +817,36 @@ export default observer(function ProtocolView({
         )}
       </aside>
       <div
+        className="protocol-chat__conversation"
         style={{
           flex: 1,
+          minHeight: 0,
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          padding: 16,
+          padding: 0,
         }}
       >
-        <header>
-          <strong>{selected?.name || chat || '请选择聊天'}</strong>
-          <small style={{ display: 'block' }}>
-            新连接（直连测试） · 与原网页登录数据分开保存
-          </small>
+        <header className="protocol-chat__header">
+          <ProtocolAvatar
+            serviceId={service.id}
+            owner={owner}
+            jid={chat}
+            name={selected?.name || 'WhatsApp'}
+            group={selected?.group}
+            connected={state?.status === 'connected'}
+          />
+          <div>
+            <strong>
+              {selected?.name || (chat ? chat.split('@')[0] : 'WhatsApp')}
+            </strong>
+            <small style={{ display: 'block' }}>
+              新连接 ·{' '}
+              {state?.status === 'connected'
+                ? '已连接'
+                : statusNames[state?.status || 'idle']}
+            </small>
+          </div>
         </header>
         {state?.qr && (
           <div style={{ textAlign: 'center' }}>
@@ -689,14 +859,40 @@ export default observer(function ProtocolView({
             {notice || state?.error}
           </p>
         )}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+        <div
+          ref={messageList}
+          className="protocol-chat__messages"
+          aria-label="聊天消息"
+          onScroll={() => {
+            const list = messageList.current;
+            if (!list) return;
+            followLatest.current =
+              list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+            if (followLatest.current) setUnseen(false);
+          }}
+        >
+          {!chat && !state?.qr && (
+            <div className="protocol-chat__empty">
+              <span className="protocol-chat__welcome-icon">☏</span>
+              <strong>WhatsApp</strong>
+              <span>选择左侧聊天，开始发送和接收消息</span>
+              <span>聊天备注、客户标记和置顶保留在原来的功能中</span>
+            </div>
+          )}
+          {chat && !messages.length && (
+            <div className="protocol-chat__empty">
+              暂无已同步消息，可以直接发送消息
+            </div>
+          )}
           {messages.map(message => (
             <article
               key={message.id}
+              className={`protocol-chat__bubble${message.fromMe ? ' protocol-chat__bubble--own' : ''}`}
               style={{
                 margin: '8px 0',
-                marginLeft: message.fromMe ? '10%' : 0,
-                marginRight: message.fromMe ? 0 : '10%',
+                marginLeft: message.fromMe ? 'auto' : 0,
+                marginRight: message.fromMe ? 0 : 'auto',
+                maxWidth: '82%',
                 padding: 12,
                 border: '1px solid #8aa292',
                 borderRadius: 8,
@@ -705,7 +901,12 @@ export default observer(function ProtocolView({
               }}
             >
               <small>
-                {message.fromMe ? '我' : message.participant || selected?.name}{' '}
+                {message.fromMe
+                  ? '我'
+                  : message.senderName ||
+                    (selected?.group
+                      ? message.participant?.split('@')[0]
+                      : selected?.name)}{' '}
                 · {new Date(message.timestamp * 1000).toLocaleString()}{' '}
                 {message.fromMe
                   ? message.status >= 3
@@ -751,57 +952,59 @@ export default observer(function ProtocolView({
                     下载附件
                   </a>
                 ))}
-              {message.text && (
-                <>
+              <div className="protocol-chat__message-actions">
+                {message.text && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuote(message);
+                        setEdit(undefined);
+                      }}
+                    >
+                      引用
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void translate(message);
+                      }}
+                    >
+                      翻译
+                    </button>
+                  </>
+                )}
+                {message.fromMe && message.kind === 'text' && (
                   <button
                     type="button"
                     onClick={() => {
-                      setQuote(message);
-                      setEdit(undefined);
+                      editOriginal.current = draft;
+                      setEdit(message);
+                      setQuote(undefined);
+                      setDraft(message.text);
+                      setPreview(undefined);
                     }}
                   >
-                    引用
+                    编辑
                   </button>
+                )}
+                {message.fromMe && (
                   <button
                     type="button"
                     onClick={() => {
-                      void translate(message);
+                      void protocolRequest(service.id, 'revoke', {
+                        jid: chat,
+                        id: message.id,
+                        owner,
+                      })
+                        .then(() => setNotice('撤回请求已提交，请核对结果。'))
+                        .catch(error => setNotice(String(error)));
                     }}
                   >
-                    翻译
+                    撤回
                   </button>
-                </>
-              )}
-              {message.fromMe && message.kind === 'text' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    editOriginal.current = draft;
-                    setEdit(message);
-                    setQuote(undefined);
-                    setDraft(message.text);
-                    setPreview(undefined);
-                  }}
-                >
-                  编辑
-                </button>
-              )}
-              {message.fromMe && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void protocolRequest(service.id, 'revoke', {
-                      jid: chat,
-                      id: message.id,
-                      owner,
-                    })
-                      .then(() => setNotice('撤回请求已提交，请核对结果。'))
-                      .catch(error => setNotice(String(error)));
-                  }}
-                >
-                  撤回
-                </button>
-              )}
+                )}
+              </div>
               {translations[message.id] && (
                 <p
                   style={{
@@ -815,8 +1018,23 @@ export default observer(function ProtocolView({
             </article>
           ))}
         </div>
+        {unseen && (
+          <button
+            className="protocol-chat__latest"
+            type="button"
+            onClick={() => {
+              followLatest.current = true;
+              if (messageList.current)
+                messageList.current.scrollTop =
+                  messageList.current.scrollHeight;
+              setUnseen(false);
+            }}
+          >
+            回到最新消息 ↓
+          </button>
+        )}
         {chat && state?.status === 'connected' && (
-          <footer>
+          <footer className="protocol-chat__composer">
             {(quote || edit) && (
               <p>
                 {edit ? '编辑消息' : '引用消息'}：
@@ -901,53 +1119,48 @@ export default observer(function ProtocolView({
               }}
               style={{ width: '100%', minHeight: 70, boxSizing: 'border-box' }}
             />
-            {['image', 'video', 'audio', 'document'].map(type => (
+            <div className="protocol-chat__toolbar">
+              {['image', 'video', 'audio', 'document'].map(type => (
+                <button
+                  type="button"
+                  key={type}
+                  disabled={busy}
+                  onClick={() => {
+                    void choose(type);
+                  }}
+                >
+                  {
+                    {
+                      image: '图片',
+                      video: '视频',
+                      audio: '语音',
+                      document: '文件',
+                    }[type]
+                  }
+                </button>
+              ))}
               <button
                 type="button"
-                key={type}
-                disabled={busy}
+                aria-label="发送消息"
+                disabled={busy || (!draft.trim() && !media && !pendingSend)}
                 onClick={() => {
-                  void choose(type);
+                  void send();
                 }}
               >
-                {
-                  {
-                    image: '图片',
-                    video: '视频',
-                    audio: '语音',
-                    document: '文件',
-                  }[type]
-                }
+                {busy
+                  ? '提交中…'
+                  : pendingSend?.chat === chat && pendingSend.owner === owner
+                    ? '核验上一条（不重发）'
+                    : preview
+                      ? '确认译文并发送'
+                      : '发送'}
               </button>
-            ))}
-            <button
-              type="button"
-              disabled={busy || (!draft.trim() && !media && !pendingSend)}
-              onClick={() => {
-                void send();
-              }}
-            >
-              {busy
-                ? '提交中…'
-                : pendingSend?.chat === chat && pendingSend.owner === owner
-                  ? '核验上一条（不重发）'
-                  : preview
-                    ? '确认译文并发送'
-                    : '发送'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void protocolRequest(service.id, 'diagnostics')
-                  .then(result => {
-                    clipboard.writeText(JSON.stringify(result, null, 2));
-                    setNotice('诊断已复制，不包含账号号码、正文或密钥');
-                  })
-                  .catch(error => setNotice(String(error)));
-              }}
-            >
-              复制连接诊断
-            </button>
+            </div>
+            <small>
+              {stores.settings.app.messageSendMode === 'shift-enter'
+                ? 'Shift+Enter 发送 · Enter 换行'
+                : 'Enter 发送 · Shift+Enter 换行'}
+            </small>
           </footer>
         )}
       </div>

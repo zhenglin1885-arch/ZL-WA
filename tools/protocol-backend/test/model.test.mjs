@@ -669,7 +669,35 @@ test('corrupt cache remains untouched and prevents silent replacement', async ()
   await assert.rejects(f.account.initialize(), /缓存格式异常/);
   assert.equal(f.writes.length, 0);
 });
-test('an incoming message receipt is never used as proof of an outgoing send',async()=>{
-  const f=fixture();await f.open();f.account.upsertMessage(msg('incoming-only','not sent by me',false));
-  const result=await f.account.reconcile(JID,'incoming-only',PN);assert.equal(result.confirmed,false);assert.equal(result.halt,true);
+test('an incoming message receipt is never used as proof of an outgoing send', async () => {
+  const f = fixture();
+  await f.open();
+  f.account.upsertMessage(msg('incoming-only', 'not sent by me', false));
+  const result = await f.account.reconcile(JID, 'incoming-only', PN);
+  assert.equal(result.confirmed, false);
+  assert.equal(result.halt, true);
+});
+
+test('message display resolves sender names without exposing LID as a name or mutating message keys', async () => {
+  const f = fixture();
+  await f.account.start();
+  f.account.upsertContact({ id: LID, name: 'Alice' });
+  f.account.upsertMessage({
+    key: { remoteJid: GROUP, participant: LID, id: 'named' },
+    pushName: 'Fallback',
+    message: { conversation: 'hello' },
+    messageTimestamp: 1795520000,
+  });
+  const row = f.account.listMessages(GROUP)[0];
+  assert.equal(row.senderName, 'Alice');
+  assert.equal(row.participant, LID);
+  assert.equal(row.text, 'hello');
+  f.account.upsertMessage({
+    key: { remoteJid: JID, id: 'push' },
+    pushName: 'Bob',
+    message: { conversation: 'hi' },
+    messageTimestamp: 1795520001,
+  });
+  assert.equal(f.account.listMessages(JID)[0].senderName, 'Bob');
+  f.account.stop();
 });

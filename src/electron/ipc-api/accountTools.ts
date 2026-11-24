@@ -399,6 +399,7 @@ export default ({ mainWindow }: { mainWindow: BrowserWindow }) => {
         'read-all',
         'media',
         'aliases',
+        'profile-photo',
         'reaction',
         'reaction-candidates',
         'diagnostics',

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
 import { evaluate, wait, click, call, socket } from './account-tools-cdp.mjs';
 let id, before;
 const svc = () => `window.ferdium.stores.services.one(${JSON.stringify(id)})`;
@@ -39,7 +40,9 @@ try {
     'window.ferdium?.stores?.settings.loaded&&window.ferdium.stores.services.allServicesRequest.wasExecuted',
     'app ready',
   );
-  await evaluate("require('@electron/remote').getCurrentWindow().webContents.closeDevTools();require('@electron/remote').getCurrentWindow().setSize(1400,900);true");
+  await evaluate(
+    "require('@electron/remote').getCurrentWindow().webContents.closeDevTools();require('@electron/remote').getCurrentWindow().setSize(1400,900);true",
+  );
   assert.equal(
     await evaluate('window.ferdium.stores.services.all.some(s=>s.isEnabled)'),
     false,
@@ -78,6 +81,7 @@ try {
       if(action==='start'){setTimeout(()=>ipc.emit('protocol-state',{},account,q.state),0);return q.state;}
       if(action==='stop')return true;
       if(action==='aliases')return [args.jid];
+      if(action==='profile-photo')return '';
       if(action==='messages')return q.messages.filter(message=>message.jid===args.jid);
       if(action==='read'||action==='read-all'){q.reads.push(args?.jid);return{read:1,failed:0};}
       if(action==='send'){q.sends.push(args);const messageId='sent-'+q.sends.length;if(q.uncertain)return{messageId,confirmed:false,halt:true,error:'QA unconfirmed'};q.messages.push({id:messageId,jid:args.jid,fromMe:true,participant:'',text:args.spec.text,kind:'text',timestamp:1795520001,status:2});return{messageId,confirmed:true};}
@@ -114,9 +118,86 @@ try {
     "[...document.querySelectorAll('[aria-label=\"新连接聊天\"] aside button')].find(button=>(button.textContent.includes('QA Contact') || button.textContent.includes('QA SAVED REMARK'))).click();true",
   );
   await wait(
-    "document.querySelector('[aria-label=\"新连接聊天\"]').textContent.includes('hello')",
+    "document.querySelector('.protocol-chat__bubble')?.textContent.includes('hello')",
     'incoming message displayed',
   );
+  // Exercise realistic overflowing lists and history at two desktop sizes.
+  await evaluate(
+    `(()=>{const q=window.__protocolQA; q.state.chats.push(...Array.from({length:60},(_,n)=>({id:String(5511777700000+n)+'@c.us',name:'Contact '+n,group:false,unread:n%3===0?1:0,timestamp:1795510000-n,lastText:'Recent message '+n})));q.messages.push(...Array.from({length:100},(_,n)=>({id:'history-'+n,jid:q.jid,fromMe:n%2===0,participant:'',text:'History message '+n,kind:'text',timestamp:1795510000+n,status:3})));require('electron').ipcRenderer.emit('protocol-state',{},${JSON.stringify(id)}, {...q.state});return true;})()`,
+  );
+  await wait(
+    'document.querySelectorAll(".protocol-chat__bubble").length===101',
+    'realistic history rendered',
+  );
+  await wait(
+    `(()=>{const e=document.querySelector('.protocol-chat__messages');return e.scrollHeight-e.scrollTop-e.clientHeight<3;})()`,
+    'initial history scrolled to latest',
+  );
+  for (const [width, height] of [
+    [1400, 900],
+    [1100, 720],
+  ]) {
+    await evaluate(
+      `require('@electron/remote').getCurrentWindow().setSize(${width},${height});true`,
+    );
+    await wait(
+      `(()=>{const input=document.querySelector('[aria-label="消息内容"]').getBoundingClientRect(),list=document.querySelector('.protocol-chat__chat-list'),panel=document.querySelector('.protocol-chat').getBoundingClientRect();return input.height>=40&&input.bottom<=panel.bottom&&list.clientHeight>100&&list.scrollHeight>list.clientHeight;})()`,
+      'composer visible with independent scroll regions',
+    );
+  }
+  await evaluate(
+    "require('@electron/remote').getCurrentWindow().setSize(1400,900);true",
+  );
+  await evaluate(
+    "document.querySelector('.protocol-chat__messages').scrollTop=0;document.querySelector('.protocol-chat__messages').dispatchEvent(new Event('scroll'));true",
+  );
+  await evaluate(
+    `(()=>{const q=window.__protocolQA;q.messages.push({id:'new-while-reading',jid:q.jid,fromMe:false,participant:'',text:'New message while reading',kind:'text',timestamp:1795520100,status:3});require('electron').ipcRenderer.emit('protocol-state',{},${JSON.stringify(id)}, {...q.state});return true;})()`,
+  );
+  await wait(
+    "!!document.querySelector('.protocol-chat__latest')",
+    'new message offers return to latest',
+  );
+  assert.equal(
+    await evaluate(
+      "document.querySelector('.protocol-chat__messages').scrollTop",
+    ),
+    0,
+    'reading older messages is not interrupted',
+  );
+  await click('.protocol-chat__latest');
+  await wait(
+    `(()=>{const e=document.querySelector('.protocol-chat__messages');return e.scrollHeight-e.scrollTop-e.clientHeight<3;})()`,
+    'return to latest',
+  );
+  await evaluate(
+    "[...document.querySelectorAll('.protocol-chat__filters button')].find(b=>b.textContent==='群聊').click();true",
+  );
+  await wait(
+    "document.querySelectorAll('.protocol-chat__chat-button').length===4",
+    'group filter',
+  );
+  await evaluate(
+    "[...document.querySelectorAll('.protocol-chat__filters button')].find(b=>b.textContent==='全部').click();true",
+  );
+  await wait(
+    "document.querySelectorAll('.protocol-chat__chat-button').length>60",
+    'all chats restored',
+  );
+  await click('[aria-label="新建聊天"]');
+  await wait(
+    `!!document.querySelector('[aria-label="新聊天号码"]')`,
+    'new chat has separate phone input',
+  );
+  await click('[aria-label="新建聊天"]');
+  if (process.env.ZL_PROTOCOL_PREVIEW) {
+    // Synthetic data only, never capture a real customer account.
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(
+      process.env.ZL_PROTOCOL_PREVIEW,
+      Buffer.from(screenshot.data, 'base64'),
+    );
+  }
   await fill('enter test');
   await enter();
   await wait('window.__protocolQA.sends.length===1', 'default Enter send');
@@ -222,12 +303,19 @@ try {
     'preserved',
   );
   console.log(
-    'PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved',
+    'PASS integrated protocol UI: actual nickname/remark, incoming chat, default Enter, opt-in Shift+Enter, IME and held-key protection, original bulk queue D-C-B-A, uncertain-send reconciliation without resend, customer context, reversible web Session preserved, compact list filters, fixed visible composer at 1100x720/1400x900, scroll-to-latest and reading-position preservation',
   );
 } catch (error) {
+  if (process.env.ZL_PROTOCOL_PREVIEW) {
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(
+      process.env.ZL_PROTOCOL_PREVIEW,
+      Buffer.from(screenshot.data, 'base64'),
+    );
+  }
   console.error(
     await evaluate(
-      "({focused:document.hasFocus(),active:document.activeElement?.outerHTML?.slice(0,200),win:require('@electron/remote').getCurrentWindow().isFocused()})",
+      "({focused:document.hasFocus(),active:document.activeElement?.outerHTML?.slice(0,200),win:require('@electron/remote').getCurrentWindow().isFocused(),dimensions:[...document.querySelectorAll('.protocol-chat,.protocol-chat__chat-list,.protocol-chat__messages,[aria-label=\"消息内容\"]')].map(e=>({class:e.className,rect:e.getBoundingClientRect().toJSON(),scrollHeight:e.scrollHeight})),bubbles:document.querySelectorAll('.protocol-chat__bubble').length,header:document.querySelector('.protocol-chat__header')?.textContent,messages:window.__protocolQA?.messages.length,chat:window.__protocolQA?.jid,view:document.querySelector('.protocol-chat')?.textContent.slice(-500)})",
     ),
   );
   throw error;

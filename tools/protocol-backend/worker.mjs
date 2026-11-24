@@ -16,6 +16,7 @@ import makeSocket, {
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
+import { deviceBrowser } from './device.mjs';
 import QRCode from 'qrcode';
 import ffmpeg from 'ffmpeg-static';
 import {
@@ -140,7 +141,7 @@ async function video(media) {
 
 function make(config, network) {
   if (network?.url) throw Error('此测试版本只支持直连，不会绕过已配置的代理');
-  return makeSocket(config);
+  return makeSocket({ ...config, browser: deviceBrowser() });
 }
 
 async function request(action, args) {
@@ -198,6 +199,28 @@ async function request(action, args) {
       if (pn) ids.push(normalizeJid(pn));
     }
     return [...new Set(ids)];
+  }
+  if (action === 'profile-photo') {
+    account.assertOwner(args.owner);
+    try {
+      const url = new URL(
+        await account.socket.profilePictureUrl(
+          wireJid(args.jid),
+          'preview',
+          5000,
+        ),
+      );
+      if (
+        url.protocol !== 'https:' ||
+        !['whatsapp.net', 'fbcdn.net'].some(domain =>
+          url.hostname.endsWith('.' + domain),
+        )
+      )
+        return '';
+      return url.href;
+    } catch {
+      return '';
+    }
   }
   if (action === 'messages') return account.listMessages(args.jid);
   if (action === 'recipients') return account.recipients(args.kind);

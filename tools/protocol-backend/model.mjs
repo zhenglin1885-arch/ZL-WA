@@ -519,6 +519,12 @@ export class ProtocolAccount {
       jid,
       fromMe: Boolean(row.key.fromMe),
       participant: normalizeJid(row.key.participant),
+      senderName:
+        this.contacts.get(
+          normalizeJid(row.key.participant || row.key.remoteJid),
+        )?.name ||
+        row.pushName ||
+        '',
       text: messageText(row.message),
       kind: messageKind(row.message),
       timestamp: Number(row.messageTimestamp || 0),
@@ -777,7 +783,8 @@ export class ProtocolAccount {
         error: '缺少消息编号，请人工核对，不自动重发',
       };
     const message = this.messages.get(jid)?.find(row => row.key.id === id);
-    const confirmed = message?.key?.fromMe === true && Number(message.status) >= 2;
+    const confirmed =
+      message?.key?.fromMe === true && Number(message.status) >= 2;
     return {
       messageId: id,
       confirmed,

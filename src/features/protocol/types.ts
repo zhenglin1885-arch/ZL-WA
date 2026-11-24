@@ -24,6 +24,7 @@ export interface ProtocolMessage {
   jid: string;
   fromMe: boolean;
   participant: string;
+  senderName?: string;
   text: string;
   kind: string;
   timestamp: number;
