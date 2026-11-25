@@ -15,6 +15,9 @@ export function configurePairingDiagnostics(): boolean {
   };
   const failure = (error: any) => {
     const names = [
+      'NotAllowedError',
+      'ConstraintError',
+      'TimeoutError',
       'SecurityError',
       'QuotaExceededError',
       'DataError',

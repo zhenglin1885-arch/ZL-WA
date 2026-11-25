@@ -1,7 +1,9 @@
 /* eslint-disable no-await-in-loop -- Poll until the UI condition becomes true. */
 import assert from 'node:assert/strict';
 
-const listing = await fetch('http://127.0.0.1:9222/json/list');
+const listing = await fetch(
+  `http://127.0.0.1:${process.env.ZL_QA_CDP_PORT || '9222'}/json/list`,
+);
 const pages = await listing.json();
 const page = pages.find(
   p => p.url.startsWith('file://') && p.url.includes('/build/index.html'),

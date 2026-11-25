@@ -55,7 +55,10 @@ const {
       addEventListener() {},
     },
     document: {
-      querySelector: () => null,
+      // This fixture represents a logged-in legacy chat. Login readiness now
+      // deliberately ignores stale Socket exports on an empty/login document.
+      querySelector: selector =>
+        selector.startsWith('#pane-side, #side') ? {} : null,
       querySelectorAll: () => [],
       addEventListener() {},
       body: {},

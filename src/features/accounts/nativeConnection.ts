@@ -61,12 +61,56 @@ export function configureNativeConnection(): boolean {
     'SMB_TOS_BLOCK',
   ];
   const trace: { at: number; event: string; code: string | null }[] = [];
+  // WASocketCloseReason.CommsCloseReason values, not raw WebSocket.reason text.
+  const closeReasons = [
+    'client_close_unspecified',
+    'connection_aborted',
+    'dead_socket',
+    'frame_socket_drained',
+    'stanza_handler_requested',
+    'unknown',
+    'ws_close_abnormal',
+    'ws_close_bad_gateway',
+    'ws_close_extension_required',
+    'ws_close_going_away',
+    'ws_close_invalid_payload',
+    'ws_close_no_status',
+    'ws_close_normal',
+    'ws_close_other',
+    'ws_close_policy_violation',
+    'ws_close_protocol_error',
+    'ws_close_server_error',
+    'ws_close_service_restart',
+    'ws_close_tls_failure',
+    'ws_close_too_big',
+    'ws_close_try_again_later',
+    'ws_close_unsupported_data',
+  ];
+  const errorNames = [
+    'NotAllowedError',
+    'SecurityError',
+    'InvalidStateError',
+    'NotSupportedError',
+    'AbortError',
+    'OperationError',
+    'UnknownError',
+    'TypeError',
+    'DataError',
+    'ConstraintError',
+    'TimeoutError',
+  ];
   const started = Date.now();
   const record = (event: string, value?: unknown) => {
+    const allowed =
+      event === 'socket-disconnected'
+        ? closeReasons
+        : event === 'passkey-error'
+          ? errorNames
+          : states;
     trace.push({
       at: Math.max(0, Date.now() - started),
       event,
-      code: typeof value === 'string' && states.includes(value) ? value : null,
+      code: typeof value === 'string' && allowed.includes(value) ? value : null,
     });
     if (trace.length > 64) trace.shift();
     try {
@@ -95,6 +139,7 @@ export function configureNativeConnection(): boolean {
         typeof bus?.isMainStreamReadyMd === 'boolean'
           ? bus.isMainStreamReadyMd
           : null,
+      linkEventsObserved: Boolean(boundLinks),
     };
   };
   const ready = async () => {
@@ -184,8 +229,26 @@ export function configureNativeConnection(): boolean {
         ['link_device_events:error_alt_linking', 'phone-link-error'],
         ['link_device_events:primary_hello_received', 'phone-link-hello'],
         ['link_device_events:refresh_alt_linking_code', 'phone-link-refresh'],
+        ['link_device_events:passkey_prologue_request', 'passkey-request'],
+        ['link_device_events:shortcake_prologue_sent', 'passkey-prologue-sent'],
+        [
+          'link_device_events:shortcake_verification_code_ready',
+          'passkey-verification-ready',
+        ],
+        ['link_device_events:shortcake_error', 'passkey-error'],
       ])
-        bind(links, event, () => record(label));
+        bind(links, event, value => {
+          // Verification-ready arguments contain pairing secrets. Never inspect
+          // them. For errors retain only a recognized exception class, not its
+          // message, challenge, credential, identifier or arbitrary status value.
+          let name: unknown;
+          if (label === 'passkey-error') {
+            try {
+              name = typeof value === 'string' ? value : value?.name;
+            } catch {}
+          }
+          record(label, name);
+        });
     }
     void check();
   };

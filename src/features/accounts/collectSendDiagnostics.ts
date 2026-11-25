@@ -18,6 +18,10 @@ export function recordNativeConnection(view: object, value: any) {
     'phone-link-error',
     'phone-link-hello',
     'phone-link-refresh',
+    'passkey-request',
+    'passkey-prologue-sent',
+    'passkey-verification-ready',
+    'passkey-error',
   ];
   const states = [
     'CONNECTED',
@@ -32,12 +36,56 @@ export function recordNativeConnection(view: object, value: any) {
     'TOS_BLOCK',
     'SMB_TOS_BLOCK',
   ];
+  const closeReasons = [
+    'client_close_unspecified',
+    'connection_aborted',
+    'dead_socket',
+    'frame_socket_drained',
+    'stanza_handler_requested',
+    'unknown',
+    'ws_close_abnormal',
+    'ws_close_bad_gateway',
+    'ws_close_extension_required',
+    'ws_close_going_away',
+    'ws_close_invalid_payload',
+    'ws_close_no_status',
+    'ws_close_normal',
+    'ws_close_other',
+    'ws_close_policy_violation',
+    'ws_close_protocol_error',
+    'ws_close_server_error',
+    'ws_close_service_restart',
+    'ws_close_tls_failure',
+    'ws_close_too_big',
+    'ws_close_try_again_later',
+    'ws_close_unsupported_data',
+  ];
+  const errorNames = [
+    'NotAllowedError',
+    'SecurityError',
+    'InvalidStateError',
+    'NotSupportedError',
+    'AbortError',
+    'OperationError',
+    'UnknownError',
+    'TypeError',
+    'DataError',
+    'ConstraintError',
+    'TimeoutError',
+  ];
   if (!value || !allowed.includes(value.event)) return;
   const rows = nativeTransitions.get(view) || [];
   rows.push({
     at: Date.now(),
     event: value.event,
-    code: states.includes(value.code) ? value.code : null,
+    code: (value.event === 'socket-disconnected'
+      ? closeReasons
+      : value.event === 'passkey-error'
+        ? errorNames
+        : states
+    ).includes(value.code)
+      ? value.code
+      : null,
   });
   if (rows.length > 64) rows.shift();
   nativeTransitions.set(view, rows);

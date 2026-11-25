@@ -187,6 +187,9 @@ export function readSendDiagnostics() {
     'PROXYBLOCK',
     'TOS_BLOCK',
     'SMB_TOS_BLOCK',
+    'NotAllowedError',
+    'ConstraintError',
+    'TimeoutError',
     'SecurityError',
     'QuotaExceededError',
     'DataError',
@@ -213,8 +216,45 @@ export function readSendDiagnostics() {
           code: eventCodes.includes(e.code) ? e.code : null,
         }))
     : [];
+  const closeReasons = [
+    'client_close_unspecified',
+    'connection_aborted',
+    'dead_socket',
+    'frame_socket_drained',
+    'stanza_handler_requested',
+    'unknown',
+    'ws_close_abnormal',
+    'ws_close_bad_gateway',
+    'ws_close_extension_required',
+    'ws_close_going_away',
+    'ws_close_invalid_payload',
+    'ws_close_no_status',
+    'ws_close_normal',
+    'ws_close_other',
+    'ws_close_policy_violation',
+    'ws_close_protocol_error',
+    'ws_close_server_error',
+    'ws_close_service_restart',
+    'ws_close_tls_failure',
+    'ws_close_too_big',
+    'ws_close_try_again_later',
+    'ws_close_unsupported_data',
+  ];
+  const errorNames = [
+    'NotAllowedError',
+    'SecurityError',
+    'InvalidStateError',
+    'NotSupportedError',
+    'AbortError',
+    'OperationError',
+    'UnknownError',
+    'TypeError',
+    'DataError',
+    'ConstraintError',
+    'TimeoutError',
+  ];
   return {
-    format: 3,
+    format: 4,
     nativeConnection: {
       source: ['backend-event-bus', 'legacy-socket', 'unavailable'].includes(
         native?.source,
@@ -222,6 +262,7 @@ export function readSendDiagnostics() {
         ? native.source
         : null,
       mainReady: bool(native?.mainReady),
+      linkEventsObserved: bool(native?.linkEventsObserved),
       events: (read(() => page.__zlWaNativeConnection.trace) || [])
         .slice(-64)
         .filter((row: any) =>
@@ -237,6 +278,10 @@ export function readSendDiagnostics() {
             'phone-link-error',
             'phone-link-hello',
             'phone-link-refresh',
+            'passkey-request',
+            'passkey-prologue-sent',
+            'passkey-verification-ready',
+            'passkey-error',
           ].includes(row?.event),
         )
         .map((row: any) => ({
@@ -245,7 +290,14 @@ export function readSendDiagnostics() {
               ? Math.min(row.at, 86400000)
               : 0,
           event: row.event,
-          code: eventCodes.includes(row.code) ? row.code : null,
+          code: (row.event === 'socket-disconnected'
+            ? closeReasons
+            : row.event === 'passkey-error'
+              ? errorNames
+              : [...eventCodes, 'UNLAUNCHED']
+          ).includes(row.code)
+            ? row.code
+            : null,
         })),
     },
     pairing: {
@@ -269,6 +321,12 @@ export function readSendDiagnostics() {
         read(() => typeof page.indexedDB?.open === 'function'),
       ),
       webCryptoAvailable: bool(read(() => Boolean(page.crypto?.subtle))),
+      publicKeyCredentialAvailable: bool(
+        read(() => typeof page.PublicKeyCredential === 'function'),
+      ),
+      credentialsGetAvailable: bool(
+        read(() => typeof navigator.credentials?.get === 'function'),
+      ),
       serviceWorkerControlled: bool(
         read(() => Boolean(navigator.serviceWorker?.controller)),
       ),

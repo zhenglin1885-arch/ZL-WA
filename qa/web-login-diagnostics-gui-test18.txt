@@ -1,0 +1,66 @@
+PASS account card drag reorders and persists local preferences without replacing accounts
+PASS compact sidebar persists, shows avatar/remark, switches accounts and preserves webview instances
+PASS light desktop: manual dark updates app, MUI, Chromium and native WhatsApp classes; delayed light reset repaired; system-follow and compatibility switches work without reload or draft loss
+PASS native WhatsApp list drag-only sizing, inert click, persistence, light purple sidebars and four distinct account status colors
+PASS account menu edits the remark line while preserving account identity
+PASS visible group/remark dialogs accept native mouse and text input and persist changes
+PASS OpenAI/Gemini expose password and model fields and require the user API Key
+PASS translation refresh requests a new result and never resends the message
+PASS complete formatted media caption, native refresh across React capture, immediate progress, visible failure and retry
+PASS receive toggle adds manual translate to incoming and sent messages, no automatic requests, retry works without resending
+PASS appearance color saves/reopens, updates existing translations without provider calls, empty value restores default; release/about/download links hidden
+PASS preview auto translates incoming/sent messages, errors retain manual controls, disabled feature removes all controls
+PASS deferred preview, visible-only work, cached DOM remount, pinned-bottom reflow and history-anchor preservation
+PASS message recognition works without message-in/out, copyable/selectable classes or true_/false_ IDs
+PASS edit-message click/Enter translation previews, corrected saves, failed translation protection, cancellation isolation and unrelated dialogs
+PASS media captions translate before send, preserve background drafts, allow corrections and Enter, reject provider failures/media switches, and bypass emoji/empty captions
+PASS video and document captions support two-step click/Enter sends, corrections, failure protection, attachment changes, empty captions and emoji
+PASS Unicode emoji, ZWJ/flags/keycaps, decorator IMG emoji, numbers and URLs bypass translation unchanged
+PASS native select-all replaces text plus noneditable emoji decorator exactly once before confirmed send
+PASS received translation, per-account isolation, first-click preview and second-click corrected send
+PASS native clear/retype and whole-draft replacement retranslate before click/Enter sends; partial corrections still send on confirmation
+PASS image/video/file generic footer captions, remote image previews, new send icon, native pointerup and Enter, separate confirmation and original-text protection
+PASS native pointer-driven edits, nested dialog headings, unmarked editors, new checkmark icons, quoted reply translation and quote-switch protection
+PASS translation failure and stale-draft protection leave the original unsent
+PASS Enter first/second send and held-key protection
+PASS switching chats invalidates pending outgoing translation
+PASS native connection-test IPC traverses a local HTTP CONNECT proxy and TLS destination
+PASS actual Electron account Session proxy routing and disable-to-system-network isolation
+PASS forwarding history and creation overlay the guest at four window sizes, with scrolling body and clickable fixed footer
+PASS centered bulk dialog, real recipient adapter, explicit confirmation, two synthetic sends, progress and history
+PASS multi-account targets remain distinct and an uncertain/failed send stops the queue without retry
+PASS stop button prevents subsequent recipients after the current send
+PASS native attachment picker copies media, media adapter records its message ID, revoke requests delete-for-everyone and updates revoke history
+PASS bulk settings persist on immediate close/reopen without carrying over recipient selection
+PASS compact two-line previews, concise success/failure details, creation during active sends, two simultaneous jobs and independent cancellation
+PASS actual bulk runtime: delayed native ACK resolves to success; settled pending IDs honor continue policy with no resend and retain history
+PASS logout and errors keep historical card identity; new login replaces it without mixing the old avatar
+PASS compact alignment survives delayed login styles and sidebar resize without editing data or refreshing
+PASS native command guard beyond three pins, local unpin, no server pin calls, immutable and message modules preserved
+PASS lost customer guest state recovers with a stale service loading flag and keeps the client panel available
+PASS new-login LID getter failure, device-qualified owner, keyed alternate collection, 10000 extra contacts, inline note save, client panel sync and more than three local pins
+PASS own-avatar cache, private context fallback, group form exclusion, inline note Enter/autosave/Escape, multi-labels, layout, profile isolation, pins and unread counts
+PASS native group dialogs: admin-only lists, three-second pacing, lost-response reconciliation, bounded retries, every account joins all unique links, pending approvals, background close, read-only refresh, leave/delete recovery and account isolation
+PASS reaction result folding at ten rows, bounded expanded list, reachable execution action, and live multi-account task totals excluding misses
+PASS reported welcome text: all three matching modes, scoped DB search beyond 166 loaded messages, two-account totals, correct group/message IDs, Unicode formatting and no mutation during lookup
+PASS native reaction UI: merged groups, multi-account selection, newest-only preview, random emoji selection, staggered background execution, persisted results, cancellable future window, uploaded image previews and compressed-image matching
+PASS reported Portuguese text: native scoped search outside loaded history, Unicode/emoji preservation, exact quote IDs and one dispatch per account/chat
+PASS native bulk replies: two accounts, group/private targets, latest quotes, explicit confirmation, no automatic mentions, isolated preferences/history and no ordinary fallback
+PASS real service downloads: voice/image/document, direct anchors, unnamed/named popups, delayed mutable popup locations, main-frame IPC, original account ownership and exact saved bytes; standard fallback detected before site scripts
+PASS original accounts preserved; all created account fixtures removed
+PASS original forwarding history restored after isolated GUI tests
+
+PASS actual Electron guest: login/loading and repeated pairing samples do not invoke native lazy modules, initialize SDK or reload
+{"results":[{"state":"loading","status":"loading","socket":null,"canInitialize":false,"translationRequests":0},{"state":"login","status":"logged-out","socket":null,"canInitialize":false,"translationRequests":0}],"nativeLoaderCalls":0,"errorReports":0,"noReload":true,"realPhonePairingVerified":false}
+
+PASS native pairing observation records QR rotation and bounded error types without QR contents, browser API replacement, storage mutation or reload
+{"qrRefreshObserved":3,"exceptionTypesObserved":true,"nativeBrowserApisUnchanged":true,"noPageReload":true,"noQrAccountOrChatContent":true}
+
+PASS native Enter/Shift+Enter modes, newline/undo input path, IME, held keys, disabled buttons, live switching, Facebook and WhatsApp translation two-step confirmation
+{"web.whatsapp.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"business.facebook.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"textTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"quoteTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"mediaTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"editTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true}}
+
+
+PASS compiled native observer: all 22 official close categories and four Shortcake events captured; no browser API replacement, reload or private values
+{"commit":"c48e41b","platform":"linux","officialCloseCategories":22,"passkeyEvents":4,"compiledGuestVerified":true,"browserApisUnchanged":true,"realPhonePairingVerified":false}
+
+PASS compiled guest functions execute independently of their host module

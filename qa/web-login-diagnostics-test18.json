@@ -1,0 +1,52 @@
+{
+  "sourceBase": "0f85fe9f46ebadedd8f1eb63588702d86b945f49",
+  "purpose": "Diagnostics only: native passkey linking observations and close reason categories; no login behavior changes",
+  "diagnosticsOnly": true,
+  "typecheck": true,
+  "unitTests": {
+    "suitesPassed": 89,
+    "passed": 979,
+    "skipped": 2
+  },
+  "existingGuiPassGroups": 51,
+  "originalWebUiPreserved": true,
+  "realPhonePairingVerified": false,
+  "diagnosticRegressionReproducedBeforeFix": true,
+  "baselineNewRegressionTestsFailed": 3,
+  "compiledGuestVerified": true,
+  "officialCloseCategories": 22,
+  "passkeyEvents": 4,
+  "noBrowserApiReplacement": true,
+  "noAuthenticatorInvocation": true,
+  "unchangedBusinessFiles": {
+    "src/index.ts": "ebdf8e3a20f5a4a23ba6dde23b421193ee1cdfcec3dab0336f73861eac6b5c78",
+    "src/features/accounts/sendMode.ts": "8fac9a1ebefdf6f5f17ecd3084ef032206c5b60d79556cbc12beffcbc7505f8d",
+    "src/features/accounts/voice.ts": "48aa09fa7cef2e5b6d4a62ff00e7089800f8ef34539a37662738523899edc7d6",
+    "src/features/accounts/whatsapp.ts": "e65e2765e4e0cc6889ba27fc4e1985394c1a1b2e7e79f4643674ad9785c833e9",
+    "src/features/accounts/unread.ts": "9edb03f42fdbe2449e640382acc421fef5894c49492589fdc8c28686f59e7dd3",
+    "src/features/accountTools/bulkGuest.ts": "ab64ab0775f251405b9af74c56ab65e54ee210ab51c2b420fd983633234f3b36",
+    "src/features/accountTools/bulkRuntime.ts": "f346f1bb29ea616f6b3a8474e492f9bb7f13651cc5edbefaa8604d82ebed21d9",
+    "src/features/accountTools/guest.ts": "df281f9c126f8bfb15da282c29376ccd5680dae5f06013d2273218a822859c6e",
+    "src/features/groups/guest.ts": "cddadce257f3fed94e60d484147e09c2ba9b75a15a02cab4e9971113a4fd8f0c",
+    "src/components/services/content/ServiceWebview.tsx": "17f7c5ef292491f8ae81ff958f4cae95ea92355b46cf47fc3079a4a298889344",
+    "build-helpers/prepare-whatsapp-library.cjs": "4e7d807dcf13388cb7c9204374045431e12c0bbe155cd64e0e73a43c334ad15d",
+    "esbuild.mjs": "1def46cedafe0b73ce6583789e23a7cfef752c59f25d039a6e8def4106b78b70",
+    "package.json": "1cad33b76323ae01a16e8be07f6d2bc05a084ab23dfe8b0d9c34cd1049acc9fb",
+    "pnpm-lock.yaml": "b5f094fd617ce7a97ab0be2c228033f005390dbc90b5e94ca86e959800dd4bc5"
+  },
+  "sourceFiles": {
+    ".github/workflows/windows-web-login-diagnostics-test18.yml": "064a68a3cc12d24943636d219a3fedf95a18a019da7d0d1ee26a2f65db975d78",
+    "docs/WEB-LOGIN-DIAGNOSTICS-TEST18.md": "cfd75833f184eac3a129a34fed5cec9e48e2f9298a2befb33a2a292ee7269963",
+    "scripts/account-tools-cdp.mjs": "6ea382145d779718078314773f7b850767388c088f509f845868e4259a5a579b",
+    "scripts/verify-guest-build.cjs": "5f6ad14dd93a8c6ab7ee1f322c54687309ba3e2ad17b397046819d025a5de84d",
+    "scripts/verify-native-login-diagnostics.cjs": "30c1ac6b122412c54ffb46a0983f6fe100a78d26bd4ad484c9cb60c0eadf2303",
+    "src/features/accounts/collectSendDiagnostics.ts": "3e70225edbdd1147e7010512c3f657d5835983d526e0777fa20efc154d78c50e",
+    "src/features/accounts/nativeConnection.ts": "3a44459b7996faacc6623833eec7ae0a8a2dc5c6b6ae71d6a0910bf6a94e370f",
+    "src/features/accounts/pairingDiagnostics.ts": "cf81f317e6e3f7dcc5567c5941eb552484c13717a75b309f1c335919a714da61",
+    "src/features/accounts/sendDiagnostics.ts": "1abbbe0e53f005e6c9d0b12a004c0cb54210845eb2ce88d810097f86cad2fe95",
+    "src/webview/recipe.ts": "70c7c7a07f0b07f0a1196f7b2552b16ba5ac1847addffe2bd52db71c9ce93461",
+    "test/fixtures/whatsapp-native-link-events.json": "82e163f583c5ce10c78963166a14a1d9db48c07965893a8dbe2668a9cc1bae97",
+    "test/native-connection.test.ts": "d86672d2a2714085ee8d0de2f6f467aa6b15941a4b92e9b3344a18cc23f2d056"
+  },
+  "compiledOriginalGuestChecks": true
+}

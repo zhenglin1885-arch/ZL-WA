@@ -3,6 +3,11 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { configureNativeConnection } from '../src/features/accounts/nativeConnection';
 import { readSendDiagnostics } from '../src/features/accounts/sendDiagnostics';
+import {
+  collectSendDiagnostics,
+  recordNativeConnection,
+} from '../src/features/accounts/collectSendDiagnostics';
+import ts from 'typescript';
 const prepare = require('../build-helpers/prepare-whatsapp-library.cjs');
 function fixture(modern = true) {
   const bus = Object.assign(new EventEmitter(), {
@@ -39,6 +44,7 @@ function fixture(modern = true) {
     history: { pushState: jest.fn() },
     fetch: jest.fn(),
     indexedDB: { open: jest.fn() },
+    PublicKeyCredential: function PublicKeyCredential() {},
   };
   const context: any = vm.createContext({
     window: page,
@@ -131,6 +137,184 @@ it('reads the new login bus and phone-link failures without touching the missing
     expect(JSON.stringify(diagnostic)).not.toMatch(/PRIVATE_/);
   } finally {
     f.dispose();
+  }
+});
+
+it('keeps native close categories through the preload and host boundaries across document navigation', async () => {
+  const f = fixture();
+  const view = {
+    executeJavaScript: jest.fn(async () => ({ unavailable: true })),
+  };
+  const original = readFileSync('src/webview/recipe.ts', 'utf8');
+  const begin =
+    original.indexOf('pushWhatsAppConnectionEvent: ') +
+    'pushWhatsAppConnectionEvent: '.length;
+  const callback = original
+    .slice(begin, original.indexOf('  pushWhatsAppUnread:', begin))
+    .trim()
+    .replace(/,$/, '');
+  const calls: any[] = [];
+  const code = ts.transpileModule(
+    'const callback = ' + callback + ';callback;',
+    { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  const bridge = vm.runInNewContext(code, {
+    process: { isMainFrame: true },
+    location: { hostname: 'web.whatsapp.com' },
+    ipcRenderer: {
+      sendToHost: (_channel: string, value: any) => {
+        calls.push(value);
+        recordNativeConnection(view, value);
+      },
+    },
+  });
+  f.page.ferdium = { pushWhatsAppConnectionEvent: bridge };
+  const publicModules = JSON.parse(
+    readFileSync('test/fixtures/whatsapp-native-link-events.json', 'utf8'),
+  );
+  const nativeReasons: any = {};
+  vm.runInNewContext(publicModules.WASocketCloseReason.definition, {
+    __d: (_name: string, _deps: string[], factory: Function) =>
+      factory(null, null, null, null, null, nativeReasons),
+  });
+  const reasons = Object.values(nativeReasons.CommsCloseReason);
+  expect(reasons).toHaveLength(22);
+  try {
+    for (const reason of reasons) {
+      f.bus.emit('socket_stream_disconnected', reason);
+      expect(f.page.__zlWaNativeConnection.trace.at(-1).code).toBe(reason);
+      const diagnostic = vm.runInContext(
+        `(${readSendDiagnostics.toString()})()`,
+        f.context,
+      );
+      expect(diagnostic.nativeConnection.events.at(-1).code).toBe(reason);
+    }
+    f.links.emit('link_device_events:passkey_prologue_request');
+    f.links.emit('link_device_events:shortcake_prologue_sent');
+    f.links.emit('link_device_events:shortcake_verification_code_ready', {
+      code: 'PRIVATE_CODE',
+    });
+    f.links.emit('link_device_events:shortcake_error', {
+      name: 'NotAllowedError',
+      message: 'PRIVATE_MESSAGE',
+    });
+    f.bus.emit('socket_stream_disconnected', 'PRIVATE_REASON');
+    bridge({ event: 'PRIVATE_EVENT', code: 'ws_close_normal' });
+    bridge({
+      event: 'socket-disconnected',
+      code: 'PRIVATE_REASON',
+      secret: 'PRIVATE_TOKEN',
+    });
+    f.dispose();
+    const result = await collectSendDiagnostics(
+      { isError: false, errorMessage: '', webview: view },
+      async () => ({}),
+    );
+    expect(result.page.nativeTransitions.map(e => e.code)).toEqual([
+      ...reasons,
+      null,
+      null,
+      null,
+      'NotAllowedError',
+      null,
+      null,
+    ]);
+    expect(
+      result.page.nativeTransitions.slice(-6, -2).map(e => e.event),
+    ).toEqual([
+      'passkey-request',
+      'passkey-prologue-sent',
+      'passkey-verification-ready',
+      'passkey-error',
+    ]);
+    expect(JSON.stringify({ result, calls })).not.toContain('PRIVATE_');
+  } finally {
+    f.dispose();
+  }
+});
+
+it('observes Shortcake events without reading verification secrets or calling the authenticator', () => {
+  const f = fixture();
+  const secret = new Proxy(
+    {},
+    {
+      get() {
+        throw Error('Verification payload was inspected');
+      },
+    },
+  );
+  const credentialGet = jest.fn();
+  f.context.navigator.credentials = { get: credentialGet };
+  try {
+    for (const event of [
+      'passkey_prologue_request',
+      'shortcake_prologue_sent',
+      'shortcake_verification_code_ready',
+    ])
+      f.links.emit('link_device_events:' + event, secret, secret);
+    f.links.emit('link_device_events:shortcake_error', {
+      name: 'NotAllowedError',
+      message: 'PRIVATE_CHALLENGE',
+    });
+    f.links.emit('link_device_events:shortcake_error', secret);
+    const result = vm.runInContext(
+      `(${readSendDiagnostics.toString()})()`,
+      f.context,
+    );
+    expect(result.format).toBe(4);
+    expect(result.nativeConnection.linkEventsObserved).toBe(true);
+    expect(result.nativeConnection.events.slice(-5)).toEqual([
+      expect.objectContaining({ event: 'passkey-request', code: null }),
+      expect.objectContaining({ event: 'passkey-prologue-sent', code: null }),
+      expect.objectContaining({
+        event: 'passkey-verification-ready',
+        code: null,
+      }),
+      expect.objectContaining({
+        event: 'passkey-error',
+        code: 'NotAllowedError',
+      }),
+      expect.objectContaining({ event: 'passkey-error', code: null }),
+    ]);
+    expect(result.browserContext).toMatchObject({
+      publicKeyCredentialAvailable: true,
+      credentialsGetAvailable: true,
+    });
+    expect(credentialGet).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+    f.dispose();
+    for (const event of [
+      'passkey_prologue_request',
+      'shortcake_prologue_sent',
+      'shortcake_verification_code_ready',
+      'shortcake_error',
+    ])
+      expect(f.links.listenerCount('link_device_events:' + event)).toBe(0);
+  } finally {
+    f.dispose();
+  }
+});
+
+it('waits for late native link events initialization and binds only once', () => {
+  const f = fixture();
+  try {
+    f.page.__zlWaNativeConnection.dispose();
+    delete f.page.__zlWaNativeConnection;
+    delete f.modules.WAWebLinkDeviceEvents;
+    vm.runInContext(`(${configureNativeConnection.toString()})()`, f.context);
+    expect(f.page.__zlWaNativeConnection.read().linkEventsObserved).toBe(false);
+    f.modules.WAWebLinkDeviceEvents = { WAWebLinkDeviceEvents: f.links };
+    const poll = f.context.setInterval.mock.calls.at(-1)[0];
+    poll();
+    poll();
+    f.links.emit('link_device_events:passkey_prologue_request');
+    expect(
+      f.page.__zlWaNativeConnection.trace.filter(
+        (e: any) => e.event === 'passkey-request',
+      ),
+    ).toHaveLength(1);
+  } finally {
+    f.page.__zlWaNativeConnection.dispose();
   }
 });
 it('requires connected stream, a chat surface and completed critical sync, then rechecks after asynchronous sync', async () => {

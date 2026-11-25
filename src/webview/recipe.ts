@@ -139,6 +139,43 @@ contextBridge.exposeInMainWorld('ferdium', {
     event: string;
     code: string | null;
   }) => {
+    const closeReasons = [
+      'client_close_unspecified',
+      'connection_aborted',
+      'dead_socket',
+      'frame_socket_drained',
+      'stanza_handler_requested',
+      'unknown',
+      'ws_close_abnormal',
+      'ws_close_bad_gateway',
+      'ws_close_extension_required',
+      'ws_close_going_away',
+      'ws_close_invalid_payload',
+      'ws_close_no_status',
+      'ws_close_normal',
+      'ws_close_other',
+      'ws_close_policy_violation',
+      'ws_close_protocol_error',
+      'ws_close_server_error',
+      'ws_close_service_restart',
+      'ws_close_tls_failure',
+      'ws_close_too_big',
+      'ws_close_try_again_later',
+      'ws_close_unsupported_data',
+    ];
+    const errorNames = [
+      'NotAllowedError',
+      'SecurityError',
+      'InvalidStateError',
+      'NotSupportedError',
+      'AbortError',
+      'OperationError',
+      'UnknownError',
+      'TypeError',
+      'DataError',
+      'ConstraintError',
+      'TimeoutError',
+    ];
     if (
       process.isMainFrame &&
       globalThis.location.hostname === 'web.whatsapp.com' &&
@@ -155,23 +192,32 @@ contextBridge.exposeInMainWorld('ferdium', {
         'phone-link-error',
         'phone-link-hello',
         'phone-link-refresh',
+        'passkey-request',
+        'passkey-prologue-sent',
+        'passkey-verification-ready',
+        'passkey-error',
       ].includes(value.event)
     )
       ipcRenderer.sendToHost('zl-wa-connection-event', {
         event: value.event,
-        code: [
-          'CONNECTED',
-          'OPENING',
-          'PAIRING',
-          'UNPAIRED',
-          'UNPAIRED_IDLE',
-          'UNLAUNCHED',
-          'CONFLICT',
-          'TIMEOUT',
-          'PROXYBLOCK',
-          'TOS_BLOCK',
-          'SMB_TOS_BLOCK',
-        ].includes(value.code || '')
+        code: (value.event === 'socket-disconnected'
+          ? closeReasons
+          : value.event === 'passkey-error'
+            ? errorNames
+            : [
+                'CONNECTED',
+                'OPENING',
+                'PAIRING',
+                'UNPAIRED',
+                'UNPAIRED_IDLE',
+                'UNLAUNCHED',
+                'CONFLICT',
+                'TIMEOUT',
+                'PROXYBLOCK',
+                'TOS_BLOCK',
+                'SMB_TOS_BLOCK',
+              ]
+        ).includes(value.code || '')
           ? value.code
           : null,
       });
