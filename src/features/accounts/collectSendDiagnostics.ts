@@ -3,7 +3,12 @@ import { readSendDiagnostics, readWhatsAppPageHealth } from './sendDiagnostics';
 const transitions = new WeakMap<object, { at: number; event: string }[]>();
 const nativeTransitions = new WeakMap<
   object,
-  { at: number; event: string; code: string | null }[]
+  {
+    at: number;
+    event: string;
+    code: string | null;
+    payloadKind: string | null;
+  }[]
 >();
 export function recordNativeConnection(view: object, value: any) {
   const allowed = [
@@ -69,6 +74,31 @@ export function recordNativeConnection(view: object, value: any) {
     'ws_close_too_big',
     'ws_close_try_again_later',
     'ws_close_unsupported_data',
+    'app_lock',
+    'beta_opt_in_changed',
+    'client_failure_account_locked',
+    'client_failure_client_too_old',
+    'client_failure_not_authorized',
+    'client_logout',
+    'client_tab_takeover',
+    'debug_close',
+    'handshake_timeout',
+    'network_offline',
+    'page_unload',
+    'reconnect_socket',
+    'refresh_qr',
+    'registration_failure',
+    'server_failure',
+    'stream_error_ack',
+    'stream_error_code_515',
+    'stream_error_code_516',
+    'stream_error_code_other',
+    'stream_error_device_removed',
+    'stream_error_other',
+    'stream_error_replaced',
+    'stream_error_xml_not_well_formed',
+    'windows_hybrid_disconnect',
+    'windows_hybrid_reconnect',
   ];
   const errorNames = [
     'NotAllowedError',
@@ -88,6 +118,19 @@ export function recordNativeConnection(view: object, value: any) {
   rows.push({
     at: Date.now(),
     event: value.event,
+    payloadKind:
+      value.event === 'socket-disconnected' &&
+      [
+        'undefined',
+        'null',
+        'string',
+        'number',
+        'boolean',
+        'object',
+        'other',
+      ].includes(value.payloadKind)
+        ? value.payloadKind
+        : null,
     code: (value.event === 'socket-disconnected'
       ? closeReasons
       : value.event === 'passkey-surface'

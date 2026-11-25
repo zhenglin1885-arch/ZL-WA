@@ -60,8 +60,13 @@ export function configureNativeConnection(): boolean {
     'TOS_BLOCK',
     'SMB_TOS_BLOCK',
   ];
-  const trace: { at: number; event: string; code: string | null }[] = [];
-  // WASocketCloseReason.CommsCloseReason values, not raw WebSocket.reason text.
+  const trace: {
+    at: number;
+    event: string;
+    code: string | null;
+    payloadKind: string | null;
+  }[] = [];
+  // Public CommsCloseReason and AppCommsCloseReason values. Never copy raw reason text.
   const closeReasons = [
     'client_close_unspecified',
     'connection_aborted',
@@ -85,6 +90,31 @@ export function configureNativeConnection(): boolean {
     'ws_close_too_big',
     'ws_close_try_again_later',
     'ws_close_unsupported_data',
+    'app_lock',
+    'beta_opt_in_changed',
+    'client_failure_account_locked',
+    'client_failure_client_too_old',
+    'client_failure_not_authorized',
+    'client_logout',
+    'client_tab_takeover',
+    'debug_close',
+    'handshake_timeout',
+    'network_offline',
+    'page_unload',
+    'reconnect_socket',
+    'refresh_qr',
+    'registration_failure',
+    'server_failure',
+    'stream_error_ack',
+    'stream_error_code_515',
+    'stream_error_code_516',
+    'stream_error_code_other',
+    'stream_error_device_removed',
+    'stream_error_other',
+    'stream_error_replaced',
+    'stream_error_xml_not_well_formed',
+    'windows_hybrid_disconnect',
+    'windows_hybrid_reconnect',
   ];
   const errorNames = [
     'NotAllowedError',
@@ -133,6 +163,26 @@ export function configureNativeConnection(): boolean {
   };
   const started = Date.now();
   const record = (event: string, value?: unknown) => {
+    let candidate = value;
+    let payloadKind: string | null = null;
+    if (event === 'socket-disconnected') {
+      payloadKind =
+        value === null
+          ? 'null'
+          : ['undefined', 'string', 'number', 'boolean', 'object'].includes(
+                typeof value,
+              )
+            ? typeof value
+            : 'other';
+      if (value && typeof value === 'object') {
+        // Read a data property only; never call arbitrary reason getters.
+        try {
+          candidate = Object.getOwnPropertyDescriptor(value, 'reason')?.value;
+        } catch {
+          candidate = undefined;
+        }
+      }
+    }
     const allowed =
       event === 'socket-disconnected'
         ? closeReasons
@@ -144,13 +194,18 @@ export function configureNativeConnection(): boolean {
     trace.push({
       at: Math.max(0, Date.now() - started),
       event,
-      code: typeof value === 'string' && allowed.includes(value) ? value : null,
+      code:
+        typeof candidate === 'string' && allowed.includes(candidate)
+          ? candidate
+          : null,
+      payloadKind,
     });
     if (trace.length > 64) trace.shift();
     try {
       page.ferdium?.pushWhatsAppConnectionEvent?.({
         event,
         code: trace[trace.length - 1].code,
+        payloadKind,
       });
     } catch {}
   };

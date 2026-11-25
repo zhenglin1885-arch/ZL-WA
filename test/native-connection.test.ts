@@ -177,8 +177,24 @@ it('keeps native close categories through the preload and host boundaries across
     __d: (_name: string, _deps: string[], factory: Function) =>
       factory(null, null, null, null, null, nativeReasons),
   });
-  const reasons = Object.values(nativeReasons.CommsCloseReason);
-  expect(reasons).toHaveLength(22);
+  const nativeAppReasons: any = {};
+  vm.runInNewContext(publicModules.WAWebAppCommsCloseReason.definition, {
+    __d: (_name: string, _deps: string[], factory: Function) =>
+      factory(
+        null,
+        null,
+        () => nativeReasons,
+        () => nativeReasons,
+        null,
+        nativeAppReasons,
+        nativeAppReasons,
+      ),
+  });
+  const reasons = [
+    ...Object.values(nativeReasons.CommsCloseReason),
+    ...Object.values(nativeAppReasons.AppCommsCloseReason),
+  ];
+  expect(reasons).toHaveLength(47);
   try {
     for (const reason of reasons) {
       f.bus.emit('socket_stream_disconnected', reason);
@@ -189,6 +205,19 @@ it('keeps native close categories through the preload and host boundaries across
       );
       expect(diagnostic.nativeConnection.events.at(-1).code).toBe(reason);
     }
+    f.bus.emit('socket_stream_disconnected', {
+      reason: 'registration_failure',
+      secret: 'PRIVATE_TOKEN',
+    });
+    f.bus.emit('socket_stream_disconnected');
+    const reasonGetter = jest.fn(() => {
+      throw Error('PRIVATE_GETTER');
+    });
+    f.bus.emit(
+      'socket_stream_disconnected',
+      Object.defineProperty({}, 'reason', { get: reasonGetter }),
+    );
+    expect(reasonGetter).not.toHaveBeenCalled();
     f.links.emit('link_device_events:passkey_prologue_request');
     f.links.emit('link_device_events:shortcake_prologue_sent');
     f.links.emit('link_device_events:shortcake_verification_code_ready', {
@@ -213,6 +242,9 @@ it('keeps native close categories through the preload and host boundaries across
     );
     expect(result.page.nativeTransitions.map(e => e.code)).toEqual([
       ...reasons,
+      'registration_failure',
+      null,
+      null,
       null,
       null,
       null,
@@ -230,6 +262,14 @@ it('keeps native close categories through the preload and host boundaries across
       'passkey-error',
     ]);
     expect(JSON.stringify({ result, calls })).not.toContain('PRIVATE_');
+    expect(result.page.nativeTransitions[47]).toMatchObject({
+      code: 'registration_failure',
+      payloadKind: 'object',
+    });
+    expect(result.page.nativeTransitions[48]).toMatchObject({
+      code: null,
+      payloadKind: 'undefined',
+    });
   } finally {
     f.dispose();
   }
@@ -308,7 +348,7 @@ it('observes Shortcake events without reading verification secrets or calling th
       `(${readSendDiagnostics.toString()})()`,
       f.context,
     );
-    expect(result.format).toBe(4);
+    expect(result.format).toBe(5);
     expect(result.nativeConnection.linkEventsObserved).toBe(true);
     expect(result.nativeConnection.events.slice(-5)).toEqual([
       expect.objectContaining({ event: 'passkey-request', code: null }),

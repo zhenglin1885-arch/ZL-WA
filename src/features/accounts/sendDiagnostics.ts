@@ -248,6 +248,31 @@ export function readSendDiagnostics() {
     'ws_close_too_big',
     'ws_close_try_again_later',
     'ws_close_unsupported_data',
+    'app_lock',
+    'beta_opt_in_changed',
+    'client_failure_account_locked',
+    'client_failure_client_too_old',
+    'client_failure_not_authorized',
+    'client_logout',
+    'client_tab_takeover',
+    'debug_close',
+    'handshake_timeout',
+    'network_offline',
+    'page_unload',
+    'reconnect_socket',
+    'refresh_qr',
+    'registration_failure',
+    'server_failure',
+    'stream_error_ack',
+    'stream_error_code_515',
+    'stream_error_code_516',
+    'stream_error_code_other',
+    'stream_error_device_removed',
+    'stream_error_other',
+    'stream_error_replaced',
+    'stream_error_xml_not_well_formed',
+    'windows_hybrid_disconnect',
+    'windows_hybrid_reconnect',
   ];
   const errorNames = [
     'NotAllowedError',
@@ -263,7 +288,7 @@ export function readSendDiagnostics() {
     'TimeoutError',
   ];
   return {
-    format: 4,
+    format: 5,
     nativeConnection: {
       source: ['backend-event-bus', 'legacy-socket', 'unavailable'].includes(
         native?.source,
@@ -303,6 +328,19 @@ export function readSendDiagnostics() {
               ? Math.min(row.at, 86400000)
               : 0,
           event: row.event,
+          payloadKind:
+            row.event === 'socket-disconnected' &&
+            [
+              'undefined',
+              'null',
+              'string',
+              'number',
+              'boolean',
+              'object',
+              'other',
+            ].includes(row.payloadKind)
+              ? row.payloadKind
+              : null,
           code: (row.event === 'socket-disconnected'
             ? closeReasons
             : row.event === 'passkey-surface'

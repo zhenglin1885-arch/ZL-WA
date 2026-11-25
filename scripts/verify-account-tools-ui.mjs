@@ -64,9 +64,9 @@ const vm = async code =>
 const queueExpression = `require('./features/accountTools/bulkRuntime').getBulkQueue(window.ferdium.stores)`;
 const service = id =>
   `window.ferdium.stores.services.one(${JSON.stringify(id)})`;
-const guest = async (id, code) => {
+const guest = async (id, code, userGesture = false) => {
   const envelope = await evaluate(
-    `${service(id)}.webview.executeJavaScript(${JSON.stringify(`(async()=>{try{return {ok:true,value:await eval(${JSON.stringify(code)})}}catch(error){return {ok:false,error:String(error.stack||error)}}})()`)})`,
+    `${service(id)}.webview.executeJavaScript(${JSON.stringify(`(async()=>{try{return {ok:true,value:await eval(${JSON.stringify(code)})}}catch(error){return {ok:false,error:String(error.stack||error)}}})()`)},${Boolean(userGesture)})`,
   );
   if (!envelope.ok) throw new Error(envelope.error);
   return envelope.value;

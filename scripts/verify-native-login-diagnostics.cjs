@@ -52,9 +52,10 @@ app
       E.prototype.trigger=function(k,...args){for(const fn of [...(this.events.get(k)||[])])fn(...args)};
       const modules={};const exports={};
       const babelHelpers={inheritsLoose(c,p){c.prototype=Object.create(p.prototype);c.prototype.constructor=c;Object.setPrototypeOf(c,p)}};
-      function __d(name,deps,factory){const out={};factory(window,()=>{},n=>E,n=>E,{},out,out);modules[name]={isInitialized:true,exports:out};exports[name]=out}
+      function __d(name,deps,factory){const out={};factory(window,()=>{},n=>modules[n]?.exports||E,n=>modules[n]?.exports||E,{},out,out);modules[name]={isInitialized:true,exports:out};exports[name]=out}
       ${fixtures.WAWebLinkDeviceEvents.definition}
       ${fixtures.WASocketCloseReason.definition}
+      ${fixtures.WAWebAppCommsCloseReason.definition}
       const bus=Object.assign(new E(),{socketState:'PAIRING',isMainStreamReadyMd:false});
       modules.WAWebBackendEventBus={isInitialized:true,exports:{BackendEventBus:bus}};
       window.require=name=>name==='__debug'?{modulesMap:modules}:modules[name]?.exports;
@@ -79,8 +80,11 @@ app
         await new Promise(resolve=>setTimeout(resolve,600));
         if (window.__zlWaNativeConnection.read().passkeySurface!==state) throw Error('Passkey surface not observed: '+state);
       }
-      const reasons=Object.values(exports.WASocketCloseReason.CommsCloseReason);
+      const reasons=[...Object.values(exports.WASocketCloseReason.CommsCloseReason),...Object.values(exports.WAWebAppCommsCloseReason.AppCommsCloseReason)];
       for(const reason of reasons)bus.trigger('socket_stream_disconnected',reason);
+      bus.trigger('socket_stream_disconnected',{reason:'registration_failure',secret:'PRIVATE_TOKEN'});
+      bus.trigger('socket_stream_disconnected');
+      bus.trigger('socket_stream_disconnected',Object.defineProperty({},'reason',{get(){throw Error('Private getter called')}}));
       bus.trigger('socket_stream_disconnected','PRIVATE_RAW_REASON');
       const diagnostic=(${readSendDiagnostics.toString()})();
       const unchanged=original.fetch===fetch&&original.ws===WebSocket&&original.get===navigator.credentials.get&&original.open===indexedDB.open&&original.start===performance.timeOrigin;
@@ -88,7 +92,7 @@ app
       return {diagnostic,host,reasons,unchanged};
     })()`);
       assert.equal(result.unchanged, true);
-      assert.equal(result.diagnostic.format, 4);
+      assert.equal(result.diagnostic.format, 5);
       assert.equal(result.diagnostic.nativeConnection.linkEventsObserved, true);
       const events = result.diagnostic.nativeConnection.events;
       for (const name of [
@@ -102,7 +106,7 @@ app
           e => e.event === 'passkey-error' && e.code === 'NotAllowedError',
         ),
       );
-      assert.equal(result.reasons.length, 22);
+      assert.equal(result.reasons.length, 47);
       for (const code of [
         'present',
         'prompt',
@@ -124,9 +128,25 @@ app
           reason,
         );
       assert.equal(events.at(-1).code, null);
+      assert(
+        events.some(
+          e =>
+            e.event === 'socket-disconnected' &&
+            e.code === 'registration_failure' &&
+            e.payloadKind === 'object',
+        ),
+      );
+      assert(
+        events.some(
+          e =>
+            e.event === 'socket-disconnected' &&
+            e.code === null &&
+            e.payloadKind === 'undefined',
+        ),
+      );
       assert(!JSON.stringify(result).includes('PRIVATE_'));
       console.log(
-        'PASS compiled native observer: all 22 official close categories and four Shortcake events captured; no browser API replacement, reload or private values',
+        'PASS compiled native observer: all 47 transport/application close categories and four Shortcake events captured; no browser API replacement, reload or private values',
       );
       const build = JSON.parse(
         readFileSync(
@@ -140,6 +160,10 @@ app
         commit: process.env.GITHUB_SHA || build.gitHashShort,
         platform: process.platform,
         officialCloseCategories: result.reasons.length,
+        transportCloseCategories: 22,
+        applicationCloseCategories: 25,
+        structuredClosePayloadVerified: true,
+        missingPayloadKindVerified: true,
         passkeyEvents: 4,
         passkeySurfaceStates: 7,
         compiledGuestVerified: true,

@@ -73,6 +73,7 @@ export async function verifyServiceDownloads({
             else if(mode==='named')window.open(url,'_blank');
             else {const p=window.open();p.document.body.textContent='Preparing media';if(mode==='delayed-href')p.location.href=url;else p.location=url}
             return true})()`,
+            true, // Match the real user gesture that opens a preparation popup.
           );
           completed += 1;
           await wait(
