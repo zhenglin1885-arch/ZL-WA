@@ -131,10 +131,10 @@ jobs:
           import json,pathlib,hashlib
           r=json.load(open('qa/web-login-diagnostics-test18.json'))
           assert r['sourceBase']=='0f85fe9f46ebadedd8f1eb63588702d86b945f49'
-          assert r['typecheck'] and r['unitTests']['passed']==979 and r['unitTests']['suitesPassed']==89 and r['unitTests']['skipped']==2
+          assert r['typecheck'] and r['unitTests']['passed']==980 and r['unitTests']['suitesPassed']==89 and r['unitTests']['skipped']==2
           assert r['existingGuiPassGroups']==51 and r['originalWebUiPreserved'] and not r['realPhonePairingVerified']
           assert r['diagnosticRegressionReproducedBeforeFix'] and r['compiledGuestVerified']
-          assert r['diagnosticsOnly'] and r['officialCloseCategories']==22 and r['passkeyEvents']==4
+          assert r['diagnosticsOnly'] and r['officialCloseCategories']==22 and r['passkeyEvents']==4 and r['passkeySurfaceStates']==7
           assert set(pathlib.Path('changed.txt').read_text().splitlines())==set(r['sourceFiles'])
           for p,d in r['sourceFiles'].items():assert hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()==d,p
           for p,d in r['unchangedBusinessFiles'].items():
@@ -156,7 +156,7 @@ jobs:
           assert report['commit']==os.environ['GITHUB_SHA'] and report['nativePackagedStartup'] and report['mainProcessResumeReload']
           login=json.loads((root/'windows-login-diagnostics-verification.json').read_text(encoding='utf-8-sig'))
           assert login['commit']==os.environ['GITHUB_SHA'] and login['platform']=='win32'
-          assert login['officialCloseCategories']==22 and login['passkeyEvents']==4 and login['compiledGuestVerified'] and login['browserApisUnchanged'] and not login['realPhonePairingVerified']
+          assert login['officialCloseCategories']==22 and login['passkeyEvents']==4 and login['passkeySurfaceStates']==7 and login['compiledGuestVerified'] and login['browserApisUnchanged'] and not login['realPhonePairingVerified']
           names={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'}
           assert {p.name for p in root.glob('*.exe')}==names
           for n in names:
@@ -171,7 +171,7 @@ jobs:
           Windows 7.3.9 原网页登录诊断测试版 test18；本包只补齐证据，不宣称已修复真实账号关联失败。
           继续使用原 WhatsApp 网页和界面，不含“使用新连接（测试）”或“打开官方登录窗口”。不改代理、SDK、依赖、发送规则、群管理、备注、翻译或任务队列。
           新增官方通行密钥关联事件观察，保留原生 22 类连接关闭原因；诊断 format=4，使用原“代理 → 检查并复制发送诊断”按钮。跨导航保留同一账号的有限事件，不读取二维码、验证码、挑战、凭据或聊天。
-          类型检查、89 组/979 项测试通过，2 项既有跳过；51 组原功能界面回归、编译后原生观察、Windows 安装升级、成品 SDK、原生启动与恢复验证均通过。报告随包提供。
+          类型检查、89 组/980 项测试通过，2 项既有跳过；51 组原功能界面回归、编译后原生观察、Windows 安装升级、成品 SDK、原生启动与恢复验证均通过。报告随包提供。
           安装后在原界面关联，失败后不要手动刷新，立即复制诊断发回。独立未签名测试包，不推送正式更新，未发布 Mac。
           NOTES
           gh release create test-7.3.9-web-diagnostics-18 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 原网页登录诊断测试版 test18' --notes-file /tmp/notes.md

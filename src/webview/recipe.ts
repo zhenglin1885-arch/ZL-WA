@@ -139,6 +139,15 @@ contextBridge.exposeInMainWorld('ferdium', {
     event: string;
     code: string | null;
   }) => {
+    const passkeySurfaces = [
+      'absent',
+      'prompt',
+      'pending',
+      'waiting-for-phone',
+      'verification',
+      'error',
+      'present',
+    ];
     const closeReasons = [
       'client_close_unspecified',
       'connection_aborted',
@@ -193,6 +202,7 @@ contextBridge.exposeInMainWorld('ferdium', {
         'phone-link-hello',
         'phone-link-refresh',
         'passkey-request',
+        'passkey-surface',
         'passkey-prologue-sent',
         'passkey-verification-ready',
         'passkey-error',
@@ -202,21 +212,23 @@ contextBridge.exposeInMainWorld('ferdium', {
         event: value.event,
         code: (value.event === 'socket-disconnected'
           ? closeReasons
-          : value.event === 'passkey-error'
-            ? errorNames
-            : [
-                'CONNECTED',
-                'OPENING',
-                'PAIRING',
-                'UNPAIRED',
-                'UNPAIRED_IDLE',
-                'UNLAUNCHED',
-                'CONFLICT',
-                'TIMEOUT',
-                'PROXYBLOCK',
-                'TOS_BLOCK',
-                'SMB_TOS_BLOCK',
-              ]
+          : value.event === 'passkey-surface'
+            ? passkeySurfaces
+            : value.event === 'passkey-error'
+              ? errorNames
+              : [
+                  'CONNECTED',
+                  'OPENING',
+                  'PAIRING',
+                  'UNPAIRED',
+                  'UNPAIRED_IDLE',
+                  'UNLAUNCHED',
+                  'CONFLICT',
+                  'TIMEOUT',
+                  'PROXYBLOCK',
+                  'TOS_BLOCK',
+                  'SMB_TOS_BLOCK',
+                ]
         ).includes(value.code || '')
           ? value.code
           : null,

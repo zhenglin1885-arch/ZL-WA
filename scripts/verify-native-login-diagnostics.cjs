@@ -65,6 +65,20 @@ app
       const secret=new Proxy({},{get(){throw Error('Private pairing argument inspected')}});
       links.triggerShortcakeVerificationCodeReady(secret,secret);
       links.triggerShortcakeError(new DOMException('PRIVATE_CHALLENGE','NotAllowedError'));
+      const surfaceStates = [
+        ['present', ''],
+        ['prompt', '<div data-testid="shortcake_passkey_prompt_card"></div>'],
+        ['pending', '<button data-testid="shortcake_passkey_continue_button" disabled></button>'],
+        ['waiting-for-phone', '<div data-testid="shortcake_waiting_for_phone_card"></div>'],
+        ['verification', '<div data-testid="shortcake_code_matching_card"><span data-testid="shortcake_verification_code_display">PRIVATE_CODE</span></div>'],
+        ['error', '<div data-testid="shortcake_passkey_error_message">PRIVATE_ERROR</div>'],
+        ['absent', null],
+      ];
+      for (const [state, content] of surfaceStates) {
+        document.body.innerHTML=content===null ? '' : '<div data-testid="shortcake_passkey_screen">'+content+'</div>';
+        await new Promise(resolve=>setTimeout(resolve,600));
+        if (window.__zlWaNativeConnection.read().passkeySurface!==state) throw Error('Passkey surface not observed: '+state);
+      }
       const reasons=Object.values(exports.WASocketCloseReason.CommsCloseReason);
       for(const reason of reasons)bus.trigger('socket_stream_disconnected',reason);
       bus.trigger('socket_stream_disconnected','PRIVATE_RAW_REASON');
@@ -89,6 +103,19 @@ app
         ),
       );
       assert.equal(result.reasons.length, 22);
+      for (const code of [
+        'present',
+        'prompt',
+        'pending',
+        'waiting-for-phone',
+        'verification',
+        'error',
+        'absent',
+      ])
+        assert(
+          events.some(e => e.event === 'passkey-surface' && e.code === code),
+          code,
+        );
       for (const reason of result.reasons)
         assert(
           events.some(
@@ -114,6 +141,7 @@ app
         platform: process.platform,
         officialCloseCategories: result.reasons.length,
         passkeyEvents: 4,
+        passkeySurfaceStates: 7,
         compiledGuestVerified: true,
         browserApisUnchanged: true,
         realPhonePairingVerified: false,

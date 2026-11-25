@@ -99,14 +99,48 @@ export function configureNativeConnection(): boolean {
     'ConstraintError',
     'TimeoutError',
   ];
+  const passkeySurfaces = [
+    'absent',
+    'prompt',
+    'pending',
+    'waiting-for-phone',
+    'verification',
+    'error',
+    'present',
+  ];
+  const passkeySurface = () => {
+    if (!document.querySelector('[data-testid="shortcake_passkey_screen"]'))
+      return 'absent';
+    if (
+      document.querySelector('[data-testid="shortcake_passkey_error_message"]')
+    )
+      return 'error';
+    if (document.querySelector('[data-testid="shortcake_code_matching_card"]'))
+      return 'verification';
+    if (
+      document.querySelector('[data-testid="shortcake_waiting_for_phone_card"]')
+    )
+      return 'waiting-for-phone';
+    if (
+      document.querySelector(
+        '[data-testid="shortcake_passkey_continue_button"]:disabled',
+      )
+    )
+      return 'pending';
+    if (document.querySelector('[data-testid="shortcake_passkey_prompt_card"]'))
+      return 'prompt';
+    return 'present';
+  };
   const started = Date.now();
   const record = (event: string, value?: unknown) => {
     const allowed =
       event === 'socket-disconnected'
         ? closeReasons
-        : event === 'passkey-error'
-          ? errorNames
-          : states;
+        : event === 'passkey-surface'
+          ? passkeySurfaces
+          : event === 'passkey-error'
+            ? errorNames
+            : states;
     trace.push({
       at: Math.max(0, Date.now() - started),
       event,
@@ -140,6 +174,7 @@ export function configureNativeConnection(): boolean {
           ? bus.isMainStreamReadyMd
           : null,
       linkEventsObserved: Boolean(boundLinks),
+      passkeySurface: passkeySurface(),
     };
   };
   const ready = async () => {
@@ -181,6 +216,7 @@ export function configureNativeConnection(): boolean {
     boundLinks: any,
     checking = false,
     disposed = false;
+  let previousPasskeySurface = 'absent';
   const check = async () => {
     if (disposed || checking) return;
     checking = true;
@@ -204,6 +240,11 @@ export function configureNativeConnection(): boolean {
   };
   const observe = () => {
     if (disposed) return;
+    const surface = passkeySurface();
+    if (surface !== previousPasskeySurface) {
+      previousPasskeySurface = surface;
+      record('passkey-surface', surface);
+    }
     const bus = backend();
     if (bus && bus !== boundBus) {
       boundBus = bus;

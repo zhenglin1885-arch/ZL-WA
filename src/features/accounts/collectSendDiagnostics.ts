@@ -19,6 +19,7 @@ export function recordNativeConnection(view: object, value: any) {
     'phone-link-hello',
     'phone-link-refresh',
     'passkey-request',
+    'passkey-surface',
     'passkey-prologue-sent',
     'passkey-verification-ready',
     'passkey-error',
@@ -35,6 +36,15 @@ export function recordNativeConnection(view: object, value: any) {
     'PROXYBLOCK',
     'TOS_BLOCK',
     'SMB_TOS_BLOCK',
+  ];
+  const passkeySurfaces = [
+    'absent',
+    'prompt',
+    'pending',
+    'waiting-for-phone',
+    'verification',
+    'error',
+    'present',
   ];
   const closeReasons = [
     'client_close_unspecified',
@@ -80,9 +90,11 @@ export function recordNativeConnection(view: object, value: any) {
     event: value.event,
     code: (value.event === 'socket-disconnected'
       ? closeReasons
-      : value.event === 'passkey-error'
-        ? errorNames
-        : states
+      : value.event === 'passkey-surface'
+        ? passkeySurfaces
+        : value.event === 'passkey-error'
+          ? errorNames
+          : states
     ).includes(value.code)
       ? value.code
       : null,

@@ -216,6 +216,15 @@ export function readSendDiagnostics() {
           code: eventCodes.includes(e.code) ? e.code : null,
         }))
     : [];
+  const passkeySurfaces = [
+    'absent',
+    'prompt',
+    'pending',
+    'waiting-for-phone',
+    'verification',
+    'error',
+    'present',
+  ];
   const closeReasons = [
     'client_close_unspecified',
     'connection_aborted',
@@ -263,6 +272,9 @@ export function readSendDiagnostics() {
         : null,
       mainReady: bool(native?.mainReady),
       linkEventsObserved: bool(native?.linkEventsObserved),
+      passkeySurface: passkeySurfaces.includes(native?.passkeySurface)
+        ? native.passkeySurface
+        : null,
       events: (read(() => page.__zlWaNativeConnection.trace) || [])
         .slice(-64)
         .filter((row: any) =>
@@ -279,6 +291,7 @@ export function readSendDiagnostics() {
             'phone-link-hello',
             'phone-link-refresh',
             'passkey-request',
+            'passkey-surface',
             'passkey-prologue-sent',
             'passkey-verification-ready',
             'passkey-error',
@@ -292,9 +305,11 @@ export function readSendDiagnostics() {
           event: row.event,
           code: (row.event === 'socket-disconnected'
             ? closeReasons
-            : row.event === 'passkey-error'
-              ? errorNames
-              : [...eventCodes, 'UNLAUNCHED']
+            : row.event === 'passkey-surface'
+              ? passkeySurfaces
+              : row.event === 'passkey-error'
+                ? errorNames
+                : [...eventCodes, 'UNLAUNCHED']
           ).includes(row.code)
             ? row.code
             : null,

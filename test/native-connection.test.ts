@@ -198,6 +198,7 @@ it('keeps native close categories through the preload and host boundaries across
       name: 'NotAllowedError',
       message: 'PRIVATE_MESSAGE',
     });
+    bridge({ event: 'passkey-surface', code: 'error' });
     f.bus.emit('socket_stream_disconnected', 'PRIVATE_REASON');
     bridge({ event: 'PRIVATE_EVENT', code: 'ws_close_normal' });
     bridge({
@@ -216,11 +217,12 @@ it('keeps native close categories through the preload and host boundaries across
       null,
       null,
       'NotAllowedError',
+      'error',
       null,
       null,
     ]);
     expect(
-      result.page.nativeTransitions.slice(-6, -2).map(e => e.event),
+      result.page.nativeTransitions.slice(-7, -3).map(e => e.event),
     ).toEqual([
       'passkey-request',
       'passkey-prologue-sent',
@@ -228,6 +230,51 @@ it('keeps native close categories through the preload and host boundaries across
       'passkey-error',
     ]);
     expect(JSON.stringify({ result, calls })).not.toContain('PRIVATE_');
+  } finally {
+    f.dispose();
+  }
+});
+
+it('records caught official passkey error surfaces without reading verification text', () => {
+  const f = fixture();
+  let selectors = new Set<string>();
+  const privateElement = new Proxy(
+    {},
+    {
+      get() {
+        throw Error('Verification text was read');
+      },
+    },
+  );
+  f.context.document.querySelector = jest.fn((selector: string) =>
+    selectors.has(selector) ? privateElement : null,
+  );
+  const poll = f.context.setInterval.mock.calls.at(-1)[0];
+  try {
+    selectors = new Set([
+      '[data-testid="shortcake_passkey_screen"]',
+      '[data-testid="shortcake_passkey_prompt_card"]',
+    ]);
+    poll();
+    expect(f.page.__zlWaNativeConnection.read().passkeySurface).toBe('prompt');
+    selectors.add('[data-testid="shortcake_passkey_error_message"]');
+    poll();
+    expect(f.page.__zlWaNativeConnection.trace.at(-1)).toMatchObject({
+      event: 'passkey-surface',
+      code: 'error',
+    });
+    const diagnostic = vm.runInContext(
+      `(${readSendDiagnostics.toString()})()`,
+      f.context,
+    );
+    expect(diagnostic.nativeConnection.passkeySurface).toBe('error');
+    expect(diagnostic.nativeConnection.events.at(-1).code).toBe('error');
+    selectors.clear();
+    poll();
+    expect(f.page.__zlWaNativeConnection.trace.at(-1).code).toBe('absent');
+    expect(
+      f.context.document.querySelector.mock.calls.flat().join(' '),
+    ).not.toContain('shortcake_verification_code_display');
   } finally {
     f.dispose();
   }
