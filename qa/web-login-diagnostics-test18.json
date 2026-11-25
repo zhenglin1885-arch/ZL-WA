@@ -5,14 +5,14 @@
   "typecheck": true,
   "unitTests": {
     "suitesPassed": 89,
-    "passed": 979,
+    "passed": 980,
     "skipped": 2
   },
   "existingGuiPassGroups": 51,
   "originalWebUiPreserved": true,
   "realPhonePairingVerified": false,
   "diagnosticRegressionReproducedBeforeFix": true,
-  "baselineNewRegressionTestsFailed": 3,
+  "baselineNewRegressionTestsFailed": 4,
   "compiledGuestVerified": true,
   "officialCloseCategories": 22,
   "passkeyEvents": 4,
@@ -35,18 +35,23 @@
     "pnpm-lock.yaml": "b5f094fd617ce7a97ab0be2c228033f005390dbc90b5e94ca86e959800dd4bc5"
   },
   "sourceFiles": {
-    ".github/workflows/windows-web-login-diagnostics-test18.yml": "064a68a3cc12d24943636d219a3fedf95a18a019da7d0d1ee26a2f65db975d78",
-    "docs/WEB-LOGIN-DIAGNOSTICS-TEST18.md": "cfd75833f184eac3a129a34fed5cec9e48e2f9298a2befb33a2a292ee7269963",
+    ".github/workflows/windows-web-login-diagnostics-test18.yml": "1bf9227cde0a73d3299fac293ca3b287c5176ff3f335e17bf71ed5da1390dcf5",
+    "docs/WEB-LOGIN-DIAGNOSTICS-TEST18.md": "e3a2ac8bf058f2cb77fc16c10ba695f04689cbf12b8f4c0ff3441e2110b7ef21",
     "scripts/account-tools-cdp.mjs": "6ea382145d779718078314773f7b850767388c088f509f845868e4259a5a579b",
     "scripts/verify-guest-build.cjs": "5f6ad14dd93a8c6ab7ee1f322c54687309ba3e2ad17b397046819d025a5de84d",
-    "scripts/verify-native-login-diagnostics.cjs": "30c1ac6b122412c54ffb46a0983f6fe100a78d26bd4ad484c9cb60c0eadf2303",
-    "src/features/accounts/collectSendDiagnostics.ts": "3e70225edbdd1147e7010512c3f657d5835983d526e0777fa20efc154d78c50e",
-    "src/features/accounts/nativeConnection.ts": "3a44459b7996faacc6623833eec7ae0a8a2dc5c6b6ae71d6a0910bf6a94e370f",
+    "scripts/verify-native-login-diagnostics.cjs": "25018844957c3d043ce82fb68705ad1f70e4401836b5ec764f4ba38c5ff89695",
+    "scripts/verify-send-mode-ui.mjs": "e55f54d34aa0dc5388ebc2135ce275f466ee1bd1ac9ed57010cb797463dc2314",
+    "src/features/accounts/collectSendDiagnostics.ts": "2b534ff4379beef986d9af0bb8bc0bc94b7fe6c806c1a9bc9341f4bbd51ec90b",
+    "src/features/accounts/nativeConnection.ts": "546709b5d9082b62b473b7d9caa411f3ab00820b25bca15b5a530621817111f7",
     "src/features/accounts/pairingDiagnostics.ts": "cf81f317e6e3f7dcc5567c5941eb552484c13717a75b309f1c335919a714da61",
-    "src/features/accounts/sendDiagnostics.ts": "1abbbe0e53f005e6c9d0b12a004c0cb54210845eb2ce88d810097f86cad2fe95",
-    "src/webview/recipe.ts": "70c7c7a07f0b07f0a1196f7b2552b16ba5ac1847addffe2bd52db71c9ce93461",
+    "src/features/accounts/sendDiagnostics.ts": "b29f65ac604dc29c7a28484d4f54bb08fc48053bbacb0e78ff419cb2b1874328",
+    "src/webview/recipe.ts": "0c1635556e46e238dfa7b156f0b9bcc6ebd9583f7c1ad803d34c8fc6ff2e974a",
     "test/fixtures/whatsapp-native-link-events.json": "82e163f583c5ce10c78963166a14a1d9db48c07965893a8dbe2668a9cc1bae97",
-    "test/native-connection.test.ts": "d86672d2a2714085ee8d0de2f6f467aa6b15941a4b92e9b3344a18cc23f2d056"
+    "test/native-connection.test.ts": "51ea7cbdd3f33a6f9a997bc1a92280afcfd10741ecaf791d00b91e3b797dc8c4"
   },
-  "compiledOriginalGuestChecks": true
+  "compiledOriginalGuestChecks": true,
+  "passkeySurfaceStates": 7,
+  "caughtOfficialPasskeyFailureObserved": true,
+  "nativeKeyboardHarnessWaitsForTaskTurn": true,
+  "nativeKeyboardStabilityRunsPassed": 3
 }

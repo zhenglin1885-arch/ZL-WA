@@ -23,7 +23,7 @@ try {
         ).defaultTools().translation;
         const partition = session.fromPartition('qa-send-mode-' + Date.now());
         const html =
-          '<!doctype html><meta charset="utf-8"><div role="main" id="main"><header><span title="QA recipient">QA</span></header><form><footer><div id="draft" contenteditable="true" role="textbox" data-testid="conversation-compose-box-input" style="white-space:pre-wrap;min-height:60px">hello</div><button type="button" aria-label="Send">Send</button></footer></form></div><input id="search"><script>window.sends=0;document.querySelector("button").onclick=()=>window.sends++;document.addEventListener("keydown",e=>{if(e.target.closest("footer")&&e.key==="Enter"&&!e.shiftKey){e.preventDefault();document.querySelector("button").click()}});</script>';
+          '<!doctype html><meta charset="utf-8"><div role="main" id="main"><header><span title="QA recipient">QA</span></header><form><footer><div id="draft" contenteditable="true" role="textbox" data-testid="conversation-compose-box-input" style="white-space:pre-wrap;min-height:60px">hello</div><button type="button" aria-label="Send">Send</button></footer></form></div><input id="search"><script>window.sends=0;window.__qaKeys=[];window.addEventListener("keydown",e=>window.__qaKeys.push({key:e.key,shift:e.shiftKey,target:e.target.id,repeat:e.repeat}),true);document.querySelector("button").onclick=()=>window.sends++;document.addEventListener("keydown",e=>{if(e.target.closest("footer")&&e.key==="Enter"&&!e.shiftKey){e.preventDefault();document.querySelector("button").click()}});</script>';
         await partition.protocol.handle(
           'https',
           () =>
@@ -90,6 +90,10 @@ try {
                 modifiers: shift ? 8 : 0,
               },
             );
+            // Native input and resulting click handlers cross renderer task
+            // queues. Observe the same gesture after that task turn; never
+            // dispatch another key merely because an assertion ran too early.
+            await js('new Promise(resolve => setTimeout(resolve, 50))');
           };
           for (const host of ['web.whatsapp.com', 'business.facebook.com']) {
             await win.loadURL('https://' + host + '/');
@@ -97,7 +101,15 @@ try {
             await js('document.querySelector("#draft").focus()');
             await press();
             if ((await js('sends')) !== 1)
-              throw Error(host + ' changed default Enter');
+              throw Error(
+                host +
+                  ' changed default Enter: ' +
+                  JSON.stringify(
+                    await js(
+                      '({sends,keys:window.__qaKeys,focus:document.hasFocus(),active:document.activeElement?.id})',
+                    ),
+                  ),
+              );
             await js(`(${configure.toString()})('shift-enter')`);
             await press();
             if ((await js('sends')) !== 1)
@@ -168,7 +180,12 @@ try {
                   jobs.length +
                   ', sends=' +
                   (await js('sends')) +
-                  ')',
+                  ') fixture=' +
+                  JSON.stringify(
+                    await js(
+                      `({focused:document.hasFocus(),active:document.activeElement?.id,mode:window.__zlSendMode?.mode,translation:window.__zlTranslation?.inspectComposer?.(),ready:window.__zlTranslation?.ready,busy:window.__zlTranslation?.busy,buttons:[...document.querySelectorAll('button')].map(b=>({label:b.getAttribute('aria-label'),rects:b.getClientRects().length,disabled:b.disabled}))})`,
+                    ),
+                  ),
               );
             const job = jobs[0];
             await js(

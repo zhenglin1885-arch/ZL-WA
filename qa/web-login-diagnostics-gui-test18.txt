@@ -50,17 +50,26 @@ PASS real service downloads: voice/image/document, direct anchors, unnamed/named
 PASS original accounts preserved; all created account fixtures removed
 PASS original forwarding history restored after isolated GUI tests
 
+
 PASS actual Electron guest: login/loading and repeated pairing samples do not invoke native lazy modules, initialize SDK or reload
 {"results":[{"state":"loading","status":"loading","socket":null,"canInitialize":false,"translationRequests":0},{"state":"login","status":"logged-out","socket":null,"canInitialize":false,"translationRequests":0}],"nativeLoaderCalls":0,"errorReports":0,"noReload":true,"realPhonePairingVerified":false}
 
+
 PASS native pairing observation records QR rotation and bounded error types without QR contents, browser API replacement, storage mutation or reload
 {"qrRefreshObserved":3,"exceptionTypesObserved":true,"nativeBrowserApisUnchanged":true,"noPageReload":true,"noQrAccountOrChatContent":true}
+
 
 PASS native Enter/Shift+Enter modes, newline/undo input path, IME, held keys, disabled buttons, live switching, Facebook and WhatsApp translation two-step confirmation
 {"web.whatsapp.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"business.facebook.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"textTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"quoteTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"mediaTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"editTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true}}
 
 
-PASS compiled native observer: all 22 official close categories and four Shortcake events captured; no browser API replacement, reload or private values
-{"commit":"c48e41b","platform":"linux","officialCloseCategories":22,"passkeyEvents":4,"compiledGuestVerified":true,"browserApisUnchanged":true,"realPhonePairingVerified":false}
+PASS native Enter/Shift+Enter modes, newline/undo input path, IME, held keys, disabled buttons, live switching, Facebook and WhatsApp translation two-step confirmation
+{"web.whatsapp.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"business.facebook.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"textTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"quoteTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"mediaTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"editTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true}}
 
+
+PASS native Enter/Shift+Enter modes, newline/undo input path, IME, held keys, disabled buttons, live switching, Facebook and WhatsApp translation two-step confirmation
+{"web.whatsapp.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"business.facebook.com":{"defaultEnter":true,"enterNewline":true,"nativeUndo":true,"shiftEnterSingleSend":true,"heldKeySuppressed":true,"imeIgnored":true,"disabledButtonIgnored":true,"liveModeSwitch":true},"textTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"quoteTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"mediaTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true},"editTranslation":{"firstShortcutOnlyPreviews":true,"plainEnterDoesNotConfirm":true,"secondShortcutConfirmsExactlyOnce":true}}
+
+
+{"platform": "linux", "officialCloseCategories": 22, "passkeyEvents": 4, "passkeySurfaceStates": 7, "compiledGuestVerified": true, "browserApisUnchanged": true, "realPhonePairingVerified": false}
 PASS compiled guest functions execute independently of their host module
