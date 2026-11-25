@@ -140,6 +140,20 @@ contextBridge.exposeInMainWorld('ferdium', {
     code: string | null;
     payloadKind?: string | null;
   }) => {
+    const registrationStages = [
+      'pair-success',
+      'canonical-start',
+      'canonical-missing-jid',
+      'canonical-missing-metadata',
+      'canonical-nonce-decryption-failed',
+      'canonical-nonce-parse-failed',
+      'canonical-success',
+      'canonical-token-exchange-failed',
+      'canonical-unexpected-error',
+      'canonical-exchange-start',
+      'canonical-exchange-success',
+      'canonical-exchange-failed',
+    ];
     const passkeySurfaces = [
       'absent',
       'prompt',
@@ -229,6 +243,7 @@ contextBridge.exposeInMainWorld('ferdium', {
         'phone-link-refresh',
         'passkey-request',
         'passkey-surface',
+        'registration-stage',
         'passkey-prologue-sent',
         'passkey-verification-ready',
         'passkey-error',
@@ -251,23 +266,25 @@ contextBridge.exposeInMainWorld('ferdium', {
             : null,
         code: (value.event === 'socket-disconnected'
           ? closeReasons
-          : value.event === 'passkey-surface'
-            ? passkeySurfaces
-            : value.event === 'passkey-error'
-              ? errorNames
-              : [
-                  'CONNECTED',
-                  'OPENING',
-                  'PAIRING',
-                  'UNPAIRED',
-                  'UNPAIRED_IDLE',
-                  'UNLAUNCHED',
-                  'CONFLICT',
-                  'TIMEOUT',
-                  'PROXYBLOCK',
-                  'TOS_BLOCK',
-                  'SMB_TOS_BLOCK',
-                ]
+          : value.event === 'registration-stage'
+            ? registrationStages
+            : value.event === 'passkey-surface'
+              ? passkeySurfaces
+              : value.event === 'passkey-error'
+                ? errorNames
+                : [
+                    'CONNECTED',
+                    'OPENING',
+                    'PAIRING',
+                    'UNPAIRED',
+                    'UNPAIRED_IDLE',
+                    'UNLAUNCHED',
+                    'CONFLICT',
+                    'TIMEOUT',
+                    'PROXYBLOCK',
+                    'TOS_BLOCK',
+                    'SMB_TOS_BLOCK',
+                  ]
         ).includes(value.code || '')
           ? value.code
           : null,

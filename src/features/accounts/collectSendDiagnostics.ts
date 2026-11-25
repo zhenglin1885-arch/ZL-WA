@@ -25,6 +25,7 @@ export function recordNativeConnection(view: object, value: any) {
     'phone-link-refresh',
     'passkey-request',
     'passkey-surface',
+    'registration-stage',
     'passkey-prologue-sent',
     'passkey-verification-ready',
     'passkey-error',
@@ -41,6 +42,20 @@ export function recordNativeConnection(view: object, value: any) {
     'PROXYBLOCK',
     'TOS_BLOCK',
     'SMB_TOS_BLOCK',
+  ];
+  const registrationStages = [
+    'pair-success',
+    'canonical-start',
+    'canonical-missing-jid',
+    'canonical-missing-metadata',
+    'canonical-nonce-decryption-failed',
+    'canonical-nonce-parse-failed',
+    'canonical-success',
+    'canonical-token-exchange-failed',
+    'canonical-unexpected-error',
+    'canonical-exchange-start',
+    'canonical-exchange-success',
+    'canonical-exchange-failed',
   ];
   const passkeySurfaces = [
     'absent',
@@ -133,11 +148,13 @@ export function recordNativeConnection(view: object, value: any) {
         : null,
     code: (value.event === 'socket-disconnected'
       ? closeReasons
-      : value.event === 'passkey-surface'
-        ? passkeySurfaces
-        : value.event === 'passkey-error'
-          ? errorNames
-          : states
+      : value.event === 'registration-stage'
+        ? registrationStages
+        : value.event === 'passkey-surface'
+          ? passkeySurfaces
+          : value.event === 'passkey-error'
+            ? errorNames
+            : states
     ).includes(value.code)
       ? value.code
       : null,

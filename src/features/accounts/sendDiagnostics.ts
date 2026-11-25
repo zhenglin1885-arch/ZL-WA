@@ -216,6 +216,20 @@ export function readSendDiagnostics() {
           code: eventCodes.includes(e.code) ? e.code : null,
         }))
     : [];
+  const registrationStages = [
+    'pair-success',
+    'canonical-start',
+    'canonical-missing-jid',
+    'canonical-missing-metadata',
+    'canonical-nonce-decryption-failed',
+    'canonical-nonce-parse-failed',
+    'canonical-success',
+    'canonical-token-exchange-failed',
+    'canonical-unexpected-error',
+    'canonical-exchange-start',
+    'canonical-exchange-success',
+    'canonical-exchange-failed',
+  ];
   const passkeySurfaces = [
     'absent',
     'prompt',
@@ -288,7 +302,7 @@ export function readSendDiagnostics() {
     'TimeoutError',
   ];
   return {
-    format: 5,
+    format: 6,
     nativeConnection: {
       source: ['backend-event-bus', 'legacy-socket', 'unavailable'].includes(
         native?.source,
@@ -297,6 +311,7 @@ export function readSendDiagnostics() {
         : null,
       mainReady: bool(native?.mainReady),
       linkEventsObserved: bool(native?.linkEventsObserved),
+      registrationEventsObserved: bool(native?.registrationEventsObserved),
       passkeySurface: passkeySurfaces.includes(native?.passkeySurface)
         ? native.passkeySurface
         : null,
@@ -317,6 +332,7 @@ export function readSendDiagnostics() {
             'phone-link-refresh',
             'passkey-request',
             'passkey-surface',
+            'registration-stage',
             'passkey-prologue-sent',
             'passkey-verification-ready',
             'passkey-error',
@@ -343,11 +359,13 @@ export function readSendDiagnostics() {
               : null,
           code: (row.event === 'socket-disconnected'
             ? closeReasons
-            : row.event === 'passkey-surface'
-              ? passkeySurfaces
-              : row.event === 'passkey-error'
-                ? errorNames
-                : [...eventCodes, 'UNLAUNCHED']
+            : row.event === 'registration-stage'
+              ? registrationStages
+              : row.event === 'passkey-surface'
+                ? passkeySurfaces
+                : row.event === 'passkey-error'
+                  ? errorNames
+                  : [...eventCodes, 'UNLAUNCHED']
           ).includes(row.code)
             ? row.code
             : null,

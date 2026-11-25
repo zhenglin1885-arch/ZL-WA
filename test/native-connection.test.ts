@@ -33,7 +33,12 @@ function fixture(modern = true) {
   const req = jest.fn((name: string) => {
     if (name === '__debug')
       return {
-        modulesMap: Object.fromEntries(Object.keys(modules).map(k => [k, {}])),
+        modulesMap: Object.fromEntries(
+          Object.keys(modules).map(k => [
+            k,
+            { isInitialized: true, exports: modules[k] },
+          ]),
+        ),
       };
     if (!(name in modules)) throw Error('Unknown native module ' + name);
     return modules[name];
@@ -169,6 +174,28 @@ it('keeps native close categories through the preload and host boundaries across
     },
   });
   f.page.ferdium = { pushWhatsAppConnectionEvent: bridge };
+  for (const code of Object.values(
+    JSON.parse(
+      readFileSync('test/fixtures/whatsapp-registration-stages.json', 'utf8'),
+    ),
+  )) {
+    bridge({ event: 'registration-stage', code });
+    expect(calls.at(-1).code).toBe(code);
+  }
+  bridge({ event: 'registration-stage', code: 'PRIVATE_TOKEN' });
+  expect(calls.at(-1).code).toBe(null);
+  const registrationCopy = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+  );
+  expect(registrationCopy.page.nativeTransitions.map(e => e.code)).toEqual([
+    ...Object.values(
+      JSON.parse(
+        readFileSync('test/fixtures/whatsapp-registration-stages.json', 'utf8'),
+      ),
+    ),
+    null,
+  ]);
   const publicModules = JSON.parse(
     readFileSync('test/fixtures/whatsapp-native-link-events.json', 'utf8'),
   );
@@ -240,7 +267,11 @@ it('keeps native close categories through the preload and host boundaries across
       { isError: false, errorMessage: '', webview: view },
       async () => ({}),
     );
-    expect(result.page.nativeTransitions.map(e => e.code)).toEqual([
+    expect(
+      result.page.nativeTransitions
+        .filter(e => e.event !== 'registration-stage')
+        .map(e => e.code),
+    ).toEqual([
       ...reasons,
       'registration_failure',
       null,
@@ -262,11 +293,17 @@ it('keeps native close categories through the preload and host boundaries across
       'passkey-error',
     ]);
     expect(JSON.stringify({ result, calls })).not.toContain('PRIVATE_');
-    expect(result.page.nativeTransitions[47]).toMatchObject({
+    expect(
+      result.page.nativeTransitions.find(
+        e => e.code === 'registration_failure' && e.payloadKind === 'object',
+      ),
+    ).toMatchObject({
       code: 'registration_failure',
       payloadKind: 'object',
     });
-    expect(result.page.nativeTransitions[48]).toMatchObject({
+    expect(
+      result.page.nativeTransitions.find(e => e.payloadKind === 'undefined'),
+    ).toMatchObject({
       code: null,
       payloadKind: 'undefined',
     });
@@ -348,7 +385,7 @@ it('observes Shortcake events without reading verification secrets or calling th
       `(${readSendDiagnostics.toString()})()`,
       f.context,
     );
-    expect(result.format).toBe(5);
+    expect(result.format).toBe(6);
     expect(result.nativeConnection.linkEventsObserved).toBe(true);
     expect(result.nativeConnection.events.slice(-5)).toEqual([
       expect.objectContaining({ event: 'passkey-request', code: null }),
@@ -530,6 +567,7 @@ it('does not require registered but uninitialized native modules during login an
   try {
     const registry: any = {
       WAWebBackendEventBus: { isInitialized: false, exports: {} },
+      WAWebODSObserver: {},
     };
     f.req.mockClear();
     f.req.mockImplementation((name: string) => {
@@ -537,6 +575,13 @@ it('does not require registered but uninitialized native modules during login an
       throw Error('Must not force native initialization');
     });
     expect(f.page.__zlWaNativeConnection.read().source).toBe('unavailable');
+    f.context.setInterval.mock.calls[0][0]();
+    expect(f.req.mock.calls.some(([name]) => name === 'WAWebODSObserver')).toBe(
+      false,
+    );
+    expect(
+      f.page.__zlWaNativeConnection.read().registrationEventsObserved,
+    ).toBe(false);
     registry.WAWebBackendEventBus = {
       isInitialized: true,
       exports: { BackendEventBus: f.bus },
@@ -551,4 +596,66 @@ it('does not require registered but uninitialized native modules during login an
   } finally {
     f.dispose();
   }
+});
+
+it('observes only public registration stages, binds once after initialization and removes its own subscription', () => {
+  const f = fixture();
+  const emitter = new EventEmitter();
+  const external = jest.fn();
+  emitter.on('event', external);
+  const addListener = jest.fn((name, fn) => {
+    emitter.on(name, fn);
+    return { remove: () => emitter.off(name, fn) };
+  });
+  const stages = JSON.parse(
+    readFileSync('test/fixtures/whatsapp-registration-stages.json', 'utf8'),
+  );
+  try {
+    expect(
+      f.page.__zlWaNativeConnection.read().registrationEventsObserved,
+    ).toBe(false);
+    expect(f.req.mock.calls.some(([name]) => name === 'WAWebODSObserver')).toBe(
+      false,
+    );
+    f.modules.WAWebODSObserver = { default: { addListener } };
+    const poll = f.context.setInterval.mock.calls[0][0];
+    poll();
+    poll();
+    expect(addListener).toHaveBeenCalledTimes(1);
+    expect(
+      f.page.__zlWaNativeConnection.read().registrationEventsObserved,
+    ).toBe(true);
+    for (const [key, code] of Object.entries(stages)) {
+      emitter.emit('event', {
+        key,
+        count: 'PRIVATE_COUNT',
+        token: 'PRIVATE_TOKEN',
+      });
+      expect(f.page.__zlWaNativeConnection.trace.at(-1)).toMatchObject({
+        event: 'registration-stage',
+        code,
+      });
+      const diagnostic = vm.runInContext(
+        `(${readSendDiagnostics.toString()})()`,
+        f.context,
+      );
+      expect(diagnostic.nativeConnection.events.at(-1).code).toBe(code);
+    }
+    const length = f.page.__zlWaNativeConnection.trace.length;
+    const getter = jest.fn(() => {
+      throw Error('PRIVATE_GETTER');
+    });
+    emitter.emit('event', Object.defineProperty({}, 'key', { get: getter }));
+    emitter.emit('event', {
+      key: 'web.app.canonical.registration.PRIVATE_VALUE',
+    });
+    expect(getter).not.toHaveBeenCalled();
+    expect(f.page.__zlWaNativeConnection.trace).toHaveLength(length);
+    expect(JSON.stringify(f.page.__zlWaNativeConnection.trace)).not.toContain(
+      'PRIVATE_',
+    );
+  } finally {
+    f.dispose();
+  }
+  expect(emitter.listenerCount('event')).toBe(1);
 });

@@ -6,7 +6,7 @@ export function configureNativeConnection(): boolean {
   if (page.__zlWaNativeConnection?.version === 1) return true;
   const chatPresent = () =>
     Boolean(document.querySelector('#pane-side, #side'));
-  const module = (name: string) => {
+  const module = (name: string, initializedOnly = false) => {
     try {
       const req = page.require;
       if (typeof req !== 'function') return undefined;
@@ -41,6 +41,7 @@ export function configureNativeConnection(): boolean {
             return undefined;
         }
       } else if (!chatPresent()) return undefined;
+      if (initializedOnly) return undefined;
       return req(name);
     } catch {
       return undefined;
@@ -129,6 +130,20 @@ export function configureNativeConnection(): boolean {
     'ConstraintError',
     'TimeoutError',
   ];
+  const registrationStages = [
+    'pair-success',
+    'canonical-start',
+    'canonical-missing-jid',
+    'canonical-missing-metadata',
+    'canonical-nonce-decryption-failed',
+    'canonical-nonce-parse-failed',
+    'canonical-success',
+    'canonical-token-exchange-failed',
+    'canonical-unexpected-error',
+    'canonical-exchange-start',
+    'canonical-exchange-success',
+    'canonical-exchange-failed',
+  ];
   const passkeySurfaces = [
     'absent',
     'prompt',
@@ -161,6 +176,20 @@ export function configureNativeConnection(): boolean {
       return 'prompt';
     return 'present';
   };
+  const registrationKeys = [
+    'web.pair.success',
+    'web.app.canonical.registration.start',
+    'web.app.canonical.registration.missing_jid',
+    'web.app.canonical.registration.missing_metadata',
+    'web.app.canonical.registration.nonce_decryption_failed',
+    'web.app.canonical.registration.nonce_parse_failed',
+    'web.app.canonical.registration.success',
+    'web.app.canonical.registration.nonce_exchange_failed',
+    'web.app.canonical.registration.unexpected_error',
+    'web.app.canonical.exchange.attempt',
+    'web.app.canonical.exchange.success',
+    'web.app.canonical.exchange.failed',
+  ];
   const started = Date.now();
   const record = (event: string, value?: unknown) => {
     let candidate = value;
@@ -186,11 +215,13 @@ export function configureNativeConnection(): boolean {
     const allowed =
       event === 'socket-disconnected'
         ? closeReasons
-        : event === 'passkey-surface'
-          ? passkeySurfaces
-          : event === 'passkey-error'
-            ? errorNames
-            : states;
+        : event === 'registration-stage'
+          ? registrationStages
+          : event === 'passkey-surface'
+            ? passkeySurfaces
+            : event === 'passkey-error'
+              ? errorNames
+              : states;
     trace.push({
       at: Math.max(0, Date.now() - started),
       event,
@@ -229,6 +260,7 @@ export function configureNativeConnection(): boolean {
           ? bus.isMainStreamReadyMd
           : null,
       linkEventsObserved: Boolean(boundLinks),
+      registrationEventsObserved: Boolean(boundObserver),
       passkeySurface: passkeySurface(),
     };
   };
@@ -267,6 +299,7 @@ export function configureNativeConnection(): boolean {
   };
   const readyCallbacks = new Set<() => void>();
   const bindings: (() => void)[] = [];
+  let boundObserver: any;
   let boundBus: any,
     boundLinks: any,
     checking = false,
@@ -299,6 +332,29 @@ export function configureNativeConnection(): boolean {
     if (surface !== previousPasskeySurface) {
       previousPasskeySurface = surface;
       record('passkey-surface', surface);
+    }
+    // Observe the already initialized emitter; the WAWebODS wrapper would
+    // initialize a lazy module, so it is intentionally never invoked here.
+    const observer = module('WAWebODSObserver', true)?.default;
+    if (
+      observer &&
+      observer !== boundObserver &&
+      typeof observer.addListener === 'function'
+    ) {
+      try {
+        const subscription = observer.addListener('event', (value: unknown) => {
+          try {
+            if (!value || typeof value !== 'object') return;
+            const key = Object.getOwnPropertyDescriptor(value, 'key')?.value;
+            const index =
+              typeof key === 'string' ? registrationKeys.indexOf(key) : -1;
+            if (index >= 0)
+              record('registration-stage', registrationStages[index]);
+          } catch {}
+        });
+        boundObserver = observer;
+        bindings.push(() => subscription?.remove?.());
+      } catch {}
     }
     const bus = backend();
     if (bus && bus !== boundBus) {

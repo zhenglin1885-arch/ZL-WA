@@ -1,0 +1,14 @@
+{
+  "web.pair.success": "pair-success",
+  "web.app.canonical.registration.start": "canonical-start",
+  "web.app.canonical.registration.missing_jid": "canonical-missing-jid",
+  "web.app.canonical.registration.missing_metadata": "canonical-missing-metadata",
+  "web.app.canonical.registration.nonce_decryption_failed": "canonical-nonce-decryption-failed",
+  "web.app.canonical.registration.nonce_parse_failed": "canonical-nonce-parse-failed",
+  "web.app.canonical.registration.success": "canonical-success",
+  "web.app.canonical.registration.nonce_exchange_failed": "canonical-token-exchange-failed",
+  "web.app.canonical.registration.unexpected_error": "canonical-unexpected-error",
+  "web.app.canonical.exchange.attempt": "canonical-exchange-start",
+  "web.app.canonical.exchange.success": "canonical-exchange-success",
+  "web.app.canonical.exchange.failed": "canonical-exchange-failed"
+}

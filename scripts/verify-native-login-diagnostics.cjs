@@ -15,6 +15,15 @@ const {
 const {
   readSendDiagnostics,
 } = require('../build/features/accounts/sendDiagnostics.js');
+const registrationStages = JSON.parse(
+  readFileSync(
+    require('node:path').join(
+      __dirname,
+      '../test/fixtures/whatsapp-registration-stages.json',
+    ),
+    'utf8',
+  ),
+);
 const fixtures = JSON.parse(
   readFileSync(
     require('node:path').join(
@@ -52,15 +61,25 @@ app
       E.prototype.trigger=function(k,...args){for(const fn of [...(this.events.get(k)||[])])fn(...args)};
       const modules={};const exports={};
       const babelHelpers={inheritsLoose(c,p){c.prototype=Object.create(p.prototype);c.prototype.constructor=c;Object.setPrototypeOf(c,p)}};
-      function __d(name,deps,factory){const out={};factory(window,()=>{},n=>modules[n]?.exports||E,n=>modules[n]?.exports||E,{},out,out);modules[name]={isInitialized:true,exports:out};exports[name]=out}
+      function __d(name,deps,factory){const out={};factory(window,()=>{},n=>modules[n]?.exports?.default||modules[n]?.exports||E,n=>modules[n]?.exports?.default||modules[n]?.exports||E,{},out,out);modules[name]={isInitialized:true,exports:out};exports[name]=out}
       ${fixtures.WAWebLinkDeviceEvents.definition}
       ${fixtures.WASocketCloseReason.definition}
       ${fixtures.WAWebAppCommsCloseReason.definition}
+      E.prototype.addListener=function(k,fn){this.on(k,fn);return {remove:()=>this.off(k,fn)}};
+      E.prototype.emit=E.prototype.trigger;
+      modules.ODS={exports:{bumpEntityKey(){},flush(){}}};
+      ${fixtures.WAWebODSObserver.definition}
+      ${fixtures.WAWebODSImpl.definition}
       const bus=Object.assign(new E(),{socketState:'PAIRING',isMainStreamReadyMd:false});
       modules.WAWebBackendEventBus={isInitialized:true,exports:{BackendEventBus:bus}};
       window.require=name=>name==='__debug'?{modulesMap:modules}:modules[name]?.exports;
       const host=[];window.ferdium={pushWhatsAppConnectionEvent:e=>host.push(e)};
       (${configureNativeConnection.toString()})();
+      const observer=exports.WAWebODSObserver.default;
+      for(const key of Object.keys(${JSON.stringify(registrationStages)}))exports.WAWebODSImpl.default.incr(key);
+      observer.emit('event',Object.defineProperty({},'key',{get(){throw Error('Private getter called')}}));
+      const registrationDiagnostic=(${readSendDiagnostics.toString()})();
+      window.__zlWaNativeConnection.trace.length=0;
       const links=exports.WAWebLinkDeviceEvents.WAWebLinkDeviceEvents;
       links.triggerPasskeyPrologueRequest();links.triggerShortcakePrologueSent();
       const secret=new Proxy({},{get(){throw Error('Private pairing argument inspected')}});
@@ -89,10 +108,21 @@ app
       const diagnostic=(${readSendDiagnostics.toString()})();
       const unchanged=original.fetch===fetch&&original.ws===WebSocket&&original.get===navigator.credentials.get&&original.open===indexedDB.open&&original.start===performance.timeOrigin;
       window.__zlWaNativeConnection.dispose();
-      return {diagnostic,host,reasons,unchanged};
+      return {diagnostic,registrationDiagnostic,host,reasons,unchanged};
     })()`);
+      assert.equal(
+        result.registrationDiagnostic.nativeConnection
+          .registrationEventsObserved,
+        true,
+      );
+      assert.deepEqual(
+        result.registrationDiagnostic.nativeConnection.events
+          .filter(e => e.event === 'registration-stage')
+          .map(e => e.code),
+        Object.values(registrationStages),
+      );
       assert.equal(result.unchanged, true);
-      assert.equal(result.diagnostic.format, 5);
+      assert.equal(result.diagnostic.format, 6);
       assert.equal(result.diagnostic.nativeConnection.linkEventsObserved, true);
       const events = result.diagnostic.nativeConnection.events;
       for (const name of [
@@ -166,6 +196,8 @@ app
         missingPayloadKindVerified: true,
         passkeyEvents: 4,
         passkeySurfaceStates: 7,
+        registrationStages: Object.keys(registrationStages).length,
+        registrationObserverVerified: true,
         compiledGuestVerified: true,
         browserApisUnchanged: true,
         realPhonePairingVerified: false,
