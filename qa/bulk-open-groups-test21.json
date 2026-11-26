@@ -1,0 +1,51 @@
+{
+  "sourceBase": "040732f7bb0d647b218b25d67699f5cdf2d21619",
+  "purpose": "Only include confirmed all-member-speaking groups in bulk recipient reads",
+  "diagnosticsOnly": false,
+  "typecheck": true,
+  "unitTests": {
+    "suitesPassed": 89,
+    "passed": 982,
+    "skipped": 2
+  },
+  "existingGuiPassGroups": 52,
+  "originalWebUiPreserved": true,
+  "realPhonePairingVerified": false,
+  "compiledGuestVerified": true,
+  "officialCloseCategories": 47,
+  "transportCloseCategories": 22,
+  "applicationCloseCategories": 25,
+  "passkeyEvents": 4,
+  "passkeySurfaceStates": 7,
+  "structuredClosePayloadVerified": true,
+  "missingPayloadKindVerified": true,
+  "noBrowserApiReplacement": true,
+  "noAuthenticatorInvocation": true,
+  "unchangedBusinessFiles": {
+    "src/index.ts": "ebdf8e3a20f5a4a23ba6dde23b421193ee1cdfcec3dab0336f73861eac6b5c78",
+    "src/features/accounts/sendMode.ts": "8fac9a1ebefdf6f5f17ecd3084ef032206c5b60d79556cbc12beffcbc7505f8d",
+    "src/features/accounts/voice.ts": "48aa09fa7cef2e5b6d4a62ff00e7089800f8ef34539a37662738523899edc7d6",
+    "src/features/accounts/whatsapp.ts": "e65e2765e4e0cc6889ba27fc4e1985394c1a1b2e7e79f4643674ad9785c833e9",
+    "src/features/accounts/unread.ts": "9edb03f42fdbe2449e640382acc421fef5894c49492589fdc8c28686f59e7dd3",
+    "src/features/accountTools/bulkGuest.ts": "ab64ab0775f251405b9af74c56ab65e54ee210ab51c2b420fd983633234f3b36",
+    "src/features/accountTools/bulkRuntime.ts": "f346f1bb29ea616f6b3a8474e492f9bb7f13651cc5edbefaa8604d82ebed21d9",
+    "src/features/groups/guest.ts": "cddadce257f3fed94e60d484147e09c2ba9b75a15a02cab4e9971113a4fd8f0c",
+    "src/components/services/content/ServiceWebview.tsx": "17f7c5ef292491f8ae81ff958f4cae95ea92355b46cf47fc3079a4a298889344",
+    "build-helpers/prepare-whatsapp-library.cjs": "4e7d807dcf13388cb7c9204374045431e12c0bbe155cd64e0e73a43c334ad15d",
+    "esbuild.mjs": "1def46cedafe0b73ce6583789e23a7cfef752c59f25d039a6e8def4106b78b70",
+    "package.json": "1cad33b76323ae01a16e8be07f6d2bc05a084ab23dfe8b0d9c34cd1049acc9fb",
+    "pnpm-lock.yaml": "b5f094fd617ce7a97ab0be2c228033f005390dbc90b5e94ca86e959800dd4bc5"
+  },
+  "registrationStages": 12,
+  "registrationObserverVerified": true,
+  "bulkOpenGroupsOnly": true,
+  "sourceFiles": {
+    ".github/workflows/windows-bulk-open-groups-test21.yml": "4fca23d39489bcf659806986a5aa3abfdb02da0783070253146999ea421226c3",
+    "docs/BULK-OPEN-GROUPS-TEST21.md": "6dee54e49b6d2fbac9ba7d6a65a903e4fcc430b9cd8308d2780f47d5f1956fd3",
+    "scripts/fixtures/whatsapp-tools.html": "937b8ad4109f19b21b9781b0a8c1a73ccfbf90d8fbf1dfb0240f03401b142b43",
+    "scripts/verify-account-tools-ui.mjs": "e2dde0d314ab5669d8a35cd9154f45d9b889d44ff25f77b5aa5e0fd1109693c4",
+    "src/features/accountTools/BulkSend.tsx": "8b45619c9c5ba65bff10ed98e656026f1383000fee96af7da8b1414fcd58eabc",
+    "src/features/accountTools/guest.ts": "b5d0572d5c2292e1848755fd07eeb6f45da540a7fdd1eedb1a15ef72c4f24de2",
+    "test/account-tools.test.ts": "af155da0635d189a7afccefeec673cc551da62ff645677c15b2598acdcab2c76"
+  }
+}
