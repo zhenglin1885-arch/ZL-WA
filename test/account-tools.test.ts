@@ -191,6 +191,43 @@ describe('WhatsApp recipient/send adapter (synthetic modules, no real messages)'
     chat.isReadOnly = true;
     expect(listRecipients()).toEqual([]);
   });
+  it('limits bulk groups to confirmed all-member speaking while preserving other recipient reads', () => {
+    const group = (id: string, announce?: boolean) => ({
+      id: { _serialized: `${id}@g.us`, server: 'g.us', user: id },
+      name: id,
+      groupMetadata: announce === undefined ? undefined : { announce },
+    });
+    const open = group('open', false);
+    const closed = group('closed', true);
+    const unknown = group('unknown');
+    const privateChat = {
+      id: { _serialized: 'private@c.us', server: 'c.us', user: 'private' },
+      name: 'private',
+    };
+    const lidChat = {
+      id: { _serialized: 'private@lid', server: 'lid', user: 'private' },
+      name: 'private lid',
+    };
+    const archivedOpen = { ...group('archived', false), archive: true };
+    const models = [open, closed, unknown, privateChat, lidChat, archivedOpen];
+    modules.WAWebCollections.Chat.getModelsArray = () => models;
+    expect(listRecipients(true).map(row => row.id)).toEqual([
+      'open@g.us',
+      'private@c.us',
+      'private@lid',
+      'archived@g.us',
+    ]);
+    expect(listRecipients()).toEqual(listRecipients(false));
+    expect(listRecipients()).toHaveLength(models.length);
+    closed.groupMetadata!.announce = false;
+    open.groupMetadata!.announce = true;
+    expect(listRecipients(true).map(row => row.id)).toEqual([
+      'closed@g.us',
+      'private@c.us',
+      'private@lid',
+      'archived@g.us',
+    ]);
+  });
   it('keeps native message IDs when MsgKey exposes toString instead of _serialized', async () => {
     modules.WAWebMsgKey = Object.assign(
       jest.fn(() => ({ toString: () => 'true_123@g.us_native-key' })),

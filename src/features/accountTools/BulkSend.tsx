@@ -246,7 +246,7 @@ const BulkSend = observer(
             if (source === 'contact') await ensureBulkLibrary(service.webview);
             const fn = source === 'contact' ? listBulkContacts : listRecipients;
             const items = await service.webview.executeJavaScript(
-              `(${fn.toString()})()`,
+              `(${fn.toString()})(${source === 'contact' ? '' : !replyMode})`,
             );
             return items.map(r => ({
               ...r,

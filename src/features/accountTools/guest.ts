@@ -2156,7 +2156,9 @@ export function translationDiagnostics() {
   };
 }
 
-export function listRecipients(): Omit<Recipient, 'accountId'>[] {
+export function listRecipients(
+  openGroupsOnly = false,
+): Omit<Recipient, 'accountId'>[] {
   if (globalThis.location.hostname !== 'web.whatsapp.com')
     throw new Error('当前会话不是 WhatsApp');
   const page = window as any;
@@ -2170,6 +2172,9 @@ export function listRecipients(): Omit<Recipient, 'accountId'>[] {
         c.id &&
         !c.isReadOnly &&
         !c.isPSA &&
+        (!openGroupsOnly ||
+          c.id.server !== 'g.us' ||
+          c.groupMetadata?.announce === false) &&
         ['g.us', 'c.us', 'lid'].includes(c.id.server),
     )
     .map(c => ({

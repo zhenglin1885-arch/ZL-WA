@@ -1678,10 +1678,50 @@ try {
     await evaluate(
       `document.querySelector('.bulk-columns fieldset input[type="checkbox"]').click()`,
     );
+    await guest(
+      first,
+      `fixture.chats.push({id:{_serialized:'closed@g.us',server:'g.us',user:'closed'},name:'关闭发言的群',groupMetadata:{announce:true}},{id:{_serialized:'unknown@g.us',server:'g.us',user:'unknown'},name:'发言权限未知的群'});true`,
+    );
     await clickText('读取聊天对象');
     await wait(
       `document.querySelectorAll('.bulk-recipient-list input').length===2`,
       'real adapter fixture recipients',
+    );
+    await clickText('群聊');
+    await wait(
+      `document.querySelectorAll('.bulk-recipient-list input').length===1`,
+      'only open groups are listed',
+    );
+    assert(
+      !(
+        await evaluate(
+          `document.querySelector('.bulk-recipient-list').textContent`,
+        )
+      ).includes('关闭发言的群'),
+    );
+    await guest(first, `fixture.chats[0].groupMetadata.announce=true;true`);
+    await clickText('读取聊天对象');
+    await wait(
+      `document.querySelectorAll('.bulk-recipient-list input').length===0`,
+      'refresh removes a newly closed group',
+    );
+    await clickText('全部');
+    await wait(
+      `document.querySelectorAll('.bulk-recipient-list input').length===1`,
+      'private chats remain available',
+    );
+    await guest(
+      first,
+      `fixture.chats[0].groupMetadata.announce=false;fixture.chats.splice(-2);true`,
+    );
+    await clickText('读取聊天对象');
+    await wait(
+      `document.querySelectorAll('.bulk-recipient-list input').length===2`,
+      'open group and private chat restored without sends',
+    );
+    assert.equal(await guest(first, 'fixture.bulk.length'), 0);
+    console.log(
+      'PASS bulk recipient reads exclude closed and unknown groups, track permission changes, preserve private chats and never send during reading',
     );
     await evaluate(
       `document.querySelector('.bulk-columns fieldset:nth-child(2) > label input').click();const t=document.querySelector('[aria-label="发送内容"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'这是批量发送本地测试');t.dispatchEvent(new Event('input',{bubbles:true}));`,
