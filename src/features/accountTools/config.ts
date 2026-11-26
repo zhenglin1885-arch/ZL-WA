@@ -195,6 +195,8 @@ export interface BulkDelivery {
 }
 export interface BulkSendOutcome {
   notSubmitted?: boolean;
+  // A known per-message failure with its original ID; never a retry request.
+  failed?: boolean;
   halt?: boolean;
   timedOut?: boolean;
   quotedMessageId?: string;

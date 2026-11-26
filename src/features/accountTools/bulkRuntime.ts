@@ -146,7 +146,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
           const outcome = await view.executeJavaScript(
             `(${sendBulkMessage.toString()})(${JSON.stringify(target.id)},${JSON.stringify({ ...spec, targets: [target] })},${JSON.stringify(dataUrl)},undefined,${JSON.stringify(blockChinese)})`,
           );
-          if (!outcome.confirmed && outcome.messageId) {
+          if (!outcome.confirmed && outcome.messageId && !outcome.failed) {
             try {
               if (viewFor(target) !== view) return outcome;
               const receipt = await view.executeJavaScript(
@@ -154,7 +154,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
               );
               if (viewFor(target) === view && receipt.confirmed)
                 return { ...outcome, confirmed: true, error: undefined };
-              if (viewFor(target) === view && receipt.halt)
+              if (viewFor(target) === view && (receipt.halt || receipt.failed))
                 return { ...outcome, ...receipt };
             } catch {
               // The original message ID survives failed read-only checks.
@@ -181,7 +181,7 @@ export function getBulkQueue(stores: RealStores): BulkQueue {
             throw new Error('账号窗口已变化，请重新核对');
           return receipt.confirmed
             ? { ...outcome, confirmed: true, error: undefined }
-            : receipt.halt
+            : receipt.halt || receipt.failed
               ? { ...outcome, ...receipt }
               : outcome;
         },

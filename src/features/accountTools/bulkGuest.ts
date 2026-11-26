@@ -41,6 +41,7 @@ export async function waitForBulkReceipt(
     error: '已记录消息编号，服务器回执仍待确认；未重发原消息',
   };
   const failedReceipt = (ack: number): BulkSendOutcome => {
+    const messageFailure = Number.isInteger(ack) && ack >= -6 && ack <= -1;
     const reasons: Record<number, string> = {
       '-1': '发送失败',
       '-2': '消息已过期',
@@ -52,8 +53,9 @@ export async function waitForBulkReceipt(
     };
     return {
       ...pending,
-      halt: true,
-      error: `WhatsApp 消息状态：${reasons[ack] || '发送错误'}（ACK=${ack}）；已暂停后续发送，请先检查账号连接及原消息，未自动重发`,
+      failed: messageFailure,
+      halt: !messageFailure,
+      error: `WhatsApp 消息状态：${reasons[ack] || '发送错误'}（ACK=${ack}）；${messageFailure ? '本条发送失败，未自动重发' : '已暂停后续发送，请先检查账号连接及原消息，未自动重发'}`,
     };
   };
   const until = Date.now() + 6000;
@@ -746,6 +748,8 @@ export async function sendBulkMessage(
       confirmed: false,
       error: '消息已提交但未取得消息编号，请核对发送结果；请勿直接重发',
     };
+  const ack = Number(result.ack);
+  const messageFailure = Number.isInteger(ack) && ack >= -6 && ack <= -1;
   return {
     messageId,
     ...(options.quotedMsg ? { quotedMessageId: options.quotedMsg } : {}),
@@ -753,11 +757,12 @@ export async function sendBulkMessage(
       result.ack >= 1 ||
       ['OK', 'success'].includes(result.sendMsgResult) ||
       ['OK', 'success'].includes(result.sendMsgResult?.messageSendResult),
-    ...(Number(result.ack) < 0
+    ...(ack < 0
       ? {
           confirmed: false,
-          halt: true,
-          error: `WhatsApp 发送错误（ACK=${Number(result.ack)}）；已暂停后续发送，未自动重发`,
+          failed: messageFailure,
+          halt: !messageFailure,
+          error: `WhatsApp 发送错误（ACK=${ack}）；${messageFailure ? '本条发送失败，未自动重发' : '已暂停后续发送，未自动重发'}`,
         }
       : {}),
   };

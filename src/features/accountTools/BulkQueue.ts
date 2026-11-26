@@ -295,9 +295,14 @@ export default class BulkQueue {
             typeof result !== 'string' &&
             result.notSubmitted === true &&
             !result.messageId;
+          const failed =
+            notSubmitted ||
+            (typeof result !== 'string' &&
+              result.failed === true &&
+              Boolean(result.messageId));
           delivery = {
             ...delivery,
-            status: confirmed ? 'sent' : notSubmitted ? 'failed' : 'uncertain',
+            status: confirmed ? 'sent' : failed ? 'failed' : 'uncertain',
             messageId: typeof result === 'string' ? result : result.messageId,
             ...(typeof result !== 'string' && result.quotedMessageId
               ? { quotedMessageId: result.quotedMessageId }
@@ -394,22 +399,22 @@ export default class BulkQueue {
             ]);
             if (
               result &&
-              result.confirmed &&
+              (result.confirmed || result.failed) &&
               result.messageId === delivery.messageId
             ) {
               const deliveries = [...record.deliveries!];
               deliveries[index] = {
                 ...delivery,
-                status: 'sent',
-                error: undefined,
+                status: result.confirmed ? 'sent' : 'failed',
+                error: result.confirmed ? undefined : result.error,
                 checkedAt: new Date().toISOString(),
                 checkError: undefined,
               };
               record = {
                 ...record,
                 deliveries,
-                success: record.success + 1,
-                failed: record.failed - 1,
+                success: record.success + (result.confirmed ? 1 : 0),
+                failed: record.failed - (result.confirmed ? 1 : 0),
                 details: deliveries.map(
                   item =>
                     `${item.target.name}：${item.status === 'sent' ? '服务器已接受' : item.error}`,
@@ -497,7 +502,11 @@ export default class BulkQueue {
           updated = {
             ...delivery,
             messageId: result.messageId,
-            status: result.confirmed ? 'sent' : 'uncertain',
+            status: result.confirmed
+              ? 'sent'
+              : result.failed && result.messageId
+                ? 'failed'
+                : 'uncertain',
             error: result.confirmed
               ? undefined
               : result.error || '服务器结果仍待确认',

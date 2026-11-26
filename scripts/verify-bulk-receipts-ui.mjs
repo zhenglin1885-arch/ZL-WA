@@ -21,6 +21,8 @@ export async function verifyBulkReceipts({
       p.count++;p.messages.set(key._serialized,message);
       if(p.mode==='delayed')setTimeout(()=>message.ack=1,400);
       else if(p.mode==='failed')message.ack=-1;
+      else if(p.mode==='failed-first'&&p.count===1)message.ack=-1;
+      else if(p.mode==='failed-later-first'&&p.count===1)setTimeout(()=>message.ack=-1,100);
       else if(p.count>1)message.ack=1;
       if(p.mode==='late-first'&&p.count>1)for(const m of p.messages.values())m.ack=1;
       return {id:key._serialized,ack:message.ack};
@@ -89,16 +91,50 @@ export async function verifyBulkReceipts({
     const failed = await evaluate(
       `(async()=>{const q=${queueExpression};const id=await q.submit(${JSON.stringify(spec)});return q.records.find(r=>r.id===id)})()`,
     );
-    assert.equal(failed.status, '待确认');
-    assert.equal(failed.deliveries.length, 1);
+    assert.equal(failed.status, '部分失败');
+    assert.equal(failed.deliveries.length, 2);
+    assert(failed.deliveries.every(d => d.status === 'failed'));
     assert.match(failed.deliveries[0].error, /ACK=-1/);
     assert.equal(
       await guest(first, 'fixture.receiptProof.count'),
-      1,
-      'negative ACK pauses following sends without replay',
+      2,
+      'continue policy skips confirmed negative ACKs without replay',
     );
+    for (const mode of ['failed-first', 'failed-later-first']) {
+      await guest(
+        first,
+        `fixture.receiptProof.mode=${JSON.stringify(mode)};fixture.receiptProof.count=0;fixture.receiptProof.messages.clear();true`,
+      );
+      const result = await evaluate(
+        `(async()=>{const q=${queueExpression};const id=await q.submit(${JSON.stringify(spec)});return q.records.find(r=>r.id===id)})()`,
+      );
+      assert.equal(result.status, '部分失败');
+      assert.equal(result.success, 1);
+      assert.deepEqual(
+        result.deliveries.map(d => d.status),
+        ['failed', 'sent'],
+      );
+      assert.equal(
+        await guest(first, 'fixture.receiptProof.count'),
+        2,
+        'each original target is submitted once',
+      );
+    }
+    await guest(
+      first,
+      `fixture.receiptProof.mode='failed';fixture.receiptProof.count=0;fixture.receiptProof.messages.clear();true`,
+    );
+    const stopped = await evaluate(
+      `(async()=>{const q=${queueExpression};const id=await q.submit(${JSON.stringify({ ...spec, failure: 'stop' })});return q.records.find(r=>r.id===id)})()`,
+    );
+    assert.equal(stopped.status, '已停止');
+    assert.deepEqual(
+      stopped.deliveries.map(d => d.status),
+      ['failed'],
+    );
+    assert.equal(await guest(first, 'fixture.receiptProof.count'), 1);
     console.log(
-      'PASS actual bulk runtime: delayed native ACK resolves to success; settled pending IDs honor continue policy with no resend and retain history',
+      'PASS actual bulk runtime: delayed ACK success, pending-ID reconciliation, immediate/delayed negative ACK skip/stop policies and no duplicate submissions',
     );
   } finally {
     await guest(

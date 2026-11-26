@@ -541,7 +541,8 @@ describe('advanced WhatsApp adapter with synthetic WPP, no real messages', () =>
     expect(await sendBulkMessage('chat@g.us', spec())).toMatchObject({
       messageId: 'own-message',
       confirmed: false,
-      halt: true,
+      failed: true,
+      halt: false,
       error: expect.stringContaining('ACK=-1'),
     });
   });

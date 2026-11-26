@@ -274,7 +274,7 @@ describe('persistent bulk queue without live WhatsApp', () => {
     expect(adapter.send).toHaveBeenCalledTimes(1);
     expect(queue.records[0].status).toBe('待确认');
   });
-  it('pauses after an explicit WhatsApp send error even with continue selected, preserving the original ID', async () => {
+  it('preserves an explicit halt even with continue selected, preserving the original ID', async () => {
     (adapter.send as jest.Mock).mockResolvedValue({
       messageId: 'failed-original',
       confirmed: false,
@@ -295,6 +295,44 @@ describe('persistent bulk queue without live WhatsApp', () => {
     });
     await queue.tick();
     expect(adapter.send).toHaveBeenCalledTimes(1);
+  });
+  it.each(['continue', 'stop'] as const)(
+    'handles confirmed message failure with the selected %s policy without replay',
+    async failure => {
+      jest.mocked(adapter.send).mockResolvedValueOnce({
+        messageId: 'failed-original',
+        confirmed: false,
+        failed: true,
+        halt: false,
+        error: 'WhatsApp ACK=-1',
+      });
+      await finish(queue.submit(spec({ failure })));
+      expect(adapter.send).toHaveBeenCalledTimes(
+        failure === 'continue' ? 2 : 1,
+      );
+      expect(queue.records[0]).toMatchObject({
+        status: failure === 'continue' ? '部分失败' : '已停止',
+        success: failure === 'continue' ? 1 : 0,
+        failed: 1,
+      });
+      expect(queue.records[0].deliveries![0]).toMatchObject({
+        status: 'failed',
+        messageId: 'failed-original',
+        error: 'WhatsApp ACK=-1',
+      });
+      await queue.tick();
+      expect(adapter.send).toHaveBeenCalledTimes(
+        failure === 'continue' ? 2 : 1,
+      );
+    },
+  );
+  it('does not trust a failure marker without an original ID', async () => {
+    jest
+      .mocked(adapter.send)
+      .mockResolvedValue({ messageId: '', confirmed: false, failed: true });
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(adapter.send).toHaveBeenCalledTimes(1);
+    expect(queue.records[0].status).toBe('待确认');
   });
   it('refreshes earlier uncertain receipts at batch end by original ID without resending', async () => {
     (adapter.send as jest.Mock).mockResolvedValueOnce({
@@ -320,6 +358,58 @@ describe('persistent bulk queue without live WhatsApp', () => {
         { status: 'sent' },
       ],
     });
+  });
+  it('records a later confirmed failure during the read-only batch sweep without replay', async () => {
+    jest
+      .mocked(adapter.send)
+      .mockResolvedValueOnce({ messageId: 'pending-id', confirmed: false });
+    adapter.reconcile = jest.fn(async () => ({
+      messageId: 'pending-id',
+      confirmed: false,
+      failed: true,
+      error: 'WhatsApp ACK=-1',
+    }));
+    await finish(queue.submit(spec({ failure: 'continue' })));
+    expect(queue.records[0]).toMatchObject({
+      status: '部分失败',
+      success: 1,
+      failed: 1,
+    });
+    expect(queue.records[0].deliveries![0]).toMatchObject({
+      status: 'failed',
+      messageId: 'pending-id',
+    });
+    expect(adapter.send).toHaveBeenCalledTimes(2);
+  });
+  it('refreshes historical uncertain ACK errors to failed without resuming or resending', async () => {
+    queue.records = [
+      saved({
+        total: 1,
+        failed: 1,
+        status: '待确认',
+        deliveries: [
+          {
+            target: spec().targets[0],
+            status: 'uncertain',
+            messageId: 'failed-id',
+          },
+        ],
+      }),
+    ];
+    adapter.reconcile = jest.fn(async () => ({
+      messageId: 'failed-id',
+      confirmed: false,
+      failed: true,
+      error: 'WhatsApp ACK=-1',
+    }));
+    await finish(queue.reconcile('saved'));
+    expect(queue.records[0]).toMatchObject({
+      status: '部分失败',
+      failed: 1,
+      success: 0,
+    });
+    expect(queue.records[0].deliveries![0].status).toBe('failed');
+    expect(adapter.send).not.toHaveBeenCalled();
   });
   it('keeps an uncertain result when a receipt check returns a different message ID', async () => {
     (adapter.send as jest.Mock).mockResolvedValueOnce({

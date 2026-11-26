@@ -22,14 +22,15 @@ describe('read-only settling of a newly sent message receipt', () => {
     }
   });
   it.each([-1, -2, -3, -4, -5, -6, -7])(
-    'reports native negative ACK %s as a paused send error without mutating or retrying',
+    'classifies native negative ACK %s without mutating or retrying',
     async ack => {
       message.ack = ack;
       const result = await waitForBulkReceipt('chat@g.us', 'outgoing-id');
       expect(result).toMatchObject({
         messageId: 'outgoing-id',
         confirmed: false,
-        halt: true,
+        failed: ack !== -7,
+        halt: ack === -7,
       });
       expect(result.error).toContain(`ACK=${ack}`);
     },
@@ -47,11 +48,25 @@ describe('read-only settling of a newly sent message receipt', () => {
     expect(await check).toMatchObject({
       messageId: 'outgoing-id',
       confirmed: false,
-      halt: true,
+      failed: true,
+      halt: false,
       error: expect.stringContaining('ACK=-1'),
     });
     expect(page.WPP.chat.getMessageById).toHaveBeenCalledTimes(1);
   });
+  it.each([-8, -1.5])(
+    'keeps unfamiliar ACK %s paused rather than guessing a skippable failure',
+    async ack => {
+      message.ack = ack;
+      expect(
+        await waitForBulkReceipt('chat@g.us', 'outgoing-id'),
+      ).toMatchObject({
+        confirmed: false,
+        failed: false,
+        halt: true,
+      });
+    },
+  );
   afterEach(() => {
     jest.useRealTimers();
     for (const [key, descriptor] of originals) {
