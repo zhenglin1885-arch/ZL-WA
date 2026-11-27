@@ -15,18 +15,22 @@ export function isFacebookBusiness(service: {
 
 // Runs in the guest. Return only a status, never cookies or account identifiers.
 export function readFacebookSnapshot(): AccountSnapshot {
-  const host = location.hostname;
+  const host = globalThis.location.hostname;
   if (
     !['business.facebook.com', 'www.facebook.com', 'facebook.com'].includes(
       host,
     )
   )
     return { status: 'loading' };
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- Serialized guest reader must retain its own helper closures.
   const isVisible = (node: Element) =>
     node.getClientRects().length > 0 &&
     getComputedStyle(node).visibility !== 'hidden';
   const visible = (selector: string) =>
-    [...document.querySelectorAll(selector)].some(isVisible);
+    [...document.querySelectorAll(selector)].some(element =>
+      isVisible(element),
+    );
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- Serialized guest reader must retain its own helper closures.
   const textOf = (node: Element) =>
     (node.textContent || node.getAttribute('aria-label') || '')
       .replaceAll(/\s+/g, ' ')
@@ -34,7 +38,7 @@ export function readFacebookSnapshot(): AccountSnapshot {
   if (document.readyState === 'loading') return { status: 'loading' };
   if (
     /\/(?:login|checkpoint|two_step_verification|recover)(?:[./?]|$)/i.test(
-      location.pathname,
+      globalThis.location.pathname,
     ) ||
     visible('input[type="password"], form[action*="/login"]')
   )
@@ -45,9 +49,9 @@ export function readFacebookSnapshot(): AccountSnapshot {
       '[role="navigation"] a[href*="/latest/"], nav a[href*="/latest/"], a[href*="/latest/inbox"], a[href*="/latest/home"]';
     const controls = [
       ...document.querySelectorAll('a, button, [role="link"], [role="button"]'),
-    ].filter(isVisible);
+    ].filter(element => isVisible(element));
     const labels = new Set(
-      controls.map(textOf).map(text => text.toLowerCase()),
+      controls.map(element => textOf(element)).map(text => text.toLowerCase()),
     );
     const menuLabels = [
       ['home', '首页', '主页', 'página inicial', 'inicio'],
@@ -69,7 +73,7 @@ export function readFacebookSnapshot(): AccountSnapshot {
     const workspace =
       visible(links) ||
       (menus >= 3 &&
-        (/^\/latest(?:\/|$)/.test(location.pathname) ||
+        (/^\/latest(?:\/|$)/.test(globalThis.location.pathname) ||
           visible('[role="navigation"], nav')));
     if (workspace) return { status: 'online' };
     const loginButton = controls.some(node =>

@@ -163,15 +163,16 @@ export function recordNativeConnection(view: object, value: any) {
   nativeTransitions.set(view, rows);
 }
 
+type BrowserNavigationEvent =
+  | 'loading-started'
+  | 'main-frame-navigated'
+  | 'page-navigation-requested'
+  | 'server-redirect';
+type HostRecoveryEvent = 'host-reload-requested' | 'startup-recovery-requested';
+
 export function recordPageTransition(
   view: object,
-  event:
-    | 'loading-started'
-    | 'main-frame-navigated'
-    | 'page-navigation-requested'
-    | 'server-redirect'
-    | 'host-reload-requested'
-    | 'startup-recovery-requested',
+  event: BrowserNavigationEvent | HostRecoveryEvent,
 ) {
   const events = transitions.get(view) || [];
   events.push({ at: Date.now(), event });

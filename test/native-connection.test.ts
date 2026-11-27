@@ -203,12 +203,19 @@ it('keeps native close categories through the preload and host boundaries across
   );
   const nativeReasons: any = {};
   vm.runInNewContext(publicModules.WASocketCloseReason.definition, {
-    __d: (_name: string, _deps: string[], factory: Function) =>
-      factory(null, null, null, null, null, nativeReasons),
+    __d: (
+      _name: string,
+      _deps: string[],
+      factory: (...args: any[]) => unknown,
+    ) => factory(null, null, null, null, null, nativeReasons),
   });
   const nativeAppReasons: any = {};
   vm.runInNewContext(publicModules.WAWebAppCommsCloseReason.definition, {
-    __d: (_name: string, _deps: string[], factory: Function) =>
+    __d: (
+      _name: string,
+      _deps: string[],
+      factory: (...args: any[]) => unknown,
+    ) =>
       factory(
         null,
         null,
@@ -510,7 +517,7 @@ it('uses the real SDK socket export and main-ready registrar on the new bus with
     const legacy = Object.assign(new EventEmitter(), { state: 'CONNECTED' });
     const definitions: any = {};
     const events = new EventEmitter();
-    const exportModule = (out: any, _map: any) =>
+    const exportModule = (out: any) =>
       Object.defineProperty(out, 'Socket', {
         configurable: true,
         enumerable: true,
@@ -547,14 +554,20 @@ it('uses the real SDK socket export and main-ready registrar on the new bus with
     f.setChat(true);
     f.bus.isMainStreamReadyMd = true;
     f.bus.emit('main_stream_mode_ready');
-    await new Promise(r => setImmediate(r));
+    await new Promise<void>(r => {
+      setImmediate(r);
+    });
     expect(ready).not.toHaveBeenCalled();
     f.setCritical(true);
     f.bus.emit('on_critical_sync_done');
-    await new Promise(r => setImmediate(r));
+    await new Promise<void>(r => {
+      setImmediate(r);
+    });
     expect(ready).toHaveBeenCalledTimes(1);
     f.bus.emit('main_stream_mode_ready');
-    await new Promise(r => setImmediate(r));
+    await new Promise<void>(r => {
+      setImmediate(r);
+    });
     expect(ready).toHaveBeenCalledTimes(1);
     expect(f.modules.WAWebBackendEventBus.BackendEventBus).toBe(f.bus);
     expect(f.bus.triggerLogout).not.toHaveBeenCalled();

@@ -736,10 +736,12 @@ class EditSettingsForm extends Component<IProps, IState> {
                     ].map(option => (
                       <label
                         key={option.value}
+                        htmlFor={`settings-send-mode-${option.value}`}
                         className={`settings-send-mode__choice${form.$('messageSendMode').value === option.value ? ' is-selected' : ''}`}
                       >
                         <input
                           type="radio"
+                          id={`settings-send-mode-${option.value}`}
                           name="messageSendMode"
                           value={option.value}
                           checked={

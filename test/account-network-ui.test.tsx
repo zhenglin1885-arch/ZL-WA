@@ -1,4 +1,4 @@
-export {};
+import { all } from './helpers/account-network-ui';
 
 jest.mock('electron', () => ({ ipcRenderer: { invoke: jest.fn() } }));
 jest.mock('mobx-react', () => ({ observer: (component: any) => component }));
@@ -11,14 +11,6 @@ const { ipcRenderer } = require('electron');
 const { useEffect, useState } = require('react');
 const AccountNetworkStatus =
   require('../src/features/accountTools/AccountNetworkStatus').default;
-
-const all = (node: any): any[] =>
-  !node || typeof node !== 'object'
-    ? []
-    : [
-        node,
-        ...[node.props?.children].flat(Number.POSITIVE_INFINITY).flatMap(all),
-      ];
 
 describe('title bar network status for active accounts', () => {
   let originalWindow: PropertyDescriptor | undefined;
@@ -51,7 +43,8 @@ describe('title bar network status for active accounts', () => {
     states = [];
     cleanups = [];
     (useState as jest.Mock).mockImplementation(initial => {
-      const index = hook++;
+      const index = hook;
+      hook += 1;
       if (!(index in states)) states[index] = initial;
       return [
         states[index],

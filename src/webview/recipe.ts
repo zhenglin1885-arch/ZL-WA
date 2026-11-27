@@ -360,6 +360,7 @@ ipcRenderer.sendToHost(
 class RecipeController {
   @observable documentReady = Boolean(document.documentElement);
 
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- This class field action must retain the RecipeController instance binding.
   private markDocumentReady = action(() => {
     this.documentReady = true;
   });

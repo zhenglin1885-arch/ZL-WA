@@ -171,7 +171,10 @@ it('keeps navigation provenance without URLs, private request data or navigation
   ]);
   expect(
     result.page.transitions.every(
-      event => Object.keys(event).sort().join(',') === 'at,event',
+      event =>
+        Object.keys(event)
+          .sort((a, b) => Number(a > b) - Number(a < b))
+          .join(',') === 'at,event',
     ),
   ).toBe(true);
 });
@@ -180,7 +183,7 @@ it('retains bounded native pairing events across navigations and isolates accoun
   const view = {
     executeJavaScript: jest.fn(async () => ({ unavailable: true })),
   };
-  for (let n = 0; n < 80; n++)
+  for (let n = 0; n < 80; n += 1)
     recordNativeConnection(view, {
       event: 'socket-state',
       code: 'PAIRING',
@@ -207,21 +210,15 @@ it('retains bounded native pairing events across navigations and isolates accoun
   });
   expect(JSON.stringify(result)).not.toContain('PRIVATE_');
   const other = { executeJavaScript: view.executeJavaScript };
-  expect(
-    (
-      await collectSendDiagnostics(
-        { isError: false, errorMessage: '', webview: other },
-        async () => ({}),
-      )
-    ).page.nativeTransitions,
-  ).toEqual([]);
-  expect(
-    (
-      await collectSendDiagnostics(
-        { isError: false, errorMessage: '', webview: view },
-        async () => ({}),
-        () => false,
-      )
-    ).page.nativeTransitions,
-  ).toEqual([]);
+  const otherResult = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: other },
+    async () => ({}),
+  );
+  expect(otherResult.page.nativeTransitions).toEqual([]);
+  const changedResult = await collectSendDiagnostics(
+    { isError: false, errorMessage: '', webview: view },
+    async () => ({}),
+    () => false,
+  );
+  expect(changedResult.page.nativeTransitions).toEqual([]);
 });

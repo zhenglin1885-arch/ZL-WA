@@ -332,8 +332,10 @@ class ServiceWebview extends Component<IProps> {
   };
 
   pollAccount = async (): Promise<void> => {
-    if (isFacebookBusiness(this.props.service))
-      return this.pollFacebookAccount();
+    if (isFacebookBusiness(this.props.service)) {
+      await this.pollFacebookAccount();
+      return;
+    }
     const { service, stores } = this.props;
     const view = this.webview?.view;
     if (

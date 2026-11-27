@@ -68,11 +68,17 @@ export function configurePairingDiagnostics(): boolean {
       record(status, code);
     }
     if (chat) {
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       clearInterval(timer);
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       observer.disconnect();
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       window.removeEventListener('error', error);
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       window.removeEventListener('unhandledrejection', rejection);
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       window.removeEventListener('online', online);
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       window.removeEventListener('offline', online);
     }
   };

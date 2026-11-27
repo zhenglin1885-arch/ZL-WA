@@ -209,12 +209,16 @@ export async function sendBulkMessage(
     let backend;
     try {
       backend = page.require?.('WAWebBackendEventBus')?.BackendEventBus;
-    } catch {}
+    } catch {
+      /* Optional compatibility probes and notifications stay best-effort. */
+    }
     if (backend) socketState = backend.socketState;
     else
       try {
         socketState = page.require?.('WAWebSocketModel')?.Socket?.state;
-      } catch {}
+      } catch {
+        /* Optional compatibility probes and notifications stay best-effort. */
+      }
   }
   if (typeof socketState === 'string' && socketState !== 'CONNECTED')
     throw new Error('WhatsApp 账号未连接，未提交消息；请先恢复账号连接');

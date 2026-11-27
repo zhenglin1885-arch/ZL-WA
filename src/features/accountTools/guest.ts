@@ -2214,7 +2214,9 @@ export async function sendTextToChat(
   if (!socketState) {
     try {
       socketState = req('WAWebBackendEventBus')?.BackendEventBus?.socketState;
-    } catch {}
+    } catch {
+      /* Optional compatibility probes and notifications stay best-effort. */
+    }
   }
   if (!socketState) socketState = req('WAWebSocketModel').Socket.state;
   if (

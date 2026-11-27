@@ -4,6 +4,7 @@ export function configureNativeConnection(): boolean {
   if (globalThis.location.hostname !== 'web.whatsapp.com') return false;
   const page = window as any;
   if (page.__zlWaNativeConnection?.version === 1) return true;
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- Serialized guest function must keep its helper in scope.
   const chatPresent = () =>
     Boolean(document.querySelector('#pane-side, #side'));
   const module = (name: string, initializedOnly = false) => {
@@ -13,7 +14,9 @@ export function configureNativeConnection(): boolean {
       let registry;
       try {
         registry = req('__debug')?.modulesMap ?? req.m;
-      } catch {}
+      } catch {
+        /* Optional compatibility probes and notifications stay best-effort. */
+      }
       if (registry) {
         const known =
           typeof registry.has === 'function'
@@ -153,6 +156,7 @@ export function configureNativeConnection(): boolean {
     'error',
     'present',
   ];
+  // eslint-disable-next-line unicorn/consistent-function-scoping -- Serialized guest function must keep its helper in scope.
   const passkeySurface = () => {
     if (!document.querySelector('[data-testid="shortcake_passkey_screen"]'))
       return 'absent';
@@ -238,7 +242,9 @@ export function configureNativeConnection(): boolean {
         code: trace.at(-1)!.code,
         payloadKind,
       });
-    } catch {}
+    } catch {
+      /* Optional compatibility probes and notifications stay best-effort. */
+    }
   };
   const read = () => {
     const bus = backend();
@@ -259,7 +265,9 @@ export function configureNativeConnection(): boolean {
         typeof bus?.isMainStreamReadyMd === 'boolean'
           ? bus.isMainStreamReadyMd
           : null,
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       linkEventsObserved: Boolean(boundLinks),
+      // eslint-disable-next-line no-use-before-define, @typescript-eslint/no-use-before-define -- Used only by later callbacks after the bindings are initialized.
       registrationEventsObserved: Boolean(boundObserver),
       passkeySurface: passkeySurface(),
     };
@@ -309,13 +317,17 @@ export function configureNativeConnection(): boolean {
     if (disposed || checking) return;
     checking = true;
     try {
-      if ((await ready()) === true && !disposed)
-        for (const callback of [...readyCallbacks]) {
+      if ((await ready()) === true && !disposed) {
+        const callbacks = [...readyCallbacks];
+        for (const callback of callbacks) {
           readyCallbacks.delete(callback);
           try {
             callback();
-          } catch {}
+          } catch {
+            /* Optional compatibility probes and notifications stay best-effort. */
+          }
         }
+      }
     } finally {
       checking = false;
     }
@@ -350,11 +362,15 @@ export function configureNativeConnection(): boolean {
               typeof key === 'string' ? registrationKeys.indexOf(key) : -1;
             if (index >= 0)
               record('registration-stage', registrationStages[index]);
-          } catch {}
+          } catch {
+            /* Optional compatibility probes and notifications stay best-effort. */
+          }
         });
         boundObserver = observer;
         bindings.push(() => subscription?.remove?.());
-      } catch {}
+      } catch {
+        /* Optional compatibility probes and notifications stay best-effort. */
+      }
     }
     const bus = backend();
     if (bus && bus !== boundBus) {
@@ -397,7 +413,9 @@ export function configureNativeConnection(): boolean {
           if (label === 'passkey-error') {
             try {
               name = typeof value === 'string' ? value : value?.name;
-            } catch {}
+            } catch {
+              /* Optional compatibility probes and notifications stay best-effort. */
+            }
           }
           record(label, name);
         });
@@ -405,14 +423,14 @@ export function configureNativeConnection(): boolean {
     void check();
   };
   const socketListeners = new Map<
-    Function,
-    { bus: any; event: string; wrapped: Function }[]
+    (...args: any[]) => unknown,
+    { bus: any; event: string; wrapped: (...args: any[]) => unknown }[]
   >();
   const socketFacade = {
     get state() {
       return read().socket;
     },
-    on(event: string, fn: Function) {
+    on(event: string, fn: (...args: any[]) => unknown) {
       const bus = backend();
       const mapped =
         event === 'change:state'
@@ -429,7 +447,7 @@ export function configureNativeConnection(): boolean {
       socketListeners.set(fn, rows);
       return socketFacade;
     },
-    off(event: string, fn: Function) {
+    off(event: string, fn: (...args: any[]) => unknown) {
       const mapped =
         event === 'change:state'
           ? 'set_socket_state'

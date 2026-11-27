@@ -17,6 +17,7 @@ export function configureMessageSendMode(mode: string): boolean {
       state.mode !== 'shift-enter' ||
       event.key !== 'Enter' ||
       event.isComposing ||
+      // eslint-disable-next-line sonar/deprecation -- Preserve keyCode 229 for IME composition compatibility.
       event.keyCode === 229 ||
       event.ctrlKey ||
       event.altKey ||

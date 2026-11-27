@@ -81,19 +81,19 @@ describe('persistent bulk queue without live WhatsApp', () => {
             : {}),
         }),
       );
+      let scheduledTargets: string[] | undefined = targets.map(r => r.name);
+      const sendBeforeScheduledStart = jest.fn();
       if (scheduled) {
         await action;
-        expect(queue.records[0].spec?.targets.map(r => r.name)).toEqual([
-          'D',
-          'C',
-          'A',
-          'F',
-          'E',
-        ]);
-        expect(adapter.send).not.toHaveBeenCalled();
+        scheduledTargets = queue.records[0].spec?.targets.map(r => r.name);
+        sendBeforeScheduledStart.mock.calls = [
+          ...jest.mocked(adapter.send).mock.calls,
+        ];
         await jest.advanceTimersByTimeAsync(10_000);
         await finish(queue.tick());
       } else await finish(action);
+      expect(scheduledTargets).toEqual(['D', 'C', 'A', 'F', 'E']);
+      expect(sendBeforeScheduledStart).not.toHaveBeenCalled();
       expect(
         jest.mocked(adapter.send).mock.calls.map(([target]) => target.name),
       ).toEqual(['D', 'C', 'A', 'F', 'E']);

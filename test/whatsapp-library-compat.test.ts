@@ -98,8 +98,7 @@ describe('production WhatsApp library compatibility', () => {
     expect(env.functions.addAndSendMsgToChat).not.toHaveBeenCalled();
   });
   it('sends through the real SDK text, preparation and message-key pipeline with a modern LID getter', async () => {
-    let env: ReturnType<typeof sender>;
-    env = sender(prepareLibrary(original), {
+    const env: ReturnType<typeof sender> = sender(prepareLibrary(original), {
       getMaybeMeLidUser: () => env.lid,
     });
     const result = await env.api.sendTextMessage(env.chat.id, 'test', {
@@ -119,8 +118,7 @@ describe('production WhatsApp library compatibility', () => {
     });
   });
   it('also prepares media and retains the legacy getter on older native versions', async () => {
-    let env: ReturnType<typeof sender>;
-    env = sender(prepareLibrary(original), {
+    const env: ReturnType<typeof sender> = sender(prepareLibrary(original), {
       getMeLidUserOrThrow: () => env.lid,
     });
     const result = await env.api.prepareRawMessage(env.chat, { type: 'ptt' });
