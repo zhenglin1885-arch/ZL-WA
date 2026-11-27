@@ -41,8 +41,10 @@ export async function verifyReactions({
       await evaluate(
         `getComputedStyle(document.querySelector('[aria-label="点赞匹配文字"]')).color`,
       ),
-      'rgb(234, 241, 251)',
-      'dark inputs retain readable foreground',
+      (await evaluate(`document.body.classList.contains('theme__dark')`))
+        ? 'rgb(238, 241, 246)'
+        : 'rgb(38, 50, 71)',
+      'themed inputs retain the requested readable foreground',
     );
     assert.equal(
       await evaluate(

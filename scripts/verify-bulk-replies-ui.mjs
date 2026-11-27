@@ -108,7 +108,7 @@ export async function verifyBulkReplies({
     );
     await shot('/workspace/ZL-WA-bulk-reply-results.png');
     await click('[aria-label="关闭回复窗口"]');
-    await clickText('☷群发');
+    await clickText('群发');
     await wait(
       `!!document.querySelector('[aria-label="关闭转发窗口"]')`,
       'ordinary bulk opens',

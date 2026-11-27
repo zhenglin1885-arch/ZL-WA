@@ -1,11 +1,4 @@
 /* eslint-disable no-void -- UI event handlers start internally handled asynchronous operations. */
-import {
-  mdiAccountGroupOutline,
-  mdiAccountMultiplePlusOutline,
-  mdiAccountMultipleMinusOutline,
-  mdiThumbUpOutline,
-  mdiReplyOutline,
-} from '@mdi/js';
 import { ipcRenderer, clipboard } from 'electron';
 import { observer } from 'mobx-react';
 import { useEffect, useState, useId, useRef } from 'react';
@@ -813,12 +806,14 @@ const AccountTools = observer(({ stores }: StoresProps) => {
           onClick={() => setPanel(panel === 'customer' ? '' : 'customer')}
         >
           <svg
-            width="26"
-            height="26"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.6"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             aria-hidden="true"
           >
             <circle cx="9" cy="7" r="3" />
@@ -831,23 +826,75 @@ const AccountTools = observer(({ stores }: StoresProps) => {
           aria-pressed={panel === 'proxy'}
           onClick={() => setPanel(panel === 'proxy' ? '' : 'proxy')}
         >
-          ▤<span>代理</span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+          </svg>
+          <span>代理</span>
         </button>
         <button
           type="button"
           aria-pressed={panel === 'translation'}
           onClick={() => setPanel(panel === 'translation' ? '' : 'translation')}
         >
-          译<span>翻译</span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 5h8M8 3v2M6 5c0 4 2.5 7 6 8M10 5c-.5 3.5-3 7-6 8M13 21l4-9 4 9M14.5 18h5" />
+          </svg>
+          <span>翻译</span>
         </button>
         <button type="button" onClick={() => setBulk(true)}>
-          ☷<span>群发</span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 3 10 14M21 3l-7 18-4-7-7-4 18-7Z" />
+          </svg>
+          <span>群发</span>
         </button>
         {(
           [
-            ['speech', '群组', mdiAccountGroupOutline],
-            ['join', '进群', mdiAccountMultiplePlusOutline],
-            ['leave', '退群', mdiAccountMultipleMinusOutline],
+            [
+              'speech',
+              '群组',
+              'M12.5 8a3.5 3.5 0 1 1-7 0a3.5 3.5 0 1 1 7 0ZM2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c1.9.6 3.1 2.6 3.5 5.5',
+            ],
+            [
+              'join',
+              '进群',
+              'M12 8a3.5 3.5 0 1 1-7 0a3.5 3.5 0 1 1 7 0ZM2 21v-2a6.5 6.5 0 0 1 13 0v2M18 7v8M14 11h8',
+            ],
+            [
+              'leave',
+              '退群',
+              'M12 8a3.5 3.5 0 1 1-7 0a3.5 3.5 0 1 1 7 0ZM2 21v-2a6.5 6.5 0 0 1 13 0v2M14 11h8',
+            ],
           ] as const
         ).map(([mode, label, icon]) => (
           <button
@@ -857,7 +904,17 @@ const AccountTools = observer(({ stores }: StoresProps) => {
             aria-pressed={groupMode === mode}
             onClick={() => setGroupMode(mode)}
           >
-            <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d={icon} />
             </svg>
             <span>{label}</span>
@@ -869,8 +926,18 @@ const AccountTools = observer(({ stores }: StoresProps) => {
           aria-pressed={reactions}
           onClick={() => setReactions(true)}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
-            <path d={mdiThumbUpOutline} />
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M7 10H3v11h4V10Zm0 0 5-8c2 0 3 1 3 3l-1 5h6c1 0 2 1 1.7 2.4l-2 7C19.4 20.4 18.8 21 18 21H7" />
           </svg>
           <span>点赞</span>
         </button>
@@ -880,8 +947,18 @@ const AccountTools = observer(({ stores }: StoresProps) => {
           aria-pressed={replies}
           onClick={() => setReplies(true)}
         >
-          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
-            <path d={mdiReplyOutline} />
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 10V5l-7 7 7 7v-5h5c3 0 5 1 8 4-1-5-4-8-8-8H9Z" />
           </svg>
           <span>回复</span>
         </button>

@@ -14,7 +14,7 @@ export async function verifyBulkMultitask({
   const longText = '并行任务 A 第一行\n第二行内容\n第三行内容\n第四行内容';
   const shortText = '并行任务 B';
   await guest(first, 'fixture.holdBulk=true;fixture.bulkReleases=[];true');
-  await clickText('☷群发');
+  await clickText('群发');
   const create = async (text, all = false, deny = false) => {
     await clickText('新建转发');
     await wait(

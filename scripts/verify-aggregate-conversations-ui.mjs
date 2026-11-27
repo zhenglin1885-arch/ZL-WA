@@ -72,9 +72,9 @@ try {
     await wait(()=>first.closest('.conversation-row').classList.contains('is-active')&&!first.closest('.conversation-row').classList.contains('is-opening'));
     const activeRow=first.closest('.conversation-row');
     const darkSelected=getComputedStyle(activeRow).backgroundColor;
-    check(darkSelected==='rgb(44, 52, 66)'&&getComputedStyle(activeRow).boxShadow!=='none'&&first.getAttribute('aria-pressed')==='true','Opened conversation lost its persistent dark-mode highlight');
-    document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,80));
-    check(getComputedStyle(activeRow).backgroundColor!==darkSelected&&getComputedStyle(activeRow).boxShadow!=='none','Light-mode selected highlight did not adapt');
+    check(darkSelected==='rgba(77, 141, 255, 0.13)'&&getComputedStyle(activeRow).boxShadow==='none'&&first.getAttribute('aria-pressed')==='true','Opened conversation lost its persistent dark-mode highlight');
+    document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,220));
+    check(getComputedStyle(activeRow).backgroundColor==='rgba(255, 255, 255, 0.22)'&&getComputedStyle(activeRow).boxShadow==='none','Light-mode selected highlight did not adapt: '+JSON.stringify({background:getComputedStyle(activeRow).backgroundColor,shadow:getComputedStyle(activeRow).boxShadow}));
     document.body.classList.add('theme__dark');
 
     document.querySelector('[aria-label="全选当前结果"]').click();
@@ -95,14 +95,14 @@ try {
     };
     const groupToggle=name=>[...document.querySelectorAll('.conversation-group button[aria-expanded]')].find(button=>button.textContent.includes(name));
     const menuItem=label=>[...document.querySelectorAll('[role="menuitem"]')].find(item=>item.textContent===label);
-    const badge=document.querySelector('.conversation-row__avatar b');check(badge.textContent==='99+'&&getComputedStyle(badge).backgroundColor==='rgb(229, 57, 53)'&&getComputedStyle(badge).fontSize==='10px','Unread badge cap, size or red color is wrong');
+    const badge=document.querySelector('.conversation-row__avatar b');check(badge.textContent==='99+'&&getComputedStyle(badge).backgroundColor==='rgb(217, 58, 66)'&&getComputedStyle(badge).fontSize==='12px','Unread badge cap, size or red color is wrong');
     await nativeClick(groupToggle('默认分组'),'right');await wait(()=>document.querySelector('[role="menu"]'));
     check(document.querySelectorAll('[role="menuitem"]').length===1&&menuItem('全部已读'),'Default group exposed edit/delete actions');
     require(${JSON.stringify(`${process.cwd()}/node_modules/@electron/remote`)}).getCurrentWebContents().sendInputEvent({type:'keyDown',keyCode:'Escape'});
     await wait(()=>!document.querySelector('[role="menu"]'));
     check(!document.querySelector('[aria-label="会话状态"]'),'Removed status filters are still shown');
     check(![...document.querySelectorAll('button')].some(button=>button.getAttribute('aria-label')?.endsWith('分组菜单')),'Group ellipsis menu is still shown');
-    const plus=document.querySelector('[aria-label="新增会话分组"]');check(plus.getBoundingClientRect().width>=36&&parseFloat(getComputedStyle(plus).fontSize)>=24,'Group plus is too small');
+    const plus=document.querySelector('[aria-label="新增会话分组"]');check(plus.getBoundingClientRect().width>=36&&parseFloat(getComputedStyle(plus).fontSize)>=20,'Group plus is too small');
     await nativeClick(plus);
     await wait(()=>document.querySelector('[role="dialog"] input'));
     const popupVisible=()=>{const paper=document.querySelector('[role="dialog"]'),r=paper.getBoundingClientRect();return r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;};

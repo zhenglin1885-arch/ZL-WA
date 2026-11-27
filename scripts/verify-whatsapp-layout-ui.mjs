@@ -131,8 +131,8 @@ export async function verifyWhatsAppLayout(id) {
       `(()=>{const status=require('./features/accounts/whatsapp').accountStatus;const s={isEnabled:true,isLoading:false,isError:false,hasCrashed:false,isHibernating:false,accountSnapshot:{status:'online'}};return [status(s),status({...s,accountSnapshot:{status:'logged-out'}}),status({...s,isError:true}),status({...s,isHibernating:true,isError:true})].map(value=>{const dot=document.createElement('i');dot.className='account-status account-status--'+value;document.body.append(dot);const color=getComputedStyle(dot).backgroundColor;dot.remove();return color})})()`,
     );
     assert.deepEqual(statuses, [
-      'rgb(24, 197, 104)',
-      'rgb(240, 82, 89)',
+      'rgb(47, 207, 122)',
+      'rgb(217, 58, 66)',
       'rgb(237, 177, 54)',
       'rgb(146, 153, 163)',
     ]);

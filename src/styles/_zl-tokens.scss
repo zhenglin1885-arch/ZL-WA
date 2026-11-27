@@ -1,0 +1,176 @@
+// Shared visual tokens. Layout constants preserve the tested window/webview geometry.
+$zl-radius-sm: 8px;
+$zl-radius-md: 12px;
+$zl-radius-lg: 16px;
+$zl-radius-xl: 20px;
+$zl-radius-pill: 999px;
+$zl-bg: #0b0e13;
+$zl-surface: #12161d;
+$zl-card: #1a1f28;
+$zl-card-hover: #212734;
+$zl-field: #11151c;
+$zl-line: #1c222c;
+$zl-field-line: #2a3240;
+$zl-accent: #2f6bde;
+$zl-accent-hover: #3b78ea;
+$zl-accent-soft: rgba(77, 141, 255, 0.13);
+$zl-accent-ring: rgba(77, 141, 255, 0.55);
+$zl-text: #eef1f6;
+$zl-text-2: #9aa6ba;
+$zl-text-3: #8b95a7;
+$zl-danger: #d93a42;
+$zl-online: #2fcf7a;
+$zl-sleep-bg: #3a311b;
+$zl-sleep: #f2c766;
+$zl-white: #fff;
+$zl-group-title: #c9d6ee;
+$zl-remark: #b9c6dc;
+$zl-subtle-button: #1b212b;
+$zl-button: #222936;
+$zl-rail-text: #b7c3d7;
+$zl-rail-selected: rgba(77, 141, 255, 0.16);
+$zl-rail-selected-text: #a9c8ff;
+$zl-info-bg: #172234;
+$zl-info-text: #b9cdeb;
+$zl-avatar-start: #3b5a8c;
+$zl-avatar-end: #2a3f63;
+$zl-status-idle: #9299a3;
+$zl-status-warning: #edb136;
+$zl-drag: #579dff;
+$zl-light-theme: #7367f0;
+$zl-light-panel: #f6f8fc;
+$zl-light-card: #fff;
+$zl-light-text: #263247;
+$zl-light-text-2: #657289;
+$zl-light-line: #d5dce8;
+$zl-light-hover: rgba(255, 255, 255, 0.18);
+$zl-light-selection: rgba(255, 255, 255, 0.22);
+$zl-light-info: #eaf1fc;
+$zl-shadow-primary: 0 6px 16px rgba(47, 107, 222, 0.28);
+$zl-shadow-popup: 0 12px 32px rgba(0, 0, 0, 0.45);
+$zl-shadow-focus: 0 0 0 3px rgba(77, 141, 255, 0.2);
+$zl-shadow-selection: inset 0 0 0 1.5px $zl-accent-ring;
+$zl-status-ring: 0 0 0 2.5px $zl-card;
+$zl-light-status-ring: 0 0 0 2.5px var(--zl-light-theme, $zl-light-theme);
+$zl-light-selection-ring: inset 0 0 0 1.5px rgba(255, 255, 255, 0.7);
+$zl-transition:
+  background-color 0.15s ease,
+  box-shadow 0.15s ease,
+  color 0.15s ease;
+
+// Fixed dimensions, font scale, and borders used by application chrome.
+$zl-size-1: 1px;
+$zl-size-2: 2px;
+$zl-size-3: 3px;
+$zl-size-4: 4px;
+$zl-size-5: 5px;
+$zl-size-8: 8px;
+$zl-size-12: 12px;
+$zl-size-13: 13px;
+$zl-size-14: 14px;
+$zl-size-15: 15px;
+$zl-size-16: 16px;
+$zl-size-18: 18px;
+$zl-size-19: 19px;
+$zl-size-20: 20px;
+$zl-size-22: 22px;
+$zl-size-24: 24px;
+$zl-size-28: 28px;
+$zl-size-30: 30px;
+$zl-size-32: 32px;
+$zl-size-34: 34px;
+$zl-size-36: 36px;
+$zl-size-38: 38px;
+$zl-size-40: 40px;
+$zl-size-42: 42px;
+$zl-size-44: 44px;
+$zl-size-48: 48px;
+$zl-size-54: 54px;
+$zl-size-56: 56px;
+$zl-size-58: 58px;
+$zl-size-64: 64px;
+$zl-size-68: 68px;
+$zl-size-72: 72px;
+$zl-size-76: 76px;
+$zl-size-80: 80px;
+$zl-size-84: 84px;
+$zl-size-100: 100px;
+$zl-size-120: 120px;
+$zl-size-128: 128px;
+$zl-size-140: 140px;
+$zl-size-150: 150px;
+$zl-size-168: 168px;
+$zl-size-180: 180px;
+$zl-size-190: 190px;
+$zl-size-200: 200px;
+$zl-size-210: 210px;
+$zl-size-220: 220px;
+$zl-size-240: 240px;
+$zl-size-250: 250px;
+$zl-size-255: 255px;
+$zl-size-260: 260px;
+$zl-size-280: 280px;
+$zl-size-290: 290px;
+$zl-size-300: 300px;
+$zl-size-336: 336px;
+$zl-size-340: 340px;
+$zl-size-360: 360px;
+$zl-size-500: 500px;
+$zl-size-560: 560px;
+$zl-size-760: 760px;
+$zl-size-800: 800px;
+$zl-size-1000: 1000px;
+$zl-size-1050: 1050px;
+$zl-size-1150: 1150px;
+$zl-size-1800: 1800px;
+
+@mixin zl-unread-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 22px;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 8px;
+  border-radius: $zl-radius-pill;
+  background: $zl-danger;
+  color: $zl-white;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+@mixin zl-drop-marker {
+  &.drop-before::before,
+  &.drop-after::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: $zl-radius-pill;
+    background: $zl-drag;
+    pointer-events: none;
+    z-index: 1;
+  }
+  &.drop-before::before {
+    top: -4px;
+  }
+  &.drop-after::after {
+    bottom: -4px;
+  }
+}
+@mixin zl-scrollbar {
+  &::-webkit-scrollbar,
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb {
+    background: $zl-field-line;
+    border-radius: $zl-radius-pill;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+}

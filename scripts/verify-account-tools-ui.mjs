@@ -171,6 +171,10 @@ try {
     );
   }
   const [first, second] = ids;
+  if (process.env.ZL_VERIFY_ROUNDED_UI) {
+    const { verifyRoundedUI } = await import('./verify-rounded-ui.mjs');
+    await verifyRoundedUI(first);
+  }
   // Card dragging updates only local presentation order, never the account's
   // identity or active guest. Start with trusted mouse input so a button inside
   // the draggable card cannot silently prevent an actual Chromium drag.
@@ -497,7 +501,7 @@ try {
     console.log(
       'PASS visible group/remark dialogs accept native mouse and text input and persist changes',
     );
-    await clickText('译翻译');
+    await clickText('翻译');
     await wait(
       `!!document.querySelector('.account-tools-panel fieldset')`,
       'translation panel',
@@ -1546,7 +1550,7 @@ try {
       'PASS switching chats invalidates pending outgoing translation',
     );
 
-    await clickText('▤代理');
+    await clickText('代理');
     await wait(
       `!!document.querySelector('.account-tools-panel fieldset')`,
       'proxy panel',
@@ -1612,7 +1616,7 @@ try {
       `!${service(first)}.isLoading && ${service(first)}.accountSnapshot.status==='online' && !${service(second)}.isLoading && ${service(second)}.accountSnapshot.status==='online'`,
       'local fixture Sessions remain online',
     );
-    await clickText('☷群发');
+    await clickText('群发');
     const checkBulkLayout = async () => {
       for (const [width, height] of [
         [1920, 1080],
@@ -1692,13 +1696,10 @@ try {
       `document.querySelectorAll('.bulk-recipient-list input').length===1`,
       'only open groups are listed',
     );
-    assert(
-      !(
-        await evaluate(
-          `document.querySelector('.bulk-recipient-list').textContent`,
-        )
-      ).includes('关闭发言的群'),
+    const recipientListText = await evaluate(
+      `document.querySelector('.bulk-recipient-list').textContent`,
     );
+    assert(!recipientListText.includes('关闭发言的群'));
     await guest(first, `fixture.chats[0].groupMetadata.announce=true;true`);
     await clickText('读取聊天对象');
     await wait(
@@ -1724,7 +1725,7 @@ try {
       'PASS bulk recipient reads exclude closed and unknown groups, track permission changes, preserve private chats and never send during reading',
     );
     await evaluate(
-      `document.querySelector('.bulk-columns fieldset:nth-child(2) > label input').click();const t=document.querySelector('[aria-label="发送内容"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'这是批量发送本地测试');t.dispatchEvent(new Event('input',{bubbles:true}));`,
+      `(()=>{document.querySelector('.bulk-columns fieldset:nth-child(2) > label input').click();const t=document.querySelector('[aria-label="发送内容"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'这是批量发送本地测试');t.dispatchEvent(new Event('input',{bubbles:true}));})()`,
     );
     await checkBulkLayout();
     console.log(
@@ -1898,7 +1899,7 @@ try {
       `(()=>{const n=document.querySelector('#bulk-failure');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(n,'continue');n.dispatchEvent(new Event('change',{bubbles:true}));const t=document.querySelector('#bulk-min');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(t,'4.5');t.dispatchEvent(new Event('input',{bubbles:true}));})()`,
     );
     await clickText('关闭');
-    await clickText('☷群发');
+    await clickText('群发');
     await clickText('新建转发');
     await wait(
       `document.querySelector('#bulk-failure')?.value==='continue' && document.querySelector('#bulk-min')?.value==='4.5'`,
@@ -2075,15 +2076,15 @@ try {
     await evaluate(
       `getComputedStyle(document.querySelector('[data-service-id="${first}"] .account-card__unread')).color`,
     ),
-    'rgb(229, 57, 53)',
-    'account unread digits are red',
+    'rgb(255, 255, 255)',
+    'account unread badge digits are white',
   );
   assert.equal(
     await evaluate(
       `getComputedStyle(document.querySelector('[data-service-id="${first}"] .account-card__unread')).backgroundColor`,
     ),
-    'rgba(0, 0, 0, 0)',
-    'account unread count has no background',
+    'rgb(217, 58, 66)',
+    'account unread count has the requested red badge background',
   );
   const unreadStarted = Date.now();
   await guest(first, `fixture.chats[1].set({unreadCount:9});true`);

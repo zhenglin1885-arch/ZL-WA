@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- Command-line GUI regression evidence. */
 /* Verify explicit opt-in DIRECT routing through the real account UI and Electron Session. */
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +10,7 @@ import {
   call,
   socket,
 } from './account-tools-cdp.mjs';
+
 let id;
 const service = () =>
   `window.ferdium.stores.services.one(${JSON.stringify(id)})`;
@@ -55,7 +57,7 @@ try {
   if (
     !(await evaluate("Boolean(document.querySelector('.account-tools-panel'))"))
   )
-    await clickText('▤代理');
+    await clickText('代理');
   await wait(
     "!!document.getElementById('zl-AccountTools-3')",
     'proxy controls',

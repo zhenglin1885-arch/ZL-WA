@@ -1,3 +1,5 @@
+@use 'zl-tokens' as *;
+
 // ZL-WA account sidebar; folding groups never unmounts service webviews.
 .app--accounts .app__service {
   min-width: 0;
@@ -10,20 +12,20 @@
   svg path {
     fill: currentColor;
   }
-  width: 300px;
-  min-width: 260px;
-  flex: 0 0 300px;
+  width: $zl-size-300;
+  min-width: $zl-size-260;
+  flex: 0 0 $zl-size-300;
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 12px 10px 8px;
+  padding: $zl-size-16 $zl-size-12 $zl-size-12;
   box-sizing: border-box;
-  background: #111318;
-  color: #f3f4f6;
-  border-right: 1px solid #292d36;
+  background: $zl-surface;
+  color: $zl-text;
+  border-right: $zl-size-1 solid $zl-line;
   font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
+  font-size: $zl-size-14;
   button {
     font: inherit;
     color: inherit;
@@ -36,21 +38,23 @@
     cursor: not-allowed;
   }
   button:focus-visible {
-    outline: 2px solid #75aaff;
-    outline-offset: 2px;
+    outline: $zl-size-2 solid $zl-accent;
+    outline-offset: $zl-size-2;
   }
   &__new-group {
-    flex: 0 0 40px;
+    flex: 0 0 $zl-size-44;
     width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    background: #0754da !important;
-    border-radius: 8px;
-    font-size: 17px !important;
+    gap: $zl-size-8;
+    background: $zl-accent !important;
+    border-radius: $zl-radius-pill;
+    font-size: $zl-size-16 !important;
+    font-weight: 600;
+    box-shadow: $zl-shadow-primary;
     &:hover {
-      background: #1769ed !important;
+      background: $zl-accent-hover !important;
     }
   }
   &__groups {
@@ -59,60 +63,56 @@
     overflow-y: auto;
     overflow-x: hidden;
     min-height: 0;
-    padding-bottom: 12px;
+    padding-bottom: $zl-size-12;
   }
   &__notice {
     position: relative;
-    margin-top: 10px;
-    padding: 10px 22px 10px 10px;
-    background: #26354a;
-    border-radius: 6px;
-    font-size: 12px;
+    margin-top: $zl-size-8;
+    padding: $zl-size-12 $zl-size-28 $zl-size-12 $zl-size-12;
+    background: $zl-info-bg;
+    border-radius: $zl-radius-md;
+    font-size: $zl-size-12;
     line-height: 1.6;
     overflow-wrap: anywhere;
     button {
       position: absolute;
-      right: 3px;
-      top: 3px;
+      right: $zl-size-3;
+      top: $zl-size-3;
     }
   }
   &__footer {
     display: flex;
     justify-content: space-around;
-    padding-top: 8px;
-    border-top: 1px solid #2a2f38;
-    gap: 4px;
+    padding-top: $zl-size-8;
+    border-top: $zl-size-1 solid $zl-line;
+    gap: $zl-size-4;
     button {
       display: flex;
-      gap: 4px;
+      gap: $zl-size-4;
       align-items: center;
-      border-radius: 4px;
-      padding: 6px;
-      font-size: 12px;
-      color: #aeb8c9;
+      border-radius: $zl-radius-sm;
+      padding: $zl-size-8;
+      font-size: $zl-size-12;
+      color: $zl-text-2;
       &:hover {
         color: white;
-        background: #252a34;
+        background: $zl-card-hover;
       }
     }
   }
 }
 .account-group {
-  margin-top: 12px;
+  margin-top: $zl-size-16;
   &.is-dragging {
     opacity: 0.5;
   }
   &__header {
     display: flex;
     align-items: center;
-    min-height: 34px;
-    gap: 2px;
-  }
-  &__header.drop-before {
-    box-shadow: 0 -3px #579dff;
-  }
-  &__header.drop-after {
-    box-shadow: 0 3px #579dff;
+    min-height: $zl-size-34;
+    gap: $zl-size-4;
+    position: relative;
+    @include zl-drop-marker;
   }
   &__toggle {
     cursor: grab;
@@ -121,11 +121,13 @@
     }
     flex: 1;
     min-width: 0;
-    padding: 4px 0;
+    padding: $zl-size-4 0;
     display: flex;
     align-items: center;
     text-align: left;
-    color: #6ca2ff !important;
+    color: $zl-group-title !important;
+    font-size: $zl-size-13;
+    font-weight: 600;
     span {
       white-space: nowrap;
       overflow: hidden;
@@ -133,37 +135,44 @@
     }
   }
   &__add {
+    min-height: $zl-size-28;
+    border-radius: $zl-radius-sm;
+    background: $zl-subtle-button !important;
+    padding: $zl-size-4 $zl-size-8;
+    &:hover {
+      background: $zl-card-hover !important;
+    }
     display: flex;
     align-items: center;
     flex: 0 0 auto;
-    padding: 4px 0;
-    color: #6ca2ff !important;
-    font-size: 13px !important;
+    padding: $zl-size-4 0;
+    color: $zl-accent !important;
+    font-size: $zl-size-13 !important;
   }
   &__more {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
-    padding: 4px !important;
-    color: #a5acb9 !important;
+    width: $zl-size-28;
+    height: $zl-size-28;
+    flex: 0 0 $zl-size-28;
+    padding: $zl-size-4 !important;
+    color: $zl-text-2 !important;
     svg {
-      width: 20px !important;
-      height: 20px !important;
+      width: $zl-size-20 !important;
+      height: $zl-size-20 !important;
     }
   }
   &__cards {
     display: flex;
     flex-direction: column;
-    gap: 9px;
-    padding: 5px 0 1px;
+    gap: $zl-size-8;
+    padding: $zl-size-4 0;
   }
   &__empty {
-    color: #7f899c;
-    font-size: 12px;
-    margin: 8px 12px 12px;
+    color: $zl-text-3;
+    font-size: $zl-size-12;
+    margin: $zl-size-8 $zl-size-12 $zl-size-12;
   }
 }
 .account-card {
@@ -171,42 +180,39 @@
   &.is-dragging {
     opacity: 0.5;
   }
-  &.drop-before {
-    box-shadow: 0 -3px #579dff;
-  }
-  &.drop-after {
-    box-shadow: 0 3px #579dff;
-  }
+  @include zl-drop-marker;
   position: relative;
-  border: 1px solid #353c49;
-  border-radius: 8px;
-  min-height: 86px;
-  background: #15181f;
+  border: 0;
+  border-radius: $zl-radius-lg;
+  background: $zl-card;
   &.is-active {
-    border-color: #2876ff;
-    box-shadow: inset 0 0 0 1px #2876ff;
+    background: $zl-accent-soft;
+    box-shadow: $zl-shadow-selection;
   }
   &:hover {
-    background: #1c212a;
+    background: $zl-card-hover;
+  }
+  &.is-active:hover {
+    background: $zl-accent-soft;
   }
   &__select {
     width: 100%;
-    min-height: 61px;
-    padding: 10px 52px 0 11px;
+    min-height: 0;
+    padding: $zl-size-12 $zl-size-64 0 $zl-size-12;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: $zl-size-12;
     text-align: left;
   }
   &__portrait {
     position: relative;
-    flex: 0 0 42px;
-    height: 42px;
+    flex: 0 0 $zl-size-44;
+    height: $zl-size-44;
     display: block;
     img,
     .account-card__initial {
-      width: 42px;
-      height: 42px;
+      width: $zl-size-44;
+      height: $zl-size-44;
       border-radius: 50%;
       object-fit: cover;
     }
@@ -215,83 +221,84 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #344561;
-    color: #dfebff;
+    background: linear-gradient(140deg, $zl-avatar-start, $zl-avatar-end);
+    color: $zl-rail-selected-text;
     font-weight: 600;
-    font-size: 21px;
+    font-size: $zl-size-18;
   }
   &__identity {
     display: flex;
     flex-direction: column;
     min-width: 0;
     flex: 1;
-    gap: 3px;
+    gap: $zl-size-4;
   }
   &__name {
-    color: #f2f5fb;
-    font-size: 14px;
+    font-weight: 600;
+    color: $zl-text;
+    font-size: $zl-size-14;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
   }
   &__phone {
-    font-size: 14px;
-    color: #a0acc0;
+    font-size: $zl-size-13;
+    color: $zl-text-2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   &__more {
     position: absolute;
-    right: 2px;
-    top: 3px;
-    width: 28px;
-    height: 28px;
-    padding: 4px !important;
+    right: $zl-size-2;
+    top: $zl-size-3;
+    width: $zl-size-28;
+    height: $zl-size-28;
+    padding: $zl-size-4 !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #a1adbf !important;
+    color: $zl-text-2 !important;
     svg {
-      width: 20px !important;
-      height: 20px !important;
+      width: $zl-size-20 !important;
+      height: $zl-size-20 !important;
     }
   }
   &__sleep {
     position: absolute;
-    right: 34px;
-    top: 5px;
+    right: $zl-size-34;
+    top: $zl-size-5;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
-    padding: 2px !important;
+    width: $zl-size-28;
+    height: $zl-size-28;
+    padding: $zl-size-4 !important;
     border-radius: 50%;
-    color: #a1adbf !important;
+    color: $zl-text-2 !important;
     svg {
-      width: 20px !important;
-      height: 20px !important;
+      width: $zl-size-20 !important;
+      height: $zl-size-20 !important;
     }
     &:hover {
-      background: #303b4c;
-      color: #fff !important;
+      background: $zl-card-hover;
+      color: $zl-white !important;
     }
     &.is-sleeping {
-      background: #3b321c;
-      color: #f5c65e !important;
+      background: $zl-sleep-bg;
+      color: $zl-sleep !important;
     }
   }
   &__remark {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin: 0 8px 7px 62px;
+    gap: $zl-size-4;
+    margin: 0 $zl-size-12 $zl-size-12 $zl-size-68;
     padding: 0 !important;
-    max-width: calc(100% - 72px);
+    max-width: calc(100% - $zl-size-72);
     text-align: left;
-    font-size: 13px !important;
-    color: #d1dae9 !important;
+    font-size: $zl-size-12 !important;
+    color: $zl-remark !important;
     span {
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -299,36 +306,32 @@
     }
   }
   &__unread {
-    margin-right: 12px;
-    background: transparent;
-    color: #e53935;
-    font-size: 20px;
-    font-weight: 800;
-    line-height: 1.2;
-    padding: 2px 5px;
+    @include zl-unread-badge;
+    margin-right: $zl-size-12;
   }
 }
 .account-status {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  bottom: -1px;
-  right: -2px;
-  border: 2px solid #f4f6fb;
+  width: $zl-size-12;
+  height: $zl-size-12;
+  bottom: (-$zl-size-1);
+  right: (-$zl-size-2);
+  border: 0;
+  box-shadow: $zl-status-ring;
   border-radius: 50%;
-  background: #e3a623;
+  background: $zl-status-warning;
   &--online {
-    background: #18c568;
+    background: $zl-online;
   }
   &--logged-out {
-    background: #f05259;
+    background: $zl-danger;
   }
   &--error {
-    background: #edb136;
+    background: $zl-status-warning;
   }
   &--sleeping,
   &--loading {
-    background: #9299a3;
+    background: $zl-status-idle;
   }
 }
 // The upstream div reset otherwise stretches MUI's invisible focus sentinels
@@ -344,25 +347,27 @@
   svg path {
     fill: currentColor;
   }
-  background: #272b32;
-  color: #f5f6f8;
-  min-width: 168px;
-  border: 1px solid #444b57;
-  border-radius: 8px;
+  background: $zl-card;
+  color: $zl-text;
+  min-width: $zl-size-168;
+  border: $zl-size-1 solid $zl-field-line;
+  border-radius: $zl-radius-md;
+  box-shadow: $zl-shadow-popup;
   .MuiMenuItem-root {
     display: flex;
-    gap: 10px;
-    padding: 8px 13px;
-    font-size: 14px;
-    min-height: 35px;
+    gap: $zl-size-8;
+    padding: $zl-size-8 $zl-size-12;
+    font-size: $zl-size-14;
+    min-height: $zl-size-36;
+    border-radius: $zl-radius-sm;
     &:hover {
-      background: #3a414d;
+      background: $zl-card-hover;
     }
   }
 }
 .account-dialog-error {
-  color: #d32f2f;
-  font-size: 13px;
+  color: $zl-danger;
+  font-size: $zl-size-13;
 }
 // MUI focus-trap sentinels must not inherit the upstream div height:100%.
 // Otherwise the first invisible sentinel moves the dialog below the viewport.
@@ -379,17 +384,17 @@
     height: 0;
   }
 }
-@media (max-width: 800px) {
+@media (max-width: $zl-size-800) {
   .account-sidebar {
-    flex-basis: 260px;
-    width: 260px;
+    flex-basis: $zl-size-260;
+    width: $zl-size-260;
   }
 }
 
 .account-sidebar__header {
   display: flex;
-  flex: 0 0 40px;
-  gap: 4px;
+  flex: 0 0 $zl-size-40;
+  gap: $zl-size-4;
   .account-sidebar__new-group {
     flex: 1;
     min-width: 0;
@@ -399,28 +404,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 40px;
-  flex: 0 0 36px;
-  padding: 4px !important;
-  border: 1px solid #586373 !important;
-  border-radius: 6px;
+  width: $zl-size-32;
+  height: $zl-size-32;
+  flex: 0 0 $zl-size-32;
+  align-self: center;
+  background: $zl-subtle-button !important;
+  padding: $zl-size-4 !important;
+  border: $zl-size-1 solid $zl-field-line !important;
+  border-radius: $zl-radius-md;
   svg {
-    width: 24px !important;
-    height: 24px !important;
+    width: $zl-size-24 !important;
+    height: $zl-size-24 !important;
   }
   &:hover {
-    background: #252a34;
+    background: $zl-card-hover;
   }
 }
 .account-sidebar.is-collapsed {
-  width: 84px;
-  min-width: 84px;
-  flex-basis: 84px;
-  padding: 8px 5px;
+  width: $zl-size-84;
+  min-width: $zl-size-84;
+  flex-basis: $zl-size-84;
+  padding: $zl-size-8 $zl-size-4;
   .account-sidebar__header {
     justify-content: center;
-    flex-basis: 40px;
+    flex-basis: $zl-size-40;
   }
   .account-sidebar__new-group,
   .account-group__header,
@@ -434,32 +441,32 @@
     display: none;
   }
   .account-group {
-    margin-top: 5px;
+    margin-top: $zl-size-4;
   }
   .account-group__cards {
-    gap: 7px;
+    gap: $zl-size-8;
     padding: 0;
   }
   .account-card {
-    min-height: 78px;
+    min-height: 0;
   }
   .account-card__select {
-    min-height: 54px;
-    padding: 6px 0 0;
+    min-height: $zl-size-54;
+    padding: $zl-size-8 0 0;
     justify-content: center;
   }
   .account-card__remark {
     justify-content: center;
-    width: calc(100% - 8px);
+    width: calc(100% - $zl-size-8);
     max-width: none;
-    margin: 4px 4px 7px;
-    font-size: 12px !important;
+    margin: $zl-size-4 $zl-size-4 $zl-size-8;
+    font-size: $zl-size-12 !important;
   }
   .account-card__unread {
     margin-right: 0;
     position: absolute;
-    top: 2px;
-    right: 2px;
+    top: $zl-size-2;
+    right: $zl-size-2;
   }
   .account-sidebar__footer {
     justify-content: center;
@@ -468,50 +475,48 @@
 
 .account-remark-dialog {
   .MuiPopover-paper {
-    width: 300px;
-    max-width: calc(100vw - 16px);
-    margin-top: 4px;
+    width: $zl-size-300;
+    max-width: calc(100vw - $zl-size-16);
+    margin-top: $zl-size-4;
   }
   .MuiDialogTitle-root {
-    padding: 10px 12px 2px;
-    font-size: 14px;
-    line-height: 20px;
+    padding: $zl-size-8 $zl-size-12 $zl-size-4;
+    font-size: $zl-size-14;
+    line-height: $zl-size-20;
   }
   .MuiDialogContent-root {
-    padding: 4px 12px 0;
+    padding: $zl-size-4 $zl-size-12 0;
   }
   .MuiFormHelperText-root {
-    font-size: 10px;
-    line-height: 14px;
-    margin: 3px 0 0;
+    font-size: $zl-size-12;
+    line-height: $zl-size-14;
+    margin: $zl-size-4 0 0;
   }
   .MuiDialogActions-root {
-    padding: 5px 8px 8px;
+    padding: $zl-size-4 $zl-size-8 $zl-size-8;
   }
   .MuiDialogActions-root button {
-    min-width: 48px;
-    padding: 3px 10px;
-    font-size: 12px;
+    min-width: $zl-size-48;
+    padding: $zl-size-4 $zl-size-8;
+    font-size: $zl-size-12;
   }
 }
 
 .account-context-menu.account-session-menu .MuiPaper-root {
-  width: 128px;
-  min-width: 128px;
-  max-width: 128px;
+  width: $zl-size-128;
+  min-width: $zl-size-128;
+  max-width: $zl-size-128;
   .MuiMenuItem-root {
-    padding: 8px 10px;
-    gap: 8px;
+    padding: $zl-size-8 $zl-size-8;
+    gap: $zl-size-8;
     white-space: nowrap;
   }
 }
 .account-group__toggle .account-group__unread {
-  flex-shrink: 0;
-  margin-left: 6px;
-  color: #e53935;
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.2;
+  @include zl-unread-badge;
+  height: $zl-size-20;
+  line-height: $zl-size-20;
+  margin-left: $zl-size-8;
 }
 
 // Shared rounded numerals for account and group unread totals.
@@ -521,22 +526,29 @@
 }
 
 body:not(.theme__dark) .account-sidebar {
-  background: var(--zl-light-theme, #7367f0);
-  color: var(--zl-light-theme-text, #fff);
+  background: var(--zl-light-theme, $zl-light-theme);
+  color: var(--zl-light-theme-text, $zl-white);
   border-color: rgba(255, 255, 255, 0.25);
   .account-group__toggle,
   .account-group__add,
   .account-group__more,
   .account-sidebar__footer button {
-    color: var(--zl-light-theme-text, #fff) !important;
+    color: var(--zl-light-theme-text, $zl-white) !important;
   }
   .account-card {
     background: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.35);
   }
-  .account-card.is-active {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: var(--zl-light-theme-text, #fff);
+  .account-card:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .account-status {
+    box-shadow: $zl-light-status-ring;
+  }
+  .account-card.is-active,
+  .account-card.is-active:hover {
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: $zl-light-selection-ring;
   }
 }
 
@@ -546,37 +558,39 @@ body:not(.theme__dark) .account-sidebar {
   .account-card__remark,
   .account-card__more,
   .account-card__sleep:not(.is-sleeping) {
-    color: var(--zl-light-theme-text, #fff) !important;
+    color: var(--zl-light-theme-text, $zl-white) !important;
   }
   .account-sidebar__new-group {
-    color: #fff !important;
+    background: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: none;
+    color: $zl-white !important;
   }
 }
 
 .account-sidebar__aggregate {
   align-self: flex-end;
-  padding: 5px 8px;
-  margin-bottom: 8px;
-  color: #75aaff !important;
+  padding: $zl-size-4 $zl-size-8;
+  margin-bottom: $zl-size-8;
+  color: $zl-accent !important;
 }
 .account-sidebar.is-collapsed .account-sidebar__aggregate {
-  font-size: 11px;
-  padding: 3px 0;
+  font-size: $zl-size-12;
+  padding: $zl-size-4 0;
 }
 .conversation-sidebar {
-  padding: 10px 7px 6px;
+  padding: $zl-size-8 $zl-size-8 $zl-size-8;
   &__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 12px;
+    gap: $zl-size-8;
+    margin-bottom: $zl-size-12;
     strong {
-      font-size: 19px;
+      font-size: $zl-size-18;
     }
     button {
-      font-size: 12px;
-      color: #75aaff;
+      font-size: $zl-size-12;
+      color: $zl-accent;
     }
   }
   input,
@@ -586,51 +600,51 @@ body:not(.theme__dark) .account-sidebar {
   }
   .conversation-search {
     width: 100%;
-    height: 36px;
-    padding: 7px;
-    border: 1px solid #444b59;
-    border-radius: 6px;
-    background: #171b23;
+    height: $zl-size-36;
+    padding: $zl-size-8;
+    border: $zl-size-1 solid $zl-field-line;
+    border-radius: $zl-radius-sm;
+    background: $zl-field;
     color: inherit;
-    margin-bottom: 8px;
+    margin-bottom: $zl-size-8;
   }
   .conversation-filters {
     display: flex;
-    gap: 4px;
-    margin-bottom: 6px;
+    gap: $zl-size-4;
+    margin-bottom: $zl-size-8;
     button {
-      border: 1px solid #444b59;
-      border-radius: 4px;
-      padding: 4px 7px;
-      font-size: 12px;
+      border: $zl-size-1 solid $zl-field-line;
+      border-radius: $zl-radius-sm;
+      padding: $zl-size-4 $zl-size-8;
+      font-size: $zl-size-12;
       white-space: nowrap;
     }
     button[aria-pressed='true'] {
-      background: #0754da;
-      color: #fff;
+      background: $zl-accent;
+      color: $zl-white;
     }
   }
   .conversation-accounts {
     display: flex;
-    gap: 5px;
+    gap: $zl-size-4;
     select {
       min-width: 0;
       flex: 1;
-      background: #171b23;
+      background: $zl-field;
       color: inherit;
-      border: 1px solid #444b59;
-      border-radius: 4px;
-      padding: 4px;
+      border: $zl-size-1 solid $zl-field-line;
+      border-radius: $zl-radius-sm;
+      padding: $zl-size-4;
     }
     button {
-      font-size: 12px;
-      color: #75aaff;
+      font-size: $zl-size-12;
+      color: $zl-accent;
     }
   }
   .conversation-summary {
-    font-size: 11px;
-    color: #9aa5b5;
-    padding: 5px 0;
+    font-size: $zl-size-12;
+    color: $zl-text-2;
+    padding: $zl-size-4 0;
   }
   .conversation-list {
     flex: 1;
@@ -647,10 +661,10 @@ body:not(.theme__dark) .account-sidebar {
       opacity: 0.5;
     }
     &.drop-before {
-      box-shadow: inset 0 3px #579dff;
+      box-shadow: inset 0 $zl-size-3 $zl-drag;
     }
     &.drop-after {
-      box-shadow: inset 0 -3px #579dff;
+      box-shadow: inset 0 (-$zl-size-3) $zl-drag;
     }
     > button:first-child[draggable='true'] {
       cursor: grab;
@@ -663,8 +677,8 @@ body:not(.theme__dark) .account-sidebar {
     right: 0;
     display: flex;
     align-items: center;
-    gap: 3px;
-    color: #75aaff;
+    gap: $zl-size-4;
+    color: $zl-accent;
     button:first-child {
       flex: 1;
       text-align: start;
@@ -674,8 +688,8 @@ body:not(.theme__dark) .account-sidebar {
       white-space: nowrap;
     }
     button {
-      padding: 4px;
-      font-size: 13px;
+      padding: $zl-size-4;
+      font-size: $zl-size-13;
     }
   }
   .conversation-row {
@@ -683,26 +697,27 @@ body:not(.theme__dark) .account-sidebar {
     left: 0;
     right: 0;
     display: flex;
-    gap: 7px;
+    gap: $zl-size-8;
     align-items: center;
-    border-bottom: 1px solid #303641;
+    border-bottom: 0;
+    border-radius: $zl-radius-md;
     box-sizing: border-box;
-    padding: 6px 1px;
+    padding: $zl-size-8 $zl-size-4;
     &:hover,
     &.is-opening {
-      background: #252b37;
+      background: $zl-card-hover;
     }
     &.is-active,
     &.is-selected {
-      background: #2c3442;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+      background: $zl-accent-soft;
+      box-shadow: none;
     }
     > input {
       position: relative;
       z-index: 1;
-      flex: 0 0 15px;
-      width: 15px;
-      height: 15px;
+      flex: 0 0 $zl-size-15;
+      width: $zl-size-15;
+      height: $zl-size-15;
       margin: 0;
     }
     .conversation-row__activate {
@@ -718,7 +733,7 @@ body:not(.theme__dark) .account-sidebar {
       pointer-events: none;
       display: flex;
       align-items: center;
-      gap: 9px;
+      gap: $zl-size-8;
       width: 0;
       min-width: 0;
       flex: 1;
@@ -730,28 +745,24 @@ body:not(.theme__dark) .account-sidebar {
       position: relative;
       border-radius: 50%;
       background: #293a6b;
-      width: 42px;
-      height: 42px;
-      flex: 0 0 42px;
+      width: $zl-size-44;
+      height: $zl-size-44;
+      flex: 0 0 $zl-size-44;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
+      font-size: $zl-size-12;
       img {
-        width: 42px;
-        height: 42px;
+        width: $zl-size-44;
+        height: $zl-size-44;
         border-radius: 50%;
         object-fit: cover;
       }
       b {
+        @include zl-unread-badge;
         position: absolute;
-        right: -3px;
-        bottom: -3px;
-        border-radius: 10px;
-        background: #e53935;
-        color: #fff;
-        font-size: 10px;
-        padding: 1px 4px;
+        right: (-$zl-size-3);
+        bottom: (-$zl-size-3);
       }
     }
   }
@@ -760,19 +771,19 @@ body:not(.theme__dark) .account-sidebar {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: $zl-size-4;
   }
   .conversation-row__title {
     display: flex;
     align-items: center;
-    gap: 5px;
-    min-height: 18px;
-    font-size: 13px;
+    gap: $zl-size-4;
+    min-height: $zl-size-18;
+    font-size: $zl-size-13;
     time {
       flex-shrink: 0;
       white-space: nowrap;
-      font-size: 10px;
-      color: #a6b2c3;
+      font-size: $zl-size-12;
+      color: $zl-text-2;
     }
   }
   .conversation-row__name {
@@ -785,67 +796,67 @@ body:not(.theme__dark) .account-sidebar {
   .conversation-row__flags {
     display: inline-flex;
     flex-shrink: 0;
-    gap: 2px;
+    gap: $zl-size-4;
     .customer-letter-icon {
-      width: 18px;
-      height: 22px;
+      width: $zl-size-18;
+      height: $zl-size-22;
     }
   }
   .conversation-row__remark {
     pointer-events: auto;
     width: 100%;
     min-width: 0;
-    height: 16px;
+    height: $zl-size-16;
     box-sizing: border-box;
     padding: 0;
     margin: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
-    color: #ff6060;
+    color: $zl-danger;
     font: inherit;
-    font-size: 11px;
-    line-height: 16px;
+    font-size: $zl-size-12;
+    line-height: $zl-size-16;
     text-overflow: ellipsis;
     &::placeholder {
       color: #8a969c;
     }
     &:focus {
       outline: none;
-      box-shadow: 0 1px #579dff;
+      box-shadow: 0 $zl-size-1 $zl-drag;
     }
   }
   .conversation-row__preview,
   .conversation-row__account {
-    font-size: 11px;
+    font-size: $zl-size-12;
     display: block;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
   .conversation-row__preview {
-    color: #a6b2c3;
+    color: $zl-text-2;
   }
   .conversation-row__account {
-    color: #75aaff;
+    color: $zl-accent;
   }
   .conversation-toolbar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding-top: 7px;
-    border-top: 1px solid #303641;
-    font-size: 11px;
+    gap: $zl-size-4;
+    padding-top: $zl-size-8;
+    border-top: $zl-size-1 solid $zl-line;
+    font-size: $zl-size-12;
     label {
       display: flex;
       align-items: center;
-      gap: 3px;
+      gap: $zl-size-4;
       white-space: nowrap;
     }
     button {
-      border: 1px solid #444b59;
-      border-radius: 4px;
-      padding: 4px;
+      border: $zl-size-1 solid $zl-field-line;
+      border-radius: $zl-radius-sm;
+      padding: $zl-size-4;
       white-space: nowrap;
     }
     span {
@@ -854,9 +865,9 @@ body:not(.theme__dark) .account-sidebar {
     }
   }
   .conversation-empty {
-    padding: 12px 6px;
-    color: #a6b2c3;
-    font-size: 12px;
+    padding: $zl-size-12 $zl-size-8;
+    color: $zl-text-2;
+    font-size: $zl-size-12;
     line-height: 1.6;
   }
 }
@@ -864,19 +875,19 @@ body:not(.theme__dark) .account-sidebar {
 .account-sidebar__aggregate {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: $zl-size-4;
   svg {
-    width: 18px;
-    height: 18px;
+    width: $zl-size-18;
+    height: $zl-size-18;
   }
 }
 .conversation-row__account svg {
-  width: 13px;
-  height: 13px;
+  width: $zl-size-13;
+  height: $zl-size-13;
   vertical-align: middle;
 }
 .conversation-sidebar .conversation-row__avatar {
-  color: #fff;
+  color: $zl-white;
 }
 body:not(.theme__dark) .conversation-sidebar {
   .conversation-summary,
@@ -887,7 +898,7 @@ body:not(.theme__dark) .conversation-sidebar {
   .conversation-group,
   .conversation-sidebar__header button,
   .conversation-accounts button {
-    color: var(--zl-light-theme-text, #fff);
+    color: var(--zl-light-theme-text, $zl-white);
   }
   .conversation-search,
   .conversation-accounts select {
@@ -900,7 +911,7 @@ body:not(.theme__dark) .conversation-sidebar {
   .conversation-row.is-active,
   .conversation-row.is-selected {
     background: rgba(0, 0, 0, 0.2);
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 0 0 $zl-size-1 rgba(0, 0, 0, 0.12);
   }
 }
 
@@ -908,9 +919,9 @@ body:not(.theme__dark) .conversation-sidebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: $zl-size-8;
   flex: 0 0 auto;
-  margin-bottom: 8px;
+  margin-bottom: $zl-size-8;
   .account-sidebar__aggregate {
     margin-bottom: 0;
   }
@@ -919,8 +930,8 @@ body:not(.theme__dark) .conversation-sidebar {
   color: #25d366;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 19px;
+  gap: $zl-size-4;
+  font-size: $zl-size-18;
   white-space: nowrap;
 }
 .account-sidebar.is-collapsed {
@@ -932,12 +943,12 @@ body:not(.theme__dark) .conversation-sidebar {
   }
 }
 .conversation-sidebar .conversation-group .conversation-group__add {
-  font-size: 27px;
-  line-height: 32px;
-  min-width: 36px;
-  height: 36px;
+  font-size: $zl-size-20;
+  line-height: $zl-size-32;
+  min-width: $zl-size-36;
+  height: $zl-size-36;
   padding: 0;
-  border-radius: 5px;
+  border-radius: $zl-radius-sm;
   &:hover {
     background: rgba(117, 170, 255, 0.16);
   }
@@ -947,69 +958,166 @@ body:not(.theme__dark) .conversation-sidebar {
 .conversation-popup {
   .MuiPopover-paper {
     box-sizing: border-box;
-    width: 240px;
-    max-width: calc(100vw - 16px);
-    padding: 14px;
-    border: 1px solid #444b59;
-    border-radius: 10px;
-    background: #20242c;
-    color: #f3f4f6;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    width: $zl-size-240;
+    max-width: calc(100vw - $zl-size-16);
+    padding: $zl-size-16;
+    border: $zl-size-1 solid $zl-field-line;
+    border-radius: $zl-radius-xl;
+    background: $zl-card;
+    color: $zl-text;
+    box-shadow: $zl-shadow-popup;
     font:
-      14px 'Segoe UI',
+      $zl-size-14 'Segoe UI',
       'Microsoft YaHei',
       sans-serif;
   }
   label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: $zl-size-8;
   }
   input,
   select {
     box-sizing: border-box;
     width: 100%;
-    height: 38px;
-    padding: 7px;
-    border: 1px solid #66758c;
-    border-radius: 5px;
-    background: #13171d;
-    color: #f3f4f6;
+    height: $zl-size-38;
+    padding: $zl-size-8;
+    border: $zl-size-1 solid $zl-field-line;
+    border-radius: $zl-radius-sm;
+    background: $zl-field;
+    color: $zl-text;
     font: inherit;
     &:focus {
-      outline: 2px solid #75aaff;
-      outline-offset: 1px;
+      outline: $zl-size-2 solid $zl-accent;
+      outline-offset: $zl-size-1;
     }
   }
   p {
     color: #ffaaaa;
-    margin: 8px 0 0;
-    font-size: 12px;
+    margin: $zl-size-8 0 0;
+    font-size: $zl-size-12;
   }
   &__actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
-    margin-top: 12px;
+    gap: $zl-size-8;
+    margin-top: $zl-size-12;
     button {
-      padding: 5px 12px;
-      border: 1px solid #66758c;
-      border-radius: 5px;
-      color: #f3f4f6;
+      padding: $zl-size-4 $zl-size-12;
+      border: $zl-size-1 solid $zl-field-line;
+      border-radius: $zl-radius-sm;
+      color: $zl-text;
       background: transparent;
       cursor: pointer;
       font: inherit;
       &:last-child {
-        background: #0754da;
-        border-color: #0754da;
+        background: $zl-accent;
+        border-color: $zl-accent;
       }
       &:disabled {
         opacity: 0.45;
         cursor: not-allowed;
       }
       &:focus-visible {
-        outline: 2px solid #75aaff;
-        outline-offset: 2px;
+        outline: $zl-size-2 solid $zl-accent;
+        outline-offset: $zl-size-2;
       }
     }
+  }
+}
+
+// Only application chrome is themed here; the embedded page is untouched.
+body.theme__dark .app--accounts {
+  background: $zl-bg;
+}
+.account-sidebar,
+.conversation-popup {
+  button {
+    transition: $zl-transition;
+    font-weight: 600;
+  }
+  button:focus-visible {
+    outline-color: $zl-accent;
+  }
+}
+.account-card {
+  transition: $zl-transition;
+}
+.account-card__more,
+.account-card__sleep,
+.account-group__more {
+  border-radius: $zl-radius-sm;
+  &:hover {
+    background: $zl-card-hover;
+  }
+}
+.account-card__sleep {
+  border-radius: 50%;
+}
+.account-dialog > .MuiDialog-container > .MuiPaper-root,
+.account-remark-dialog .MuiPopover-paper {
+  border-radius: $zl-radius-xl;
+  box-shadow: $zl-shadow-popup;
+}
+.account-group__add {
+  min-width: $zl-size-28;
+}
+.account-sidebar__header {
+  flex-basis: $zl-size-44;
+}
+.account-sidebar__new-group {
+  min-height: $zl-size-44;
+}
+.conversation-sidebar .conversation-row.is-active,
+.conversation-sidebar .conversation-row.is-selected {
+  box-shadow: none;
+}
+.account-sidebar,
+.account-context-menu,
+.conversation-popup {
+  @include zl-scrollbar;
+}
+body:not(.theme__dark) {
+  .account-context-menu .MuiPaper-root,
+  .conversation-popup .MuiPopover-paper {
+    background: $zl-light-card;
+    color: $zl-light-text;
+  }
+  .account-context-menu .MuiMenuItem-root:hover {
+    background: $zl-light-hover;
+  }
+  .conversation-popup input,
+  .conversation-popup select {
+    background: $zl-light-card;
+    color: $zl-light-text;
+    border-color: $zl-light-line;
+  }
+  .conversation-sidebar .conversation-row.is-active,
+  .conversation-sidebar .conversation-row.is-selected {
+    background: $zl-light-selection;
+    box-shadow: none;
+  }
+}
+.conversation-sidebar .conversation-search,
+.conversation-popup input,
+.conversation-popup select {
+  border-radius: $zl-radius-md;
+}
+.conversation-sidebar .conversation-group {
+  border-radius: $zl-radius-sm;
+}
+body:not(.theme__dark) .account-sidebar {
+  .account-group__add,
+  .account-sidebar__collapse {
+    background: $zl-light-hover !important;
+    border-color: $zl-light-selection !important;
+    &:hover {
+      background: $zl-light-selection !important;
+    }
+  }
+  .account-card__more:hover,
+  .account-card__sleep:not(.is-sleeping):hover,
+  .account-group__more:hover,
+  .account-sidebar__footer button:hover {
+    background: $zl-light-hover;
   }
 }
