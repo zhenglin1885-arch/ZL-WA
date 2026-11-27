@@ -126,19 +126,18 @@ jobs:
           exit 1
         }
         Get-Content startup-test.log
+    - name: Stage flat installer and verification assets
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force release-upload | Out-Null
+        Copy-Item out/*.exe release-upload/
+        foreach ($file in @('out/windows-startup-verification.json','out/windows-login-diagnostics-verification.json','windows-quality-verification.json','lint.log','typecheck.log','tests.log','installer-test.log')) {
+          Copy-Item $file release-upload/
+        }
     - uses: actions/upload-artifact@v4
       with:
         name: ZL-WA-7.3.9-rounded-ui-test23-Windows-x64
-        path: |
-          out/*.exe
-          out/windows-startup-verification.json
-          out/windows-login-diagnostics-verification.json
-
-          windows-quality-verification.json
-          lint.log
-          typecheck.log
-          tests.log
-          installer-test.log
+        path: release-upload/*
         if-no-files-found: error
   publish:
     needs: windows
