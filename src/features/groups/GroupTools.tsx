@@ -342,7 +342,7 @@ export default observer(function GroupTools({
                   )
                 }
               />
-              全部（{chosen.length}/{online.length}）
+              全选（{chosen.length}/{online.length}）
             </label>
             <div className="group-tools-list zl-account-list">
               {visibleAccounts.map(s => (
@@ -381,7 +381,12 @@ export default observer(function GroupTools({
                   </span>
                 </label>
               ))}
-              {online.length === 0 && <p>暂无可执行的已登录 WhatsApp 账号</p>}
+              {online.length === 0 && (
+                <div className="zl-empty">
+                  <strong>暂无已登录账号</strong>
+                  <p>先登录 WhatsApp，再刷新账号列表。</p>
+                </div>
+              )}
             </div>
           </section>
           <section className="group-tools-selection">
@@ -511,7 +516,7 @@ export default observer(function GroupTools({
                       )
                     }
                   />
-                  全部（{selected.length}/{visibleGroups.length}）
+                  全选（{selected.length}/{visibleGroups.length}）
                 </label>
                 <div className="group-tools-list zl-group-list">
                   {loading ? (

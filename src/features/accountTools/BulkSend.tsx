@@ -464,10 +464,13 @@ const BulkSend = observer(
                   ))}
                 </div>
                 {online.length === 0 && (
-                  <p>暂无在线账号，请先登录 WhatsApp。</p>
+                  <div className="zl-empty">
+                    <strong>暂无在线账号</strong>
+                    <p>请先登录 WhatsApp，再选择账号。</p>
+                  </div>
                 )}
                 <Button
-                  className="zl-btn zl-btn--primary zl-read-targets"
+                  className={`zl-btn ${chosen.length === 0 ? 'zl-btn--primary' : ''} zl-read-targets`}
                   title={
                     accounts.length === 0
                       ? '先选择至少一个账号'
@@ -565,7 +568,9 @@ const BulkSend = observer(
                       )
                     }
                   />
-                  全选当前列表（{visible.length}）
+                  全选当前列表（
+                  {visible.filter(r => selected.includes(key(r))).length}/
+                  {visible.length}）
                 </label>
                 <div className="bulk-recipient-list zl-group-list">
                   {visible.map(r => (
@@ -975,7 +980,7 @@ const BulkSend = observer(
                 返回记录
               </Button>
               <Button
-                className="zl-btn zl-btn--primary zl-btn--action"
+                className={`zl-btn ${chosen.length > 0 ? 'zl-btn--primary' : ''} zl-btn--action`}
                 title={
                   disabled
                     ? '正在读取或提交，请稍候'

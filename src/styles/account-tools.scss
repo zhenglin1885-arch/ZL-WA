@@ -2393,3 +2393,230 @@ body .bulk-dialog.zl-dialog {
     overflow-x: auto;
   }
 }
+body .reaction-tools-dialog.zl-dialog {
+  .group-tools-columns {
+    grid-template-columns: 300px minmax(260px, 1fr) minmax(520px, 1.35fr);
+  }
+  .reaction-rules {
+    overflow: hidden;
+  }
+  .reaction-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  .reaction-emojis {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 8px;
+    margin: 12px 0 16px;
+  }
+  .reaction-emojis button {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 12px;
+    background: var(--zl-card);
+    box-shadow: none;
+    font-size: 20px;
+    &[aria-pressed='true'] {
+      background: var(--zl-selected);
+      box-shadow: inset 0 0 0 1.5px var(--zl-selected-ring);
+    }
+  }
+  .zl-inline-count {
+    display: inline;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .zl-reaction-timing {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+    h4 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--zl-text-2);
+    }
+    .reaction-interval {
+      display: contents;
+    }
+    label {
+      margin: 0;
+      min-width: 0;
+    }
+    select {
+      margin-top: 8px;
+    }
+  }
+  .zl-reaction-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .reaction-find-actions,
+  .reaction-execution-actions {
+    display: contents;
+  }
+  .reaction-match-summary {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--zl-text-3);
+  }
+  .reaction-find-progress {
+    font-size: 12px;
+    margin: 0;
+    color: var(--zl-text-3);
+  }
+  .reaction-find-actions > button {
+    flex-shrink: 0;
+  }
+  .reaction-execution-actions > button:first-child {
+    margin-left: auto;
+  }
+  .reaction-execution-actions > button:last-child {
+    flex-shrink: 0;
+  }
+  .zl-task-heading {
+    gap: 8px;
+    align-items: center;
+    h4 {
+      white-space: nowrap;
+      margin: 0;
+    }
+    select {
+      max-width: 180px;
+      margin-left: auto;
+    }
+  }
+  .reaction-counts {
+    margin: 8px 0;
+  }
+  .group-tools-log {
+    max-height: none;
+  }
+  .reaction-preview:empty {
+    display: none;
+  }
+}
+@media (max-width: 1200px) {
+  body .reaction-tools-dialog.zl-dialog .group-tools-columns {
+    grid-template-columns: 220px 260px 520px;
+  }
+}
+
+// UI2: override legacy option-card specificity in the opt-in dialogs only.
+body .bulk-dialog.zl-dialog {
+  .bulk-history__table td {
+    border-radius: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  > .MuiDialog-container
+    > .MuiPaper-root
+    > .MuiDialogActions-root
+    > .bulk-dialog__close {
+    margin-right: 0;
+  }
+}
+body .account-tools-dialog.zl-dialog {
+  .zl-segmented button {
+    flex: 0 0 auto;
+    padding: 0 12px !important;
+    margin: 0 !important;
+  }
+  .group-tools-filters > select,
+  .group-tools-filters > input {
+    width: 100%;
+  }
+  .zl-task-heading > label {
+    display: contents;
+  }
+}
+body .account-tools-dialog.zl-dialog {
+  textarea {
+    height: auto !important;
+    min-height: 76px;
+    padding: 10px 12px !important;
+    line-height: 1.6;
+  }
+  &.reaction-tools-dialog textarea {
+    min-height: 64px;
+    height: 64px !important;
+  }
+  &.bulk-dialog #bulk-reply-match {
+    height: 88px !important;
+  }
+  &.bulk-dialog #bulk-text {
+    min-height: 96px;
+  }
+  &.bulk-dialog > .MuiDialog-container > .MuiPaper-root > .MuiDialogTitle-root,
+  &.bulk-dialog
+    > .MuiDialog-container
+    > .MuiPaper-root
+    > .MuiDialogActions-root {
+    background: var(--zl-surface);
+    border-color: var(--zl-line);
+    padding: 20px 24px;
+  }
+  &.bulk-dialog
+    > .MuiDialog-container
+    > .MuiPaper-root
+    > .MuiDialogActions-root {
+    padding: 14px 24px;
+  }
+}
+
+body .account-tools-dialog.zl-dialog {
+  .group-tools-filters > select,
+  .group-tools-filters > input {
+    width: 100% !important;
+    max-width: none;
+    min-width: 0;
+  }
+  .bulk-history__more > div {
+    position: fixed;
+    right: auto;
+    top: auto;
+  }
+}
+body.theme__dark .account-tools-panel {
+  --zl-control-border: var(--zl-field-line);
+  --zl-control-text: var(--zl-text);
+  --zl-control-hover: var(--zl-control);
+  --zl-control-selected: var(--zl-selected);
+  --zl-control-ring: var(--zl-selected-ring);
+  --zl-control-muted: var(--zl-control);
+}
+
+body .account-tools-dialog.zl-dialog {
+  button:disabled,
+  button.Mui-disabled {
+    opacity: 0.45 !important;
+    cursor: not-allowed;
+  }
+  button.zl-upload {
+    height: 64px !important;
+    min-height: 64px;
+    border-radius: 16px !important;
+  }
+  .bulk-history__table {
+    overflow: hidden;
+  }
+  .zl-table-scroll {
+    overflow: auto;
+    max-width: 100%;
+  }
+}
+body .account-tools-dialog.zl-dialog .zl-task-heading select {
+  height: 30px !important;
+  min-height: 30px;
+}

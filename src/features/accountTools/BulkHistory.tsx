@@ -19,6 +19,12 @@ const errorText = (value: string) =>
 const time = (value?: string) =>
   value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
 
+// Presentation-only explanation for the progress cell and its native tooltip.
+const progressTitle = (r: SendRecord, revoke: boolean) =>
+  revoke
+    ? `已撤回 ${r.deliveries?.filter(d => d.revoked).length ?? 0} · 失败 ${r.deliveries?.filter(d => d.revokeError).length ?? 0} · 总计 ${r.total}`
+    : `成功 ${r.success} · 待确认 ${r.deliveries?.filter(d => ['uncertain', 'sending'].includes(d.status)).length || 0} · 失败 ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} · 总计 ${r.total}`;
+
 export default function BulkHistory({
   records,
   header,
@@ -225,155 +231,185 @@ export default function BulkHistory({
         </Button>
       </form>
       <div className="bulk-history__table">
-        <table>
-          <colgroup>
-            {[
-              ['text', 'auto'],
-              ['status', '84px'],
-              ['method', '84px'],
-              ['progress', '180px'],
-              ['policy', '92px'],
-              ['started', '156px'],
-              ['ended', '156px'],
-              ['actions', '196px'],
-            ].map(([name, width]) => (
-              <col key={name} style={{ width }} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr>
+        <div className="zl-table-scroll">
+          <table>
+            <colgroup>
               {[
-                '发送内容',
-                '状态',
-                '方式',
-                tab === 'revoke' ? '撤回进度' : '发送进度',
-                '失败策略',
-                tab === 'revoke' ? '撤回时间' : '发送时间',
-                '结束时间',
-                '操作',
-              ].map(h => (
-                <th key={h}>{h}</th>
+                ['text', 'auto'],
+                ['status', '84px'],
+                ['method', '84px'],
+                ['progress', '180px'],
+                ['policy', '92px'],
+                ['started', '156px'],
+                ['ended', '156px'],
+                ['actions', '196px'],
+              ].map(([name, width]) => (
+                <col key={name} style={{ width }} />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered
-              .slice((current - 1) * pageSize, current * pageSize)
-              .map(r => (
-                <tr key={r.id}>
-                  <td>
-                    <div
-                      className="bulk-history__text"
-                      title={r.editedText || r.text}
-                    >
-                      {r.editedText || r.text}
-                    </div>
-                    {r.editStarted && (
-                      <small>
-                        已更正{' '}
-                        {r.deliveries?.filter(d => d.editedAt).length || 0} ·
-                        编辑异常{' '}
-                        {r.deliveries?.filter(d => d.editError).length || 0}
-                        （详情）
+            </colgroup>
+            <thead>
+              <tr>
+                {[
+                  '发送内容',
+                  '状态',
+                  '方式',
+                  tab === 'revoke' ? '撤回进度' : '发送进度',
+                  '失败策略',
+                  tab === 'revoke' ? '撤回时间' : '发送时间',
+                  '结束时间',
+                  '操作',
+                ].map(h => (
+                  <th key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered
+                .slice((current - 1) * pageSize, current * pageSize)
+                .map(r => (
+                  <tr key={r.id}>
+                    <td>
+                      <div
+                        className="bulk-history__text"
+                        title={r.editedText || r.text}
+                      >
+                        {r.editedText || r.text}
+                      </div>
+                      {r.editStarted && (
+                        <small>
+                          已更正{' '}
+                          {r.deliveries?.filter(d => d.editedAt).length || 0} ·
+                          编辑异常{' '}
+                          {r.deliveries?.filter(d => d.editError).length || 0}
+                          （详情）
+                        </small>
+                      )}
+                    </td>
+                    <td>
+                      <span
+                        className={`bulk-status${status(r) === '已完成' ? ' bulk-status--complete' : ''}`}
+                        data-status={status(r)}
+                      >
+                        {tab === 'revoke'
+                          ? r.deliveries?.every(d => !d.messageId || d.revoked)
+                            ? '已撤回'
+                            : '部分撤回或失败'
+                          : status(r)}
+                      </span>
+                    </td>
+                    <td>
+                      {r.spec?.scheduledAt ? (
+                        <span title={time(r.spec.scheduledAt)}>定时发送</span>
+                      ) : (
+                        '立即发送'
+                      )}
+                    </td>
+                    <td title={progressTitle(r, tab === 'revoke')}>
+                      <progress
+                        aria-label="发送进度"
+                        value={
+                          tab === 'revoke'
+                            ? (r.deliveries?.filter(
+                                d => d.revoked || d.revokeError,
+                              ).length ?? 0)
+                            : r.success + r.failed
+                        }
+                        max={Math.max(1, r.total)}
+                      />
+                      <small title={progressTitle(r, tab === 'revoke')}>
+                        {tab === 'revoke'
+                          ? `${r.deliveries?.filter(d => d.revoked).length ?? 0} / ${r.total}${r.deliveries?.some(d => d.revokeError) ? ` · ${r.deliveries.filter(d => d.revokeError).length} 失败` : ''}`
+                          : `${r.success} / ${r.total}${r.deliveries?.some(d => ['uncertain', 'sending'].includes(d.status)) ? ` · ${r.deliveries.filter(d => ['uncertain', 'sending'].includes(d.status)).length} 待确认` : ''}${(r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed) ? ` · ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} 失败` : ''}`}
                       </small>
-                    )}
-                  </td>
-                  <td>
-                    <span
-                      className={`bulk-status${status(r) === '已完成' ? ' bulk-status--complete' : ''}`}
-                      data-status={status(r)}
-                    >
-                      {tab === 'revoke'
-                        ? r.deliveries?.every(d => !d.messageId || d.revoked)
-                          ? '已撤回'
-                          : '部分撤回或失败'
-                        : status(r)}
-                    </span>
-                  </td>
-                  <td>
-                    {r.spec?.scheduledAt ? (
-                      <span title={time(r.spec.scheduledAt)}>定时发送</span>
-                    ) : (
-                      '立即发送'
-                    )}
-                  </td>
-                  <td>
-                    <progress
-                      aria-label="发送进度"
-                      value={
-                        tab === 'revoke'
-                          ? (r.deliveries?.filter(
-                              d => d.revoked || d.revokeError,
-                            ).length ?? 0)
-                          : r.success + r.failed
-                      }
-                      max={Math.max(1, r.total)}
-                    />
-                    <small
+                    </td>
+                    <td
                       title={
-                        tab === 'revoke'
-                          ? `已撤回 ${r.deliveries?.filter(d => d.revoked).length ?? 0} · 失败 ${r.deliveries?.filter(d => d.revokeError).length ?? 0}`
-                          : `成功 ${r.success} · 待确认 ${r.deliveries?.filter(d => ['uncertain', 'sending'].includes(d.status)).length || 0} · 失败 ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} · 总计 ${r.total}`
+                        r.spec?.failure === 'continue'
+                          ? '跳过失败，继续后续对象'
+                          : '遇到失败即停止'
                       }
                     >
-                      {tab === 'revoke'
-                        ? `${r.deliveries?.filter(d => d.revoked).length ?? 0} / ${r.total}${r.deliveries?.some(d => d.revokeError) ? ` · ${r.deliveries.filter(d => d.revokeError).length} 失败` : ''}`
-                        : `${r.success} / ${r.total}${r.deliveries?.some(d => ['uncertain', 'sending'].includes(d.status)) ? ` · ${r.deliveries.filter(d => ['uncertain', 'sending'].includes(d.status)).length} 待确认` : ''}${(r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed) ? ` · ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} 失败` : ''}`}
-                    </small>
-                  </td>
-                  <td
-                    title={
-                      r.spec?.failure === 'continue'
-                        ? '跳过失败，继续后续对象'
-                        : '遇到失败即停止'
-                    }
-                  >
-                    {r.spec?.failure === 'continue' ? '失败跳过' : '失败停止'}
-                  </td>
-                  <td>
-                    {time(tab === 'revoke' ? r.revokeStarted : r.started)}
-                  </td>
-                  <td>{time(tab === 'revoke' ? r.revokeEnded : r.ended)}</td>
-                  <td>
-                    <div className="bulk-history__actions">
-                      <Button
-                        className="zl-btn zl-btn--small"
-                        onClick={() => setDetailId(r.id)}
-                      >
-                        详情
-                      </Button>
-                      {activeIds.has(r.id) &&
-                        (r.status === '发送中' ||
-                          (r.revokeStarted && !r.revokeEnded)) && (
-                          <Button
-                            className="zl-btn zl-btn--small"
-                            onClick={async () => {
-                              try {
-                                await onStop(r.id);
-                              } catch (error_) {
-                                setError(String(error_));
-                              }
-                            }}
-                          >
-                            {r.status === '发送中' ? '停止发送' : '停止撤回'}
-                          </Button>
-                        )}
-                      <Button
-                        className="zl-btn zl-btn--small"
-                        onClick={() => onCompose(r)}
-                      >
-                        再发一条
-                      </Button>
-                      <details className="bulk-history__more">
-                        <summary
-                          className="zl-more-icon"
-                          aria-label="更多"
-                          title="更多操作"
+                      {r.spec?.failure === 'continue' ? '失败跳过' : '失败停止'}
+                    </td>
+                    <td>
+                      {time(tab === 'revoke' ? r.revokeStarted : r.started)}
+                    </td>
+                    <td>{time(tab === 'revoke' ? r.revokeEnded : r.ended)}</td>
+                    <td>
+                      <div className="bulk-history__actions">
+                        <Button
+                          className="zl-btn zl-btn--small"
+                          onClick={() => setDetailId(r.id)}
                         >
-                          ⋯
-                        </summary>
-                        <div>
-                          {r.status === '待发送' && (
+                          详情
+                        </Button>
+                        {activeIds.has(r.id) &&
+                          (r.status === '发送中' ||
+                            (r.revokeStarted && !r.revokeEnded)) && (
+                            <Button
+                              className="zl-btn zl-btn--small"
+                              onClick={async () => {
+                                try {
+                                  await onStop(r.id);
+                                } catch (error_) {
+                                  setError(String(error_));
+                                }
+                              }}
+                            >
+                              {r.status === '发送中' ? '停止发送' : '停止撤回'}
+                            </Button>
+                          )}
+                        <Button
+                          className="zl-btn zl-btn--small"
+                          onClick={() => onCompose(r)}
+                        >
+                          再发一条
+                        </Button>
+                        <details
+                          className="bulk-history__more"
+                          onToggle={e => {
+                            const details = e.currentTarget;
+                            if (!details.open) return;
+                            const anchor = details
+                              .querySelector('summary')
+                              ?.getBoundingClientRect();
+                            const menu =
+                              details.querySelector<HTMLDivElement>('div');
+                            if (!anchor || !menu) return;
+                            menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 188, anchor.right - 180))}px`;
+                            menu.style.top = `${Math.max(8, Math.min(window.innerHeight - menu.offsetHeight - 8, anchor.bottom + 4))}px`;
+                          }}
+                        >
+                          <summary
+                            className="zl-more-icon"
+                            aria-label="更多"
+                            title="更多操作"
+                          >
+                            ⋯
+                          </summary>
+                          <div>
+                            {r.status === '待发送' && (
+                              <Button
+                                title={
+                                  busy
+                                    ? '正在处理，请稍候'
+                                    : activeIds.has(r.id)
+                                      ? '任务正在执行'
+                                      : '没有可操作的消息对象'
+                                }
+                                className="zl-btn zl-btn--small"
+                                disabled={activeIds.has(r.id)}
+                                onClick={async () => {
+                                  try {
+                                    await onStop(r.id);
+                                  } catch (error_) {
+                                    setError(String(error_));
+                                  }
+                                }}
+                              >
+                                取消定时任务
+                              </Button>
+                            )}
                             <Button
                               title={
                                 busy
@@ -383,105 +419,85 @@ export default function BulkHistory({
                                     : '没有可操作的消息对象'
                               }
                               className="zl-btn zl-btn--small"
-                              disabled={activeIds.has(r.id)}
+                              disabled={
+                                activeIds.has(r.id) ||
+                                busy ||
+                                !r.deliveries?.length
+                              }
                               onClick={async () => {
+                                setBusy(true);
+                                setError('');
                                 try {
-                                  await onStop(r.id);
+                                  await onReconcile(r.id);
+                                  setDetailId(r.id);
                                 } catch (error_) {
                                   setError(String(error_));
+                                } finally {
+                                  setBusy(false);
                                 }
                               }}
                             >
-                              取消定时任务
+                              核对发送结果
                             </Button>
-                          )}
-                          <Button
-                            title={
-                              busy
-                                ? '正在处理，请稍候'
-                                : activeIds.has(r.id)
-                                  ? '任务正在执行'
-                                  : '没有可操作的消息对象'
-                            }
-                            className="zl-btn zl-btn--small"
-                            disabled={
-                              activeIds.has(r.id) ||
-                              busy ||
-                              !r.deliveries?.length
-                            }
-                            onClick={async () => {
-                              setBusy(true);
-                              setError('');
-                              try {
-                                await onReconcile(r.id);
-                                setDetailId(r.id);
-                              } catch (error_) {
-                                setError(String(error_));
-                              } finally {
-                                setBusy(false);
+                            <Button
+                              className="zl-btn zl-btn--small"
+                              disabled={
+                                activeIds.has(r.id) ||
+                                busy ||
+                                !hasActionTargets(r)
                               }
-                            }}
-                          >
-                            核对发送结果
-                          </Button>
-                          <Button
-                            className="zl-btn zl-btn--small"
-                            disabled={
-                              activeIds.has(r.id) ||
-                              busy ||
-                              !hasActionTargets(r)
-                            }
-                            title={
-                              hasActionTargets(r)
-                                ? ''
-                                : '此记录缺少可核对的发送对象或消息编号'
-                            }
-                            onClick={async () => {
-                              await prepareAction(r, false);
-                            }}
-                          >
-                            撤回已发消息
-                          </Button>
-                          <Button
-                            className="zl-btn zl-btn--small"
-                            disabled={
-                              activeIds.has(r.id) ||
-                              busy ||
-                              (r.spec &&
-                                ![
-                                  'text',
-                                  'caption',
-                                  'video',
-                                  'document',
-                                ].includes(r.spec.type)) ||
-                              !hasActionTargets(r)
-                            }
-                            title={
-                              hasActionTargets(r)
-                                ? ''
-                                : '此记录缺少可核对的发送对象或消息编号'
-                            }
-                            onClick={async () => {
-                              await prepareAction(r, true);
-                            }}
-                          >
-                            编辑已发消息
-                          </Button>
-                        </div>
-                      </details>
-                    </div>
+                              title={
+                                hasActionTargets(r)
+                                  ? ''
+                                  : '此记录缺少可核对的发送对象或消息编号'
+                              }
+                              onClick={async () => {
+                                await prepareAction(r, false);
+                              }}
+                            >
+                              撤回已发消息
+                            </Button>
+                            <Button
+                              className="zl-btn zl-btn--small"
+                              disabled={
+                                activeIds.has(r.id) ||
+                                busy ||
+                                (r.spec &&
+                                  ![
+                                    'text',
+                                    'caption',
+                                    'video',
+                                    'document',
+                                  ].includes(r.spec.type)) ||
+                                !hasActionTargets(r)
+                              }
+                              title={
+                                hasActionTargets(r)
+                                  ? ''
+                                  : '此记录缺少可核对的发送对象或消息编号'
+                              }
+                              onClick={async () => {
+                                await prepareAction(r, true);
+                              }}
+                            >
+                              编辑已发消息
+                            </Button>
+                          </div>
+                        </details>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="bulk-history__empty">
+                    {records.length > 0 ? '没有符合条件的记录' : '暂无发送记录'}
                   </td>
                 </tr>
-              ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="bulk-history__empty">
-                  {records.length > 0 ? '没有符合条件的记录' : '暂无发送记录'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div className="bulk-history__pagination">
         <span>共 {filtered.length} 条</span>
