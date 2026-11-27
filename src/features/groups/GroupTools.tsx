@@ -268,7 +268,7 @@ export default observer(function GroupTools({
       <Dialog
         open
         maxWidth={false}
-        className="group-tools-dialog account-tools-dialog"
+        className="group-tools-dialog account-tools-dialog zl-dialog"
         onClose={onClose}
         aria-labelledby="group-tools-title"
       >
@@ -276,7 +276,7 @@ export default observer(function GroupTools({
           {names[mode]}
           <button
             type="button"
-            className="group-tools-close"
+            className="group-tools-close zl-btn zl-btn--icon"
             aria-label="关闭群组窗口"
             onPointerDown={closePointer}
             onClick={onClose}
@@ -287,11 +287,18 @@ export default observer(function GroupTools({
         <DialogContent className="group-tools-columns">
           <section className="group-tools-accounts">
             <h3>
-              选择 WhatsApp 账号{' '}
+              选择账号{' '}
               <button
                 type="button"
+                className="zl-btn zl-btn--icon zl-btn--small"
                 aria-label="刷新账号列表"
-                title="刷新账号状态"
+                title={
+                  active
+                    ? '有任务正在执行'
+                    : refreshingAccounts
+                      ? '正在刷新账号'
+                      : '刷新账号状态'
+                }
                 disabled={refreshingAccounts || active}
                 onClick={() => {
                   void refreshAccounts();
@@ -337,7 +344,7 @@ export default observer(function GroupTools({
               />
               全部（{chosen.length}/{online.length}）
             </label>
-            <div className="group-tools-list">
+            <div className="group-tools-list zl-account-list">
               {visibleAccounts.map(s => (
                 <label
                   className="group-tools-check group-tools-account"
@@ -367,8 +374,8 @@ export default observer(function GroupTools({
                   </span>
                   <span>
                     <strong>{s.accountSnapshot.nickname || s.name}</strong>
-                    <small>{s.accountSnapshot.phone}</small>
                     <small>
+                      {s.accountSnapshot.phone} ·{' '}
                       {config.accounts[s.id]?.remark || '暂无账户备注'}
                     </small>
                   </span>
@@ -378,7 +385,34 @@ export default observer(function GroupTools({
             </div>
           </section>
           <section className="group-tools-selection">
-            <h3>{mode === 'join' ? '群邀请链接' : '选择群组'}</h3>
+            <div className="zl-column-heading">
+              <h3>{mode === 'join' ? '群邀请链接' : '选择群组'}</h3>
+              {mode !== 'join' && (
+                <button
+                  type="button"
+                  className="group-tools-refresh zl-btn zl-btn--small"
+                  title={
+                    active
+                      ? '有任务正在执行'
+                      : chosen.length === 0
+                        ? '先选择至少一个账号'
+                        : loading || refreshingAccounts
+                          ? '正在读取账号或群组'
+                          : undefined
+                  }
+                  aria-label="刷新群组"
+                  disabled={
+                    active ||
+                    loading ||
+                    refreshingAccounts ||
+                    chosen.length === 0
+                  }
+                  onClick={() => setRefresh(n => n + 1)}
+                >
+                  {loading ? '刷新中…' : '↻ 刷新群组'}
+                </button>
+              )}
+            </div>
             {mode === 'join' ? (
               <>
                 <p>
@@ -400,20 +434,6 @@ export default observer(function GroupTools({
                     ? '只显示当前账号可管理的群组'
                     : '选择需要退出的群组，按账号分别执行'}
                 </p>
-                <button
-                  type="button"
-                  className="group-tools-refresh"
-                  aria-label="刷新群组"
-                  disabled={
-                    active ||
-                    loading ||
-                    refreshingAccounts ||
-                    chosen.length === 0
-                  }
-                  onClick={() => setRefresh(n => n + 1)}
-                >
-                  {loading ? '正在刷新群组…' : '刷新群组'}
-                </button>
                 <div className="group-tools-filters">
                   <select
                     aria-label="筛选群组所属账号"
@@ -435,10 +455,10 @@ export default observer(function GroupTools({
                   />
                 </div>
                 {mode === 'speech' && (
-                  <div className="group-tools-tabs">
+                  <div className="group-tools-tabs zl-segmented">
                     {[
                       ['', '全部'],
-                      ['open', '已开启发言'],
+                      ['open', '所有人可发言'],
                       ['mute', '仅管理员发言'],
                     ].map(([value, label]) => (
                       <button
@@ -447,7 +467,19 @@ export default observer(function GroupTools({
                         aria-pressed={speechFilter === value}
                         onClick={() => setSpeechFilter(value)}
                       >
-                        {label}
+                        {label}{' '}
+                        {
+                          groups.filter(
+                            g =>
+                              (mode !== 'speech' || g.admin) &&
+                              (!accountFilter ||
+                                g.accountId === accountFilter) &&
+                              `${g.name} ${g.target}`
+                                .toLowerCase()
+                                .includes(groupSearch.toLowerCase()) &&
+                              (!value || (value === 'mute') === g.announce),
+                          ).length
+                        }
                       </button>
                     ))}
                   </div>
@@ -481,7 +513,7 @@ export default observer(function GroupTools({
                   />
                   全部（{selected.length}/{visibleGroups.length}）
                 </label>
-                <div className="group-tools-list">
+                <div className="group-tools-list zl-group-list">
                   {loading ? (
                     <p role="status">正在读取并核验群组…</p>
                   ) : (
@@ -490,6 +522,7 @@ export default observer(function GroupTools({
                         className="group-tools-check group-tools-group"
                         key={key(g)}
                         data-account-id={g.accountId}
+                        title={g.target}
                         data-group-id={g.target}
                         htmlFor={`${uid}-group-${key(g)}`}
                       >
@@ -509,9 +542,7 @@ export default observer(function GroupTools({
                         <span>
                           <strong>{g.name}</strong>
                           <small>
-                            {g.accountName} · {g.target}
-                          </small>
-                          <small>
+                            {g.accountName} ·{' '}
                             {g.announce ? '仅管理员可发言' : '所有成员可发言'}
                           </small>
                         </span>
@@ -519,11 +550,14 @@ export default observer(function GroupTools({
                     ))
                   )}
                   {!loading && visibleGroups.length === 0 && (
-                    <p>
-                      {chosen.length === 0
-                        ? '请先选择 WhatsApp 账号，再点击刷新群组'
-                        : '暂无符合条件的群组，可点击刷新群组重试'}
-                    </p>
+                    <div className="zl-empty">
+                      <strong>暂无群组</strong>
+                      <p>
+                        {chosen.length === 0
+                          ? '请先选择 WhatsApp 账号，再点击刷新群组'
+                          : '暂无符合条件的群组，可点击刷新群组重试'}
+                      </p>
+                    </div>
                   )}
                 </div>
               </>
@@ -531,11 +565,7 @@ export default observer(function GroupTools({
           </section>
           <section className="group-tools-results">
             <h3>
-              {mode === 'join'
-                ? '进群结果'
-                : mode === 'leave'
-                  ? '退群设置与结果'
-                  : '操作面板'}
+              {mode === 'join' ? '进群' : mode === 'leave' ? '退群' : '操作'}
             </h3>
             <label htmlFor={`${uid}-interval`}>
               执行间隔（秒）
@@ -575,6 +605,18 @@ export default observer(function GroupTools({
               {mode === 'speech' ? (
                 <>
                   <Button
+                    className="zl-btn zl-btn--primary zl-btn--action"
+                    title={
+                      active
+                        ? '有任务正在执行'
+                        : loading
+                          ? '正在读取群组'
+                          : validInterval
+                            ? selected.length === 0
+                              ? '先选择群组'
+                              : undefined
+                            : '请输入 1–3600 秒的执行间隔'
+                    }
                     variant="contained"
                     disabled={
                       active ||
@@ -585,8 +627,21 @@ export default observer(function GroupTools({
                     onClick={() => start('open')}
                   >
                     开启发言
+                    {selected.length > 0 ? `（${selected.length} 个群）` : ''}
                   </Button>
                   <Button
+                    className="zl-btn zl-btn--danger zl-btn--action"
+                    title={
+                      active
+                        ? '有任务正在执行'
+                        : loading
+                          ? '正在读取群组'
+                          : validInterval
+                            ? selected.length === 0
+                              ? '先选择群组'
+                              : undefined
+                            : '请输入 1–3600 秒的执行间隔'
+                    }
                     variant="contained"
                     color="warning"
                     disabled={
@@ -598,10 +653,27 @@ export default observer(function GroupTools({
                     onClick={() => start('mute')}
                   >
                     全员禁言
+                    {selected.length > 0 ? `（${selected.length} 个群）` : ''}
                   </Button>
                 </>
               ) : (
                 <Button
+                  className="zl-btn zl-btn--primary zl-btn--action zl-action-full"
+                  title={
+                    active
+                      ? '有任务正在执行'
+                      : loading
+                        ? '正在读取群组'
+                        : chosen.length === 0
+                          ? '先选择至少一个账号'
+                          : validInterval
+                            ? mode === 'leave' && selected.length === 0
+                              ? '先选择群组'
+                              : mode === 'join' && !links.trim()
+                                ? '先粘贴邀请链接'
+                                : undefined
+                            : '请输入 1–3600 秒的执行间隔'
+                  }
                   variant="contained"
                   disabled={
                     active ||
@@ -613,9 +685,24 @@ export default observer(function GroupTools({
                   onClick={() => start(mode)}
                 >
                   {mode === 'join' ? '开始进群' : '开始退群'}
+                  {mode === 'leave' && selected.length > 0
+                    ? `（${selected.length} 个群）`
+                    : ''}
                 </Button>
               )}
               <Button
+                className="zl-btn"
+                title={
+                  active
+                    ? '有任务正在执行'
+                    : validInterval
+                      ? batch?.tasks.some(t =>
+                          ['failed', 'uncertain', 'stopped'].includes(t.status),
+                        )
+                        ? undefined
+                        : '没有失败或未确认的项'
+                      : '请输入 1–3600 秒的执行间隔'
+                }
                 disabled={
                   active ||
                   !validInterval ||
@@ -632,18 +719,22 @@ export default observer(function GroupTools({
               >
                 重试失败 / 核验未确认
               </Button>
+              <Button
+                className="zl-btn"
+                title={
+                  active ? '有任务正在执行' : batch ? undefined : '暂无执行记录'
+                }
+                disabled={active || !batch}
+                onClick={() => {
+                  if (batch)
+                    void queue
+                      .reconcile(batch.id)
+                      .catch(error => setNotice(String(error)));
+                }}
+              >
+                刷新执行结果
+              </Button>
             </div>
-            <Button
-              disabled={active || !batch}
-              onClick={() => {
-                if (batch)
-                  void queue
-                    .reconcile(batch.id)
-                    .catch(error => setNotice(String(error)));
-              }}
-            >
-              刷新执行结果
-            </Button>
             <p>
               {mode === 'join'
                 ? '全部群先执行一次，首轮结束后再将确认未加入的失败项重试一次。等待管理员审批的申请不重复提交。'
@@ -652,25 +743,33 @@ export default observer(function GroupTools({
                   : '逐个执行并核验，每项最多自动执行 3 次。'}
             </p>
             {batch && (
-              <label htmlFor={`${uid}-history`}>
-                任务记录
-                <select
-                  id={`${uid}-history`}
-                  aria-label="群组任务记录"
-                  value={batch.id}
-                  onChange={e => setRecordId(e.target.value)}
-                >
-                  {queue.state.batches
-                    .filter(b => b.mode === mode)
-                    .map(b => (
-                      <option value={b.id} key={b.id}>
-                        {new Date(b.created).toLocaleString()} ·{' '}
-                        {operations[b.tasks[0]?.operation]} · {b.tasks.length}{' '}
-                        项
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <div className="zl-task-heading">
+                <label htmlFor={`${uid}-history`}>
+                  任务记录
+                  <select
+                    id={`${uid}-history`}
+                    aria-label="群组任务记录"
+                    value={batch.id}
+                    onChange={e => setRecordId(e.target.value)}
+                  >
+                    {queue.state.batches
+                      .filter(b => b.mode === mode)
+                      .map(b => (
+                        <option value={b.id} key={b.id}>
+                          {new Date(b.created).toLocaleString('zh-CN', {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                          })}{' '}
+                          · {operations[b.tasks[0]?.operation]} ·{' '}
+                          {b.tasks.length} 项
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
             )}
             {batch && (
               <>
@@ -688,7 +787,13 @@ export default observer(function GroupTools({
                             'uncertain',
                           ]) as (keyof typeof statuses)[]
                   ).map(status => (
-                    <span key={status} className={`group-tools-${status}`}>
+                    <span
+                      key={status}
+                      className={`group-tools-${status}`}
+                      data-count={
+                        batch.tasks.filter(t => t.status === status).length
+                      }
+                    >
                       {statuses[status]}
                       <strong>
                         {batch.tasks.filter(t => t.status === status).length}
@@ -714,7 +819,7 @@ export default observer(function GroupTools({
                 : ''}
             </p>
             <div
-              className="group-tools-list group-tools-log"
+              className="group-tools-list group-tools-log zl-result-list"
               aria-live="polite"
             >
               {batch?.tasks.map(t => (
@@ -723,14 +828,19 @@ export default observer(function GroupTools({
                   data-task-id={t.id}
                   data-task-status={t.status}
                 >
-                  <strong>
-                    {t.accountName} · {t.name}
-                  </strong>
-                  <span className={`group-tools-${t.status}`}>
-                    {operations[t.operation]} · {statuses[t.status]} · 执行{' '}
-                    {t.attempts} 次
+                  <strong title={t.name}>{t.name}</strong>
+                  <span
+                    className={`group-tools-${t.status} zl-result-meta`}
+                    title={`${operations[t.operation]} · 执行 ${t.attempts} 次 · ${t.message}`}
+                  >
+                    {t.accountName} · {statuses[t.status]}
+                    {t.status !== 'failed' && t.message
+                      ? ` · ${t.message}`
+                      : ''}
                   </span>
-                  <p>{t.message}</p>
+                  {t.status === 'failed' && (
+                    <p className="zl-result-error">{t.message}</p>
+                  )}
                 </article>
               ))}
               {!batch && <p>暂无执行记录</p>}
@@ -741,6 +851,8 @@ export default observer(function GroupTools({
           {active && <p>关闭窗口后继续执行；停止会等待当前请求结束。</p>}
           {active && (
             <Button
+              className="zl-btn zl-btn--danger"
+              title={queue.stopped ? '正在停止任务' : undefined}
               color="warning"
               onClick={() => queue.stop()}
               disabled={queue.stopped}
@@ -748,7 +860,11 @@ export default observer(function GroupTools({
               {queue.stopped ? '正在停止…' : '停止执行'}
             </Button>
           )}
-          <Button onPointerDown={closePointer} onClick={onClose}>
+          <Button
+            className="zl-btn"
+            onPointerDown={closePointer}
+            onClick={onClose}
+          >
             关闭
           </Button>
         </DialogActions>

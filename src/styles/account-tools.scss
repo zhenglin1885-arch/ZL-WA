@@ -2168,3 +2168,96 @@ body .account-tools-dialog.zl-dialog {
     text-align: center;
   }
 }
+body .group-tools-dialog.zl-dialog {
+  .group-tools-columns {
+    display: grid;
+    grid-template-columns: 340px minmax(260px, 1fr) 420px;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+  }
+  .group-tools-columns > section {
+    padding: 20px;
+    min-width: 0;
+    border: 0;
+    border-right: 1px solid var(--zl-line);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .group-tools-columns > section:last-child {
+    border-right: 0;
+  }
+  .group-tools-accounts > h3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .group-tools-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .group-tools-results {
+    overflow-y: auto !important;
+    display: block !important;
+  }
+  .group-tools-log {
+    flex: none;
+    min-height: 80px;
+    max-height: 360px;
+  }
+  .group-tools-filters {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 8px;
+    input,
+    select {
+      margin: 0;
+    }
+    margin: 8px 0 12px;
+  }
+  .group-tools-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 0;
+    .zl-action-full {
+      grid-column: 1 / -1;
+    }
+  }
+  .group-tools-actions > button {
+    width: 100%;
+  }
+  .group-tools-selection > textarea {
+    flex: 1;
+    min-height: 240px;
+    resize: none;
+  }
+  .zl-link-count {
+    text-align: right;
+  }
+  .group-tools-check:not(.group-tools-account):not(.group-tools-group) {
+    border: 0;
+    font-size: 13px;
+    color: var(--zl-text-2);
+  }
+  .group-tools-results > label {
+    font-size: 13px;
+  }
+}
+@media (max-width: 1200px) {
+  body .group-tools-dialog.zl-dialog .group-tools-columns {
+    grid-template-columns: 240px minmax(240px, 1fr) 360px;
+  }
+  body .group-tools-dialog.zl-dialog .group-tools-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  body .group-tools-dialog.zl-dialog .group-tools-columns {
+    grid-template-columns: 220px minmax(240px, 1fr) 340px;
+    overflow-x: auto;
+  }
+}
