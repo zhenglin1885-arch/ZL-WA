@@ -23,7 +23,7 @@ export function configureMessageSendMode(mode: string): boolean {
       event.metaKey
     )
       return;
-    const target = event.target;
+    const { target } = event;
     if (!(target instanceof HTMLElement)) return;
     const input = target.closest<HTMLElement>(
       '[contenteditable="true"], [contenteditable="plaintext-only"], textarea',

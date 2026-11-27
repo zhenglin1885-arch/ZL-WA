@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 
 const prepareLibrary = require('../build-helpers/prepare-whatsapp-library.cjs');
+
 const original = readFileSync(
   join(__dirname, '../node_modules/@wppconnect/wa-js/dist/wppconnect-wa.js'),
   'utf8',
@@ -36,6 +37,7 @@ function sender(source: string, prefs: any) {
   const delivered: any[] = [];
   class MsgKey {
     constructor(public props: any) {}
+
     toString() {
       return `true_${this.props.to}_abc`;
     }
@@ -63,14 +65,14 @@ function sender(source: string, prefs: any) {
     }),
   };
   const dependencies: Record<number, any> = {
-    72927: conn,
-    14647: native,
-    20514: { ACK: { CLOCK: 0 } },
-    52757: functions,
-    74023: { defaultSendMessageOptions: {} },
-    97829: api,
-    41687: { assertFindChat: async () => chat, assertWid: (v: any) => v },
-    17833: () => () => {},
+    72_927: conn,
+    14_647: native,
+    20_514: { ACK: { CLOCK: 0 } },
+    52_757: functions,
+    74_023: { defaultSendMessageOptions: {} },
+    97_829: api,
+    41_687: { assertFindChat: async () => chat, assertWid: (v: any) => v },
+    17_833: () => () => {},
   };
   const req = (key: number) => dependencies[key] || {};
   for (const name of [

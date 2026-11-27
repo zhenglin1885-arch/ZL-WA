@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/media-has-caption -- Selected local preview files do not include subtitle tracks. */
-/* eslint-disable no-void -- Reading an already selected local attachment is asynchronous. */
+
 import { ipcRenderer } from 'electron';
 import { useEffect, useRef, useState } from 'react';
 import type { BulkMedia, BulkMessageType } from './config';

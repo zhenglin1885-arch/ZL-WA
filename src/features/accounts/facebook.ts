@@ -33,7 +33,7 @@ export function readFacebookSnapshot(): AccountSnapshot {
       .trim();
   if (document.readyState === 'loading') return { status: 'loading' };
   if (
-    /\/(?:login|checkpoint|two_step_verification|recover)(?:[/.?]|$)/i.test(
+    /\/(?:login|checkpoint|two_step_verification|recover)(?:[./?]|$)/i.test(
       location.pathname,
     ) ||
     visible('input[type="password"], form[action*="/login"]')

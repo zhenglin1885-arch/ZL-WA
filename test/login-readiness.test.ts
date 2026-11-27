@@ -12,7 +12,7 @@ it.each(['login', 'loading'])(
   async state => {
     // Meta logs dependency errors before throwing; catching them is insufficient.
     const requireModule = jest.fn(() => {
-      throw Error('unresolved dependencies');
+      throw new Error('unresolved dependencies');
     });
     const owners = jest.fn(() => {
       requireModule();
@@ -40,6 +40,7 @@ it.each(['login', 'loading'])(
       },
       MutationObserver: class {
         observe() {}
+
         disconnect() {}
       },
       setInterval: (callback: () => void) => {

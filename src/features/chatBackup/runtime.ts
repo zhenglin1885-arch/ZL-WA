@@ -1,4 +1,4 @@
-/* eslint-disable no-void, no-await-in-loop -- History reads and writes are sequential and cancellable. */
+/* eslint-disable no-await-in-loop -- History reads and writes are sequential and cancellable. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import { ensureBulkLibrary } from '../accountTools/bulkRuntime';

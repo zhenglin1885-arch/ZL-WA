@@ -1,5 +1,3 @@
-/* eslint-disable unicorn/prefer-event-target -- Electron IPC uses EventEmitter subscriptions. */
-/* eslint-disable global-require -- Load the recipe after installing native IPC mocks. */
 import { EventEmitter } from 'node:events';
 
 let ipc: any;

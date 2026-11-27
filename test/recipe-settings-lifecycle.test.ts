@@ -21,7 +21,7 @@ function controllerFixture(rootPresent = false) {
   };
   const disable = jest.fn(() => {
     if (!root)
-      throw TypeError(
+      throw new TypeError(
         'Cannot read properties of null (reading removeAttribute)',
       );
   });
@@ -38,7 +38,7 @@ function controllerFixture(rootPresent = false) {
       statement.name?.text === 'RecipeController',
   )!;
   const compiled = ts.transpileModule(
-    node.getText(file) + '\nglobalThis.Controller = RecipeController;',
+    `${node.getText(file)}\nglobalThis.Controller = RecipeController;`,
     {
       compilerOptions: {
         target: ts.ScriptTarget.ES2020,
@@ -61,6 +61,7 @@ function controllerFixture(rootPresent = false) {
     },
     AutomaticLanguageDetection: class {
       disable() {}
+
       destroy() {}
     },
     FindInPage: class {},

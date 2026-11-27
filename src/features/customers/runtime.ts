@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- The runtime reports asynchronous errors in its own state. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';
 import { customerFlagSvg } from './flagIcons';

@@ -365,6 +365,7 @@ class RecipeController {
   });
 
   private stopSettingsReaction?: () => void;
+
   @observable settings: {
     overrideSpellcheckerLanguage: boolean;
     app: AppStore;

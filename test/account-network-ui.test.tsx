@@ -15,7 +15,10 @@ const AccountNetworkStatus =
 const all = (node: any): any[] =>
   !node || typeof node !== 'object'
     ? []
-    : [node, ...[node.props?.children].flat(Infinity).flatMap(all)];
+    : [
+        node,
+        ...[node.props?.children].flat(Number.POSITIVE_INFINITY).flatMap(all),
+      ];
 
 describe('title bar network status for active accounts', () => {
   let originalWindow: PropertyDescriptor | undefined;

@@ -165,7 +165,7 @@ export function readSendDiagnostics() {
       activeRow?.querySelectorAll('.zl-customer-flag').length ?? null,
   };
   const pairing = read(() => page.__zlPairingTrace);
-  const eventNames = [
+  const eventNames = new Set([
     'observing',
     'login',
     'chat',
@@ -175,7 +175,7 @@ export function readSendDiagnostics() {
     'online',
     'offline',
     'pagehide',
-  ];
+  ]);
   const eventCodes = [
     'CONNECTED',
     'OPENING',
@@ -205,10 +205,7 @@ export function readSendDiagnostics() {
         .slice(-64)
         .filter(
           (e: any) =>
-            e &&
-            eventNames.includes(e.event) &&
-            Number.isFinite(e.at) &&
-            e.at >= 0,
+            e && eventNames.has(e.event) && Number.isFinite(e.at) && e.at >= 0,
         )
         .map((e: any) => ({
           at: e.at,
@@ -341,7 +338,7 @@ export function readSendDiagnostics() {
         .map((row: any) => ({
           at:
             Number.isFinite(row.at) && row.at >= 0
-              ? Math.min(row.at, 86400000)
+              ? Math.min(row.at, 86_400_000)
               : 0,
           event: row.event,
           payloadKind:
@@ -376,7 +373,7 @@ export function readSendDiagnostics() {
       qrChanges:
         Number.isInteger(pairing?.qrChanges) &&
         pairing.qrChanges >= 0 &&
-        pairing.qrChanges <= 10000
+        pairing.qrChanges <= 10_000
           ? pairing.qrChanges
           : null,
       events: pairingEvents,
@@ -386,7 +383,7 @@ export function readSendDiagnostics() {
       crossOriginIsolated: bool(read(() => page.crossOriginIsolated)),
       cookiesEnabled: bool(read(() => navigator.cookieEnabled)),
       browserBrandInUserAgent: bool(
-        read(() => /Electron|Ferdium|ZL-WA/i.test(navigator.userAgent)),
+        read(() => /electron|ferdium|zl-wa/i.test(navigator.userAgent)),
       ),
       indexedDBAvailable: bool(
         read(() => typeof page.indexedDB?.open === 'function'),

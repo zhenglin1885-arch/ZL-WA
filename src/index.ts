@@ -2,7 +2,6 @@
 /* eslint-disable import/first */
 
 import { EventEmitter } from 'node:events';
-import { allowWhatsAppPersistentStorage } from './electron/whatsappStoragePermission';
 import { join, dirname } from 'node:path';
 import {
   BrowserWindow,
@@ -22,6 +21,7 @@ import windowStateKeeper from 'electron-window-state';
 import { emptyDirSync, ensureFileSync } from 'fs-extra';
 import minimist from 'minimist';
 import ms from 'ms';
+import { allowWhatsAppPersistentStorage } from './electron/whatsappStoragePermission';
 import { enableWebContents, initializeRemote } from './electron-util';
 import enforceMacOSAppLocation from './enforce-macos-app-location';
 
@@ -102,7 +102,6 @@ let overrideAppQuitForUpdate = false;
 let restartingWithoutGPU = false;
 let mainInitializationFailed = false;
 
-// eslint-disable-next-line unicorn/prefer-event-target
 export const appEvents = new EventEmitter();
 
 // Register methods to be called once the window has been loaded.

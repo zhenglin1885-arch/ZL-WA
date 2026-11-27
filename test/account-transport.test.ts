@@ -1,5 +1,3 @@
-/* eslint-disable unicorn/prefer-event-target -- Electron net.request uses EventEmitter listeners. */
-/* eslint-disable global-require -- Install the Electron mock before loading its transport. */
 import { EventEmitter } from 'node:events';
 import { defaultTools } from '../src/features/accountTools/config';
 

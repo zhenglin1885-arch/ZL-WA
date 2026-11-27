@@ -36,7 +36,7 @@ export function configureNativeConnection(): boolean {
           if ('exports' in entry) return entry.exports ?? undefined;
           if (
             entry.isReady === false ||
-            (entry.waitingMap && Object.keys(entry.waitingMap).length)
+            (entry.waitingMap && Object.keys(entry.waitingMap).length > 0)
           )
             return undefined;
         }
@@ -235,7 +235,7 @@ export function configureNativeConnection(): boolean {
     try {
       page.ferdium?.pushWhatsAppConnectionEvent?.({
         event,
-        code: trace[trace.length - 1].code,
+        code: trace.at(-1)!.code,
         payloadKind,
       });
     } catch {}
@@ -300,10 +300,10 @@ export function configureNativeConnection(): boolean {
   const readyCallbacks = new Set<() => void>();
   const bindings: (() => void)[] = [];
   let boundObserver: any;
-  let boundBus: any,
-    boundLinks: any,
-    checking = false,
-    disposed = false;
+  let boundBus: any;
+  let boundLinks: any;
+  let checking = false;
+  let disposed = false;
   let previousPasskeySurface = 'absent';
   const check = async () => {
     if (disposed || checking) return;
@@ -421,7 +421,7 @@ export function configureNativeConnection(): boolean {
             ? 'main_stream_mode_ready'
             : null;
       if (!bus || !mapped || typeof bus.on !== 'function')
-        throw Error('WhatsApp connection event unavailable');
+        throw new Error('WhatsApp connection event unavailable');
       const wrapped = (value: any) => fn(socketFacade, value);
       bus.on(mapped, wrapped);
       const rows = socketListeners.get(fn) || [];
@@ -440,20 +440,20 @@ export function configureNativeConnection(): boolean {
       for (const row of rows)
         if (row.event === mapped) row.bus.off(row.event, row.wrapped);
       const left = rows.filter(row => row.event !== mapped);
-      if (left.length) socketListeners.set(fn, left);
+      if (left.length > 0) socketListeners.set(fn, left);
       else socketListeners.delete(fn);
       return socketFacade;
     },
     logout() {
       const bus = backend();
       if (typeof bus?.triggerLogout !== 'function')
-        throw Error('WhatsApp logout unavailable');
+        throw new Error('WhatsApp logout unavailable');
       return bus.triggerLogout();
     },
     poke() {
       const bus = backend();
       if (typeof bus?.triggerReconnectSocket !== 'function')
-        throw Error('WhatsApp reconnect unavailable');
+        throw new Error('WhatsApp reconnect unavailable');
       return bus.triggerReconnectSocket();
     },
   };

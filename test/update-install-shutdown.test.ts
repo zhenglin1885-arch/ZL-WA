@@ -1,4 +1,3 @@
-/* eslint-disable global-require -- Isolated Electron lifecycle mocks. */
 describe('verified update installation shutdown', () => {
   let launch: (path: string) => Promise<void>;
   let openPath: jest.Mock;
@@ -9,7 +8,7 @@ describe('verified update installation shutdown', () => {
     quit = jest.fn();
     jest.doMock('../src/electron/GitHubUpdates', () => ({
       __esModule: true,
-      // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- Capture the updater lifecycle hook without network/download work.
+
       default: class {
         constructor(options: { launch: typeof launch }) {
           launch = options.launch;

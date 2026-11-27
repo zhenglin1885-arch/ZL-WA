@@ -41,7 +41,8 @@ export async function ensureBulkLibrary(view: Electron.WebviewTag) {
     checkDeadline();
     // A recipe or another initializer can already have installed an older SDK.
     // Presence alone must not skip the app's tested LID compatibility build.
-    const compatible = `(()=>{if(window.__zlWaNativeConnection?.read()?.source==='backend-event-bus'&&window.WPP?.__zlNativeConnectionCompat!==1)return false;const getter=window.WPP?.conn?.getMyUserLid;if(typeof getter!=='function')return true;const source=Function.prototype.toString.call(getter);return (!source.includes('getMeLidUserOrThrow')||source.includes('ZL_LID_UNAVAILABLE'))})()`;
+    const compatible =
+      "(()=>{if(window.__zlWaNativeConnection?.read()?.source==='backend-event-bus'&&window.WPP?.__zlNativeConnectionCompat!==1)return false;const getter=window.WPP?.conn?.getMyUserLid;if(typeof getter!=='function')return true;const source=Function.prototype.toString.call(getter);return (!source.includes('getMeLidUserOrThrow')||source.includes('ZL_LID_UNAVAILABLE'))})()";
     const stale = exists && !(await view.executeJavaScript(compatible));
     checkDeadline();
     if (!exists || stale) {

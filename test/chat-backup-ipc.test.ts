@@ -1,4 +1,3 @@
-/* eslint-disable global-require -- IPC handlers install after isolated Electron mocks. */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

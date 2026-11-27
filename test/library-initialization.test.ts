@@ -69,7 +69,8 @@ it('replaces an existing legacy SDK before using a group interface', async () =>
       },
     },
   };
-  const script = `window.WPP={isReady:true,conn:{getMyUserLid:function(){throw Object.assign(new Error('unavailable'),{code:'ZL_LID_UNAVAILABLE'});}}};window.injected=(window.injected||0)+1`;
+  const script =
+    "window.WPP={isReady:true,conn:{getMyUserLid:function(){throw Object.assign(new Error('unavailable'),{code:'ZL_LID_UNAVAILABLE'});}}};window.injected=(window.injected||0)+1";
   (ipcRenderer.invoke as jest.Mock).mockResolvedValue(script);
   const view: any = {
     executeJavaScript: jest.fn(async (code: string) =>

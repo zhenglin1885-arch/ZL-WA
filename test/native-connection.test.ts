@@ -1,14 +1,16 @@
 import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { configureNativeConnection } from '../src/features/accounts/nativeConnection';
 import { readSendDiagnostics } from '../src/features/accounts/sendDiagnostics';
 import {
   collectSendDiagnostics,
   recordNativeConnection,
 } from '../src/features/accounts/collectSendDiagnostics';
-import ts from 'typescript';
+
 const prepare = require('../build-helpers/prepare-whatsapp-library.cjs');
+
 function fixture(modern = true) {
   const bus = Object.assign(new EventEmitter(), {
     socketState: 'PAIRING',
@@ -17,8 +19,8 @@ function fixture(modern = true) {
     triggerReconnectSocket: jest.fn(),
   });
   const links = new EventEmitter();
-  let chat = false,
-    critical = false;
+  let chat = false;
+  let critical = false;
   const legacy = Object.assign(new EventEmitter(), { state: 'CONNECTED' });
   const modules: any = modern
     ? {
@@ -40,7 +42,7 @@ function fixture(modern = true) {
           ]),
         ),
       };
-    if (!(name in modules)) throw Error('Unknown native module ' + name);
+    if (!(name in modules)) throw new Error(`Unknown native module ${name}`);
     return modules[name];
   });
   const page: any = {
@@ -89,9 +91,10 @@ function sdkModules(source: string) {
   const begin =
     source.indexOf('__webpack_modules__=') + '__webpack_modules__='.length;
   return vm.runInNewContext(
-    '(' +
-      source.slice(begin, source.indexOf(';const __webpack_module_cache__')) +
-      ')',
+    `(${source.slice(
+      begin,
+      source.indexOf(';const __webpack_module_cache__'),
+    )})`,
   );
 }
 it('reads the new login bus and phone-link failures without touching the missing legacy module or browser APIs', () => {
@@ -159,10 +162,9 @@ it('keeps native close categories through the preload and host boundaries across
     .trim()
     .replace(/,$/, '');
   const calls: any[] = [];
-  const code = ts.transpileModule(
-    'const callback = ' + callback + ';callback;',
-    { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
-  ).outputText;
+  const code = ts.transpileModule(`const callback = ${callback};callback;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const bridge = vm.runInNewContext(code, {
     process: { isMainFrame: true },
     location: { hostname: 'web.whatsapp.com' },
@@ -238,7 +240,7 @@ it('keeps native close categories through the preload and host boundaries across
     });
     f.bus.emit('socket_stream_disconnected');
     const reasonGetter = jest.fn(() => {
-      throw Error('PRIVATE_GETTER');
+      throw new Error('PRIVATE_GETTER');
     });
     f.bus.emit(
       'socket_stream_disconnected',
@@ -319,7 +321,7 @@ it('records caught official passkey error surfaces without reading verification 
     {},
     {
       get() {
-        throw Error('Verification text was read');
+        throw new Error('Verification text was read');
       },
     },
   );
@@ -363,7 +365,7 @@ it('observes Shortcake events without reading verification secrets or calling th
     {},
     {
       get() {
-        throw Error('Verification payload was inspected');
+        throw new Error('Verification payload was inspected');
       },
     },
   );
@@ -375,7 +377,7 @@ it('observes Shortcake events without reading verification secrets or calling th
       'shortcake_prologue_sent',
       'shortcake_verification_code_ready',
     ])
-      f.links.emit('link_device_events:' + event, secret, secret);
+      f.links.emit(`link_device_events:${event}`, secret, secret);
     f.links.emit('link_device_events:shortcake_error', {
       name: 'NotAllowedError',
       message: 'PRIVATE_CHALLENGE',
@@ -413,7 +415,7 @@ it('observes Shortcake events without reading verification secrets or calling th
       'shortcake_verification_code_ready',
       'shortcake_error',
     ])
-      expect(f.links.listenerCount('link_device_events:' + event)).toBe(0);
+      expect(f.links.listenerCount(`link_device_events:${event}`)).toBe(0);
   } finally {
     f.dispose();
   }
@@ -516,7 +518,7 @@ it('uses the real SDK socket export and main-ready registrar on the new bus with
       });
     // Factories refer to their browser window, so run in the same native fixture.
     const socketFactory = vm.runInContext(
-      '(' + modules[82183].toString().replace(/^82183\(/, 'function(') + ')',
+      `(${modules[82_183].toString().replace(/^82183\(/, 'function(')})`,
       f.context,
     );
     socketFactory({}, definitions, () => ({ exportModule }));
@@ -528,17 +530,17 @@ it('uses the real SDK socket export and main-ready registrar on the new bus with
     expect(listener).toHaveBeenCalledWith(definitions.Socket, 'CONNECTED');
     definitions.Socket.off('change:state', listener);
     const mainFactory = vm.runInContext(
-      '(' + modules[28952].toString().replace(/^28952\(/, 'function(') + ')',
+      `(${modules[28_952].toString().replace(/^28952\(/, 'function(')})`,
       f.context,
     );
     const ready = jest.fn();
     events.on('conn.main_ready', ready);
     mainFactory({}, {}, (id: number) =>
-      id === 13691
+      id === 13_691
         ? { internalEv: events }
         : id === 7222
           ? { onInjected: (fn: any) => fn() }
-          : id === 17833
+          : id === 17_833
             ? () => () => {}
             : { StreamMode: { MAIN: 'MAIN', QR: 'QR' } },
     );
@@ -572,7 +574,7 @@ it('does not require registered but uninitialized native modules during login an
     f.req.mockClear();
     f.req.mockImplementation((name: string) => {
       if (name === '__debug') return { modulesMap: registry };
-      throw Error('Must not force native initialization');
+      throw new Error('Must not force native initialization');
     });
     expect(f.page.__zlWaNativeConnection.read().source).toBe('unavailable');
     f.context.setInterval.mock.calls[0][0]();
@@ -641,9 +643,9 @@ it('observes only public registration stages, binds once after initialization an
       );
       expect(diagnostic.nativeConnection.events.at(-1).code).toBe(code);
     }
-    const length = f.page.__zlWaNativeConnection.trace.length;
+    const { length } = f.page.__zlWaNativeConnection.trace;
     const getter = jest.fn(() => {
-      throw Error('PRIVATE_GETTER');
+      throw new Error('PRIVATE_GETTER');
     });
     emitter.emit('event', Object.defineProperty({}, 'key', { get: getter }));
     emitter.emit('event', {

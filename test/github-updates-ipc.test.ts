@@ -1,4 +1,3 @@
-/* eslint-disable global-require -- Install isolated Electron mocks before loading IPC. */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

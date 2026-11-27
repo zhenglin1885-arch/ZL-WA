@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Event handlers report asynchronous failures in the dialog. */
 import {
   Button,
   Dialog,

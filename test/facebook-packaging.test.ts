@@ -7,7 +7,7 @@ import { transformSync } from 'esbuild';
 // the build module's helpers. Source-only tests cannot catch keepNames captures.
 const file = 'src/features/accounts/facebook.ts';
 const build = readFileSync(join(__dirname, '../esbuild.mjs'), 'utf8');
-const entries = /const guestEntries = (\[[\s\S]*?\]);/.exec(build);
+const entries = /const guestEntries = (\[[\S\s]*?]);/.exec(build);
 if (!entries) throw new Error('Cannot find the production guest build entries');
 const guests: string[] = runInNewContext(entries[1]);
 const compiled = transformSync(
@@ -34,7 +34,7 @@ const page = (labels: string[], userId?: string) => ({
   document: {
     readyState: 'complete',
     querySelectorAll: (selector: string) =>
-      /button|\[role="link"\]/.test(selector)
+      /button|\[role="link"]/.test(selector)
         ? labels.map(textContent => ({
             textContent,
             getClientRects: () => [{}],

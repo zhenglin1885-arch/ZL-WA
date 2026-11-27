@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- UI handlers start promises with their own error handling. */
 import { useEffect, useState } from 'react';
 import { inject, observer } from 'mobx-react';
 import { ipcRenderer } from 'electron';

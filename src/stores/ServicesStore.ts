@@ -1,6 +1,5 @@
 // ZL-WA modification: keep the active service window title under our own name.
 import { join } from 'node:path';
-import { recordPageTransition } from '../features/accounts/collectSendDiagnostics';
 import { ipcRenderer, shell } from 'electron';
 import { ensureFileSync, pathExistsSync, writeFileSync } from 'fs-extra';
 import { debounce, remove } from 'lodash';
@@ -13,6 +12,7 @@ import {
   runInAction,
 } from 'mobx';
 import ms from 'ms';
+import { recordPageTransition } from '../features/accounts/collectSendDiagnostics';
 
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';

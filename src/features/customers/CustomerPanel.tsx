@@ -1,4 +1,4 @@
-/* eslint-disable no-void, no-param-reassign -- Autosave failures update the shared customer runtime and are displayed locally. */
+/* eslint-disable no-param-reassign -- Autosave failures update the shared customer runtime and are displayed locally. */
 import { clipboard } from 'electron';
 import { useEffect, useRef, useState } from 'react';
 import {

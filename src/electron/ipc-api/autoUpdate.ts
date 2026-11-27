@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Event checks report their result to the host renderer. */
 import { app, ipcMain, net, shell, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import GitHubUpdates from '../GitHubUpdates';

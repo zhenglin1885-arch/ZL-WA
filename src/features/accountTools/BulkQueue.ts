@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Background scheduler failures are reported through queue state. */
 /* eslint-disable no-continue -- Skip deliveries already revoked, preserving stable message IDs. */
 import type {
   BulkSpec,

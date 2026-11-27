@@ -1,4 +1,3 @@
-/* eslint-disable unicorn/prefer-event-target -- Mock native Electron EventEmitter lifecycle. */
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

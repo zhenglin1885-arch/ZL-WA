@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Sound playback failures are handled without interrupting notifications. */
 // Shared application sound: local asset, one short chime per notification burst.
 let audio: HTMLAudioElement | undefined;
 let lastPlayed = Number.NEGATIVE_INFINITY;

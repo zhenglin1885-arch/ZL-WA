@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop, no-continue, no-void -- Persist checkpoints before each sequential scheduled mutation; run reports its own errors. */
+/* eslint-disable no-await-in-loop, no-continue -- Persist checkpoints before each sequential scheduled mutation; run reports its own errors. */
 import {
   defaultReactionState,
   validateReactionPreferences,

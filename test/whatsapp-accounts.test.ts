@@ -256,7 +256,7 @@ describe('WhatsApp account adapter', () => {
   });
   it('counts actual unread messages in unmuted, unarchived groups and private chats only', async () => {
     modules.WAWebSocketModel = { Socket: { state: 'CONNECTED' } };
-    // eslint-disable-next-line unicorn/consistent-function-scoping -- Local synthetic collection builder.
+
     const chat = (server: string, count: number, extra = {}) => ({
       id: { server },
       unreadCount: count,

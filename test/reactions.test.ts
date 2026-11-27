@@ -1,4 +1,4 @@
-/* eslint-disable no-await-in-loop, unicorn/consistent-function-scoping, @typescript-eslint/no-dynamic-delete -- Sequential queue completion and scoped mutable guest fixtures. */
+/* eslint-disable no-await-in-loop, @typescript-eslint/no-dynamic-delete -- Sequential queue completion and scoped mutable guest fixtures. */
 import ReactionQueue from '../src/features/reactions/ReactionQueue';
 import { reactionGuest } from '../src/features/reactions/guest';
 import {

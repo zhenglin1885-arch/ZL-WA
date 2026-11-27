@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Network refreshes handle their own errors. */
 import { ipcRenderer } from 'electron';
 import { observer } from 'mobx-react';
 import { useEffect, useState } from 'react';

@@ -1,4 +1,4 @@
-/* eslint-disable unicorn/consistent-function-scoping, no-continue, prefer-destructuring, unicorn/no-useless-undefined -- Serialized guest functions must be self-contained and skip unsupported native rows. */
+/* eslint-disable unicorn/consistent-function-scoping, no-continue, prefer-destructuring -- Serialized guest functions must be self-contained and skip unsupported native rows. */
 import type {
   CustomerBundle,
   CustomerContext,

@@ -1,5 +1,5 @@
 /* eslint-disable no-use-before-define, @typescript-eslint/no-use-before-define -- Mutually dependent socket listeners share cleanup. */
-/* eslint-disable no-void -- CONNECT tunnels run independently with handled rejections. */
+
 // Chromium has no SOCKS username/password support. A per-account loopback
 // CONNECT bridge performs RFC 1928/1929 authentication without exposing secrets.
 import { createServer } from 'node:http';

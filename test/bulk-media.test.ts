@@ -1,4 +1,3 @@
-/* eslint-disable global-require -- Electron mocks are installed before loading privileged handlers. */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

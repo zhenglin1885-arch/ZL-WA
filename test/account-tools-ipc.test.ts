@@ -1,4 +1,3 @@
-/* eslint-disable global-require -- Load modules after installing fresh privileged Electron mocks. */
 import {
   mkdtempSync,
   readFileSync,

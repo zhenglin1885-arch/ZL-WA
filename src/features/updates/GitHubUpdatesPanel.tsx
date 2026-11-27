@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Locally displayed errors handle asynchronous UI actions. */
 import { ipcRenderer } from 'electron';
 import { useEffect, useState } from 'react';
 import { ferdiumVersion } from '../../environment-remote';

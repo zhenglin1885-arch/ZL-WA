@@ -1,4 +1,3 @@
-/* eslint-disable max-classes-per-file -- Fresh native media and audio decoder fixtures per test. */
 import { configureWhatsAppVoice } from '../src/features/accounts/voice';
 
 describe('final native WhatsApp voice preparation and dispatch', () => {
@@ -9,7 +8,7 @@ describe('final native WhatsApp voice preparation and dispatch', () => {
   let dispatch: jest.Mock;
   let decode: jest.Mock;
   let blob: any;
-  // eslint-disable-next-line unicorn/consistent-function-scoping -- Fixture factory stays beside its isolated decoder and native classes.
+
   const model = (type: string, mediaBlob: any) => ({
     type,
     mediaBlob,

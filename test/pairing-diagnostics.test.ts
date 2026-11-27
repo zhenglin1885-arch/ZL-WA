@@ -46,7 +46,9 @@ it('observes QR changes and bounded error types without reading QR data or repla
       constructor(callback: any) {
         mutate = callback;
       }
+
       observe = observe;
+
       disconnect = disconnect;
     },
   };
@@ -61,7 +63,7 @@ it('observes QR changes and bounded error types without reading QR data or repla
   const target = {
     querySelector: () => ({}),
     getAttribute: () => {
-      throw Error('QR secret must never be read');
+      throw new Error('QR secret must never be read');
     },
   };
   for (let i = 0; i < 80; i += 1)

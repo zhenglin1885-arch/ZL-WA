@@ -1,5 +1,5 @@
-/* eslint-disable unicorn/prefer-event-target, unicorn/prefer-add-event-listener -- Electron IPC is an EventEmitter; the legacy notification shim exposes an onclick setter. */
-/* eslint-disable global-require -- Install a real EventEmitter IPC mock before loading the guest handler. */
+/* eslint-disable unicorn/prefer-add-event-listener -- Electron IPC is an EventEmitter; the legacy notification shim exposes an onclick setter. */
+
 import { EventEmitter } from 'node:events';
 import vm from 'node:vm';
 

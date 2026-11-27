@@ -86,7 +86,7 @@ describe('aggregate conversation folders', () => {
   it('moves exactly the selected nine conversations even when 139 rows are loaded', () => {
     const rows = Array.from({ length: 139 }, (_, i) => ({
       ...row('A'),
-      id: `${10000 + i}@c.us`,
+      id: `${10_000 + i}@c.us`,
       key: `A:${i}`,
       membershipKey: `A:${i}`,
     }));

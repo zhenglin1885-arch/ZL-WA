@@ -83,7 +83,7 @@ export function configurePairingDiagnostics(): boolean {
         change.attributeName === 'data-ref' &&
         (change.target as Element).querySelector?.('canvas')
       ) {
-        state.qrChanges = Math.min(state.qrChanges + 1, 10000);
+        state.qrChanges = Math.min(state.qrChanges + 1, 10_000);
         record('qr-changed');
       }
     }
@@ -105,7 +105,7 @@ export function configurePairingDiagnostics(): boolean {
   window.addEventListener('offline', online);
   // Bound the polling budget. DOM observations remain available after five minutes.
   const timer = setInterval(() => {
-    if (Date.now() - started > 300000) clearInterval(timer);
+    if (Date.now() - started > 300_000) clearInterval(timer);
     else if (document.visibilityState !== 'hidden') sample();
   }, 500);
   window.addEventListener(

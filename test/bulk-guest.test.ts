@@ -1,4 +1,4 @@
-/* eslint-disable unicorn/consistent-function-scoping, no-await-in-loop -- Scoped mutable WhatsApp fixtures and sequential attachment reply coverage. */
+/* eslint-disable no-await-in-loop -- Scoped mutable WhatsApp fixtures and sequential attachment reply coverage. */
 import {
   sendBulkMessage,
   revokeBulkMessage,

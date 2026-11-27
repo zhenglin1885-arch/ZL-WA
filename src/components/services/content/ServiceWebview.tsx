@@ -1,13 +1,5 @@
-/* eslint-disable no-void -- Detached account refresh handles errors internally. */
 // ZL-WA modification: independent WhatsApp sessions, live metadata and overlay focus.
 import { join } from 'node:path';
-import { configureNativeConnection } from '../../../features/accounts/nativeConnection';
-import { configurePairingDiagnostics } from '../../../features/accounts/pairingDiagnostics';
-import {
-  recordNativeConnection,
-  recordPageTransition,
-} from '../../../features/accounts/collectSendDiagnostics';
-import { configureMessageSendMode } from '../../../features/accounts/sendMode';
 import { ipcRenderer } from 'electron';
 import {
   type IReactionDisposer,
@@ -20,6 +12,13 @@ import {
 import { observer } from 'mobx-react';
 import { Component, type ReactElement } from 'react';
 import ElectronWebView from 'react-electron-web-view';
+import { configureMessageSendMode } from '../../../features/accounts/sendMode';
+import {
+  recordNativeConnection,
+  recordPageTransition,
+} from '../../../features/accounts/collectSendDiagnostics';
+import { configurePairingDiagnostics } from '../../../features/accounts/pairingDiagnostics';
+import { configureNativeConnection } from '../../../features/accounts/nativeConnection';
 import type ServiceModel from '../../../models/Service';
 import type { RealStores } from '../../../stores';
 import {

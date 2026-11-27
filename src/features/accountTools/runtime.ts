@@ -1,4 +1,3 @@
-/* eslint-disable no-void -- Detached, internally handled translation jobs must not block account polling. */
 /* eslint-disable @typescript-eslint/no-loop-func -- stopped is intentionally shared by pending jobs on cleanup. */
 import { ipcRenderer } from 'electron';
 import type { RealStores } from '../../stores';

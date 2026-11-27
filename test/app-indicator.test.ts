@@ -78,7 +78,6 @@ it('uses native Windows overlays for unread counts and clears only after message
 });
 
 it('reapplies the latest unread overlay after show/restore/focus without clearing it or accumulating timers', () => {
-  // eslint-disable-next-line unicorn/prefer-event-target -- Electron BrowserWindow uses EventEmitter lifecycle events.
   const mainWindow: any = Object.assign(new EventEmitter(), {
     isFocused: () => true,
     isDestroyed: () => false,
