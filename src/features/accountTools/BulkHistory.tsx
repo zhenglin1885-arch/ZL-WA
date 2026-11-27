@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Button,
   Dialog,
@@ -20,6 +21,7 @@ const time = (value?: string) =>
 
 export default function BulkHistory({
   records,
+  header,
   activeIds,
   onCompose,
   onDelete,
@@ -29,6 +31,7 @@ export default function BulkHistory({
   onRevoke,
 }: {
   records: SendRecord[];
+  header?: HTMLElement | null;
   activeIds: ReadonlySet<string>;
   onCompose: (record: SendRecord) => void;
   onStop: (id: string) => Promise<void>;
@@ -111,30 +114,37 @@ export default function BulkHistory({
   });
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const current = Math.min(page, pages);
+  const recordTabs = (
+    <div
+      className="bulk-type-tabs zl-segmented"
+      role="group"
+      aria-label="记录类型"
+    >
+      <button
+        type="button"
+        aria-pressed={tab === 'send'}
+        onClick={() => {
+          setTab('send');
+          setPage(1);
+        }}
+      >
+        发送记录
+      </button>
+      <button
+        type="button"
+        aria-pressed={tab === 'revoke'}
+        onClick={() => {
+          setTab('revoke');
+          setPage(1);
+        }}
+      >
+        撤回记录
+      </button>
+    </div>
+  );
   return (
     <div className="bulk-history">
-      <div className="bulk-type-tabs" role="group" aria-label="记录类型">
-        <button
-          type="button"
-          aria-pressed={tab === 'send'}
-          onClick={() => {
-            setTab('send');
-            setPage(1);
-          }}
-        >
-          发送记录
-        </button>
-        <button
-          type="button"
-          aria-pressed={tab === 'revoke'}
-          onClick={() => {
-            setTab('revoke');
-            setPage(1);
-          }}
-        >
-          撤回记录
-        </button>
-      </div>
+      {header ? createPortal(recordTabs, header) : recordTabs}
       <form
         className="bulk-history__filters"
         onSubmit={e => {
@@ -145,7 +155,8 @@ export default function BulkHistory({
       >
         <input
           aria-label="搜索消息内容"
-          placeholder="搜索消息内容"
+          className="zl-history-search"
+          placeholder="⌕ 搜索消息内容"
           value={draft.text}
           onChange={e => setDraft({ ...draft, text: e.target.value })}
         />
@@ -184,10 +195,11 @@ export default function BulkHistory({
           min={draft.from || undefined}
           onChange={e => setDraft({ ...draft, to: e.target.value })}
         />
-        <Button type="submit" variant="contained">
+        <Button type="submit" className="zl-btn">
           搜索
         </Button>
         <Button
+          className="zl-btn"
           onClick={() => {
             setDraft(empty);
             setFilters(empty);
@@ -197,6 +209,14 @@ export default function BulkHistory({
           重置
         </Button>
         <Button
+          className="zl-btn zl-btn--danger"
+          title={
+            running
+              ? '有任务正在执行'
+              : records.length === 0
+                ? '暂无记录可清空'
+                : undefined
+          }
           color="error"
           disabled={running || records.length === 0}
           onClick={() => setDeleting(records.map(r => r.id))}
@@ -206,14 +226,28 @@ export default function BulkHistory({
       </form>
       <div className="bulk-history__table">
         <table>
+          <colgroup>
+            {[
+              ['text', 'auto'],
+              ['status', '84px'],
+              ['method', '84px'],
+              ['progress', '180px'],
+              ['policy', '92px'],
+              ['started', '156px'],
+              ['ended', '156px'],
+              ['actions', '196px'],
+            ].map(([name, width]) => (
+              <col key={name} style={{ width }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               {[
                 '发送内容',
                 '状态',
-                '发送方式',
+                '方式',
                 tab === 'revoke' ? '撤回进度' : '发送进度',
-                '消息发送策略',
+                '失败策略',
                 tab === 'revoke' ? '撤回时间' : '发送时间',
                 '结束时间',
                 '操作',
@@ -247,6 +281,7 @@ export default function BulkHistory({
                   <td>
                     <span
                       className={`bulk-status${status(r) === '已完成' ? ' bulk-status--complete' : ''}`}
+                      data-status={status(r)}
                     >
                       {tab === 'revoke'
                         ? r.deliveries?.every(d => !d.messageId || d.revoked)
@@ -257,9 +292,7 @@ export default function BulkHistory({
                   </td>
                   <td>
                     {r.spec?.scheduledAt ? (
-                      <>
-                        定时发送<small>{time(r.spec.scheduledAt)}</small>
-                      </>
+                      <span title={time(r.spec.scheduledAt)}>定时发送</span>
                     ) : (
                       '立即发送'
                     )}
@@ -276,16 +309,26 @@ export default function BulkHistory({
                       }
                       max={Math.max(1, r.total)}
                     />
-                    <small>
+                    <small
+                      title={
+                        tab === 'revoke'
+                          ? `已撤回 ${r.deliveries?.filter(d => d.revoked).length ?? 0} · 失败 ${r.deliveries?.filter(d => d.revokeError).length ?? 0}`
+                          : `成功 ${r.success} · 待确认 ${r.deliveries?.filter(d => ['uncertain', 'sending'].includes(d.status)).length || 0} · 失败 ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} · 总计 ${r.total}`
+                      }
+                    >
                       {tab === 'revoke'
-                        ? `已撤回 ${r.deliveries?.filter(d => d.revoked).length ?? 0} · 失败 ${r.deliveries?.filter(d => d.revokeError).length ?? 0}`
-                        : `成功 ${r.success} · 待确认 ${r.deliveries?.filter(d => ['uncertain', 'sending'].includes(d.status)).length || 0} · 失败 ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} · 总计 ${r.total}`}
+                        ? `${r.deliveries?.filter(d => d.revoked).length ?? 0} / ${r.total}${r.deliveries?.some(d => d.revokeError) ? ` · ${r.deliveries.filter(d => d.revokeError).length} 失败` : ''}`
+                        : `${r.success} / ${r.total}${r.deliveries?.some(d => ['uncertain', 'sending'].includes(d.status)) ? ` · ${r.deliveries.filter(d => ['uncertain', 'sending'].includes(d.status)).length} 待确认` : ''}${(r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed) ? ` · ${r.deliveries ? r.deliveries.filter(d => d.status === 'failed').length : r.failed} 失败` : ''}`}
                     </small>
                   </td>
-                  <td>
-                    {r.spec?.failure === 'continue'
-                      ? '跳过失败，继续后续对象'
-                      : '遇到失败即停止'}
+                  <td
+                    title={
+                      r.spec?.failure === 'continue'
+                        ? '跳过失败，继续后续对象'
+                        : '遇到失败即停止'
+                    }
+                  >
+                    {r.spec?.failure === 'continue' ? '失败跳过' : '失败停止'}
                   </td>
                   <td>
                     {time(tab === 'revoke' ? r.revokeStarted : r.started)}
@@ -293,11 +336,17 @@ export default function BulkHistory({
                   <td>{time(tab === 'revoke' ? r.revokeEnded : r.ended)}</td>
                   <td>
                     <div className="bulk-history__actions">
-                      <Button onClick={() => setDetailId(r.id)}>详情</Button>
+                      <Button
+                        className="zl-btn zl-btn--small"
+                        onClick={() => setDetailId(r.id)}
+                      >
+                        详情
+                      </Button>
                       {activeIds.has(r.id) &&
                         (r.status === '发送中' ||
                           (r.revokeStarted && !r.revokeEnded)) && (
                           <Button
+                            className="zl-btn zl-btn--small"
                             onClick={async () => {
                               try {
                                 await onStop(r.id);
@@ -309,12 +358,31 @@ export default function BulkHistory({
                             {r.status === '发送中' ? '停止发送' : '停止撤回'}
                           </Button>
                         )}
-                      <Button onClick={() => onCompose(r)}>再发一条</Button>
+                      <Button
+                        className="zl-btn zl-btn--small"
+                        onClick={() => onCompose(r)}
+                      >
+                        再发一条
+                      </Button>
                       <details className="bulk-history__more">
-                        <summary>更多</summary>
+                        <summary
+                          className="zl-more-icon"
+                          aria-label="更多"
+                          title="更多操作"
+                        >
+                          ⋯
+                        </summary>
                         <div>
                           {r.status === '待发送' && (
                             <Button
+                              title={
+                                busy
+                                  ? '正在处理，请稍候'
+                                  : activeIds.has(r.id)
+                                    ? '任务正在执行'
+                                    : '没有可操作的消息对象'
+                              }
+                              className="zl-btn zl-btn--small"
                               disabled={activeIds.has(r.id)}
                               onClick={async () => {
                                 try {
@@ -328,6 +396,14 @@ export default function BulkHistory({
                             </Button>
                           )}
                           <Button
+                            title={
+                              busy
+                                ? '正在处理，请稍候'
+                                : activeIds.has(r.id)
+                                  ? '任务正在执行'
+                                  : '没有可操作的消息对象'
+                            }
+                            className="zl-btn zl-btn--small"
                             disabled={
                               activeIds.has(r.id) ||
                               busy ||
@@ -349,6 +425,7 @@ export default function BulkHistory({
                             核对发送结果
                           </Button>
                           <Button
+                            className="zl-btn zl-btn--small"
                             disabled={
                               activeIds.has(r.id) ||
                               busy ||
@@ -366,6 +443,7 @@ export default function BulkHistory({
                             撤回已发消息
                           </Button>
                           <Button
+                            className="zl-btn zl-btn--small"
                             disabled={
                               activeIds.has(r.id) ||
                               busy ||
@@ -408,6 +486,8 @@ export default function BulkHistory({
       <div className="bulk-history__pagination">
         <span>共 {filtered.length} 条</span>
         <Button
+          className="zl-btn zl-btn--small"
+          title={current <= 1 ? '已经是第一页' : undefined}
           aria-label="上一页"
           disabled={current <= 1}
           onClick={() => setPage(current - 1)}
@@ -418,6 +498,8 @@ export default function BulkHistory({
           {current} / {pages}
         </span>
         <Button
+          className="zl-btn zl-btn--small"
+          title={current >= pages ? '已经是最后一页' : undefined}
           aria-label="下一页"
           disabled={current >= pages}
           onClick={() => setPage(current + 1)}
@@ -441,7 +523,7 @@ export default function BulkHistory({
       </div>
       <Dialog
         open={Boolean(detail)}
-        className="account-tools-dialog"
+        className="account-tools-dialog zl-dialog"
         fullWidth
         maxWidth="md"
         onClose={() => setDetailId('')}
@@ -490,7 +572,9 @@ export default function BulkHistory({
             [...new Set(detail?.details ?? [])].map(d => <p key={d}>{d}</p>)}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailId('')}>关闭详情</Button>
+          <Button className="zl-btn" onClick={() => setDetailId('')}>
+            关闭详情
+          </Button>
         </DialogActions>
       </Dialog>
       <p role="alert" className="tools-notice">
@@ -498,7 +582,7 @@ export default function BulkHistory({
       </p>
       <Dialog
         open={Boolean(revoking)}
-        className="account-tools-dialog"
+        className="account-tools-dialog zl-dialog"
         onClose={() => {
           if (!busy) setRevoking(undefined);
         }}
@@ -540,10 +624,17 @@ export default function BulkHistory({
             })}
         </DialogContent>
         <DialogActions>
-          <Button disabled={busy} onClick={() => setRevoking(undefined)}>
+          <Button
+            className="zl-btn"
+            title={busy ? '正在处理，请稍候' : '当前任务正在执行，请稍候'}
+            disabled={busy}
+            onClick={() => setRevoking(undefined)}
+          >
             取消
           </Button>
           <Button
+            className="zl-btn zl-btn--danger"
+            title={busy ? '正在处理，请稍候' : '先选择撤回对象，或等待任务结束'}
             disabled={
               busy ||
               (!!revoking && activeIds.has(revoking.id)) ||
@@ -570,7 +661,7 @@ export default function BulkHistory({
       </Dialog>
       <Dialog
         open={Boolean(editing)}
-        className="account-tools-dialog"
+        className="account-tools-dialog zl-dialog"
         maxWidth="md"
         fullWidth
         onClose={() => {
@@ -629,10 +720,23 @@ export default function BulkHistory({
           <p role="alert">{error}</p>
         </DialogContent>
         <DialogActions>
-          <Button disabled={busy} onClick={() => setEditing(undefined)}>
+          <Button
+            className="zl-btn"
+            title={busy ? '正在处理，请稍候' : '当前任务正在执行，请稍候'}
+            disabled={busy}
+            onClick={() => setEditing(undefined)}
+          >
             取消
           </Button>
           <Button
+            className="zl-btn zl-btn--primary"
+            title={
+              busy
+                ? '正在处理，请稍候'
+                : editText.trim()
+                  ? '先选择修改对象，或等待任务结束'
+                  : '先填写更正内容'
+            }
             variant="contained"
             disabled={
               busy ||
@@ -661,7 +765,7 @@ export default function BulkHistory({
       </Dialog>
       <Dialog
         open={deleting.length > 0}
-        className="account-tools-dialog"
+        className="account-tools-dialog zl-dialog"
         onClose={() => {
           if (!busy) setDeleting([]);
         }}
@@ -673,6 +777,8 @@ export default function BulkHistory({
         </DialogContent>
         <DialogActions>
           <Button
+            className="zl-btn"
+            title={busy ? '正在处理，请稍候' : '当前任务正在执行，请稍候'}
             disabled={busy}
             onClick={() => {
               setDeleting([]);
@@ -682,6 +788,8 @@ export default function BulkHistory({
             取消
           </Button>
           <Button
+            className="zl-btn zl-btn--danger"
+            title={busy ? '正在处理，请稍候' : '当前任务正在执行，请稍候'}
             disabled={busy || deleting.some(id => activeIds.has(id))}
             color="error"
             onClick={async () => {

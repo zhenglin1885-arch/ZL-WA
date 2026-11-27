@@ -56,6 +56,9 @@ const BulkSend = observer(
     >('exact');
     const queue = getBulkQueue(stores);
     const [, render] = useState(0);
+    const [historyHeader, setHistoryHeader] = useState<HTMLSpanElement | null>(
+      null,
+    );
     const [creating, setCreating] = useState(
       replyMode || initialRecipients.length > 0,
     );
@@ -347,7 +350,7 @@ const BulkSend = observer(
         fullWidth
         scroll="paper"
         aria-labelledby="bulk-dialog-title"
-        className="account-tools-dialog bulk-dialog"
+        className="account-tools-dialog bulk-dialog zl-dialog"
         onClose={onClose}
       >
         <DialogTitle id="bulk-dialog-title" className="bulk-dialog__header">
@@ -360,12 +363,20 @@ const BulkSend = observer(
                 ? '创建群发'
                 : '批量发送'}
             <span className="tools-muted">
-              {creating ? '选择账号、对象并配置消息' : '发送记录'}
+              {creating ? '选择账号和对象，再设置要回复的消息' : ''}
             </span>
           </span>
+          {!creating && (
+            <span
+              className="bulk-history__header-tabs"
+              ref={setHistoryHeader}
+            />
+          )}
           <span className="bulk-dialog__header-actions">
             {!creating && (
               <Button
+                className="zl-btn zl-btn--primary"
+                title={submitting ? '正在提交，请稍候' : undefined}
                 variant="contained"
                 disabled={submitting}
                 onClick={() => {
@@ -373,11 +384,11 @@ const BulkSend = observer(
                   setNotice('');
                 }}
               >
-                {replyMode ? '新建回复' : '新建转发'}
+                + {replyMode ? '新建回复' : '新建转发'}
               </Button>
             )}
             <IconButton
-              className="bulk-dialog__close-icon"
+              className="bulk-dialog__close-icon zl-btn zl-btn--icon"
               aria-label={replyMode ? '关闭回复窗口' : '关闭转发窗口'}
               title="关闭转发窗口（任务继续后台执行）"
               onPointerDown={closeFromPointer}
@@ -800,6 +811,7 @@ const BulkSend = observer(
             </div>
           ) : (
             <BulkHistory
+              header={historyHeader}
               records={records}
               activeIds={activeIds}
               onCompose={record => {
@@ -855,7 +867,7 @@ const BulkSend = observer(
         </DialogContent>
         <DialogActions>
           <Button
-            className="bulk-dialog__close"
+            className="bulk-dialog__close zl-btn"
             onPointerDown={closeFromPointer}
             onClick={onClose}
           >
