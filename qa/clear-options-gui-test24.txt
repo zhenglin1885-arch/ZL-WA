@@ -1,0 +1,82 @@
+HISTORICAL FULL GUI LOG FROM TEST23; NOT A CURRENT FULL-REGRESSION PASS
+Historical synthetic GUI run during rounded UI work; not a full passing regression.
+Known failure: customer autosaved timeout. Test accounts only; no real messages.
+
+PASS rounded light/dark UI: borderless cards, 99+ badges, nine stroke icons, consistent focused fields, rounded drag markers and compact sidebar
+PASS rounded styling preserves native guest navigation and unsent drafts
+PASS account card drag reorders and persists local preferences without replacing accounts
+PASS compact sidebar persists, shows avatar/remark, switches accounts and preserves webview instances
+PASS light desktop: manual dark updates app, MUI, Chromium and native WhatsApp classes; delayed light reset repaired; system-follow and compatibility switches work without reload or draft loss
+PASS native WhatsApp list drag-only sizing, inert click, persistence, light purple sidebars and four distinct account status colors
+PASS account menu edits the remark line while preserving account identity
+PASS visible group/remark dialogs accept native mouse and text input and persist changes
+PASS OpenAI/Gemini expose password and model fields and require the user API Key
+PASS translation refresh requests a new result and never resends the message
+PASS complete formatted media caption, native refresh across React capture, immediate progress, visible failure and retry
+PASS receive toggle adds manual translate to incoming and sent messages, no automatic requests, retry works without resending
+PASS appearance color saves/reopens, updates existing translations without provider calls, empty value restores default; release/about/download links hidden
+PASS preview auto translates incoming/sent messages, errors retain manual controls, disabled feature removes all controls
+PASS deferred preview, visible-only work, cached DOM remount, pinned-bottom reflow and history-anchor preservation
+PASS message recognition works without message-in/out, copyable/selectable classes or true_/false_ IDs
+PASS edit-message click/Enter translation previews, corrected saves, failed translation protection, cancellation isolation and unrelated dialogs
+PASS media captions translate before send, preserve background drafts, allow corrections and Enter, reject provider failures/media switches, and bypass emoji/empty captions
+PASS video and document captions support two-step click/Enter sends, corrections, failure protection, attachment changes, empty captions and emoji
+PASS Unicode emoji, ZWJ/flags/keycaps, decorator IMG emoji, numbers and URLs bypass translation unchanged
+PASS native select-all replaces text plus noneditable emoji decorator exactly once before confirmed send
+PASS received translation, per-account isolation, first-click preview and second-click corrected send
+PASS native clear/retype and whole-draft replacement retranslate before click/Enter sends; partial corrections still send on confirmation
+PASS image/video/file generic footer captions, remote image previews, new send icon, native pointerup and Enter, separate confirmation and original-text protection
+PASS native pointer-driven edits, nested dialog headings, unmarked editors, new checkmark icons, quoted reply translation and quote-switch protection
+PASS translation failure and stale-draft protection leave the original unsent
+PASS Enter first/second send and held-key protection
+PASS switching chats invalidates pending outgoing translation
+PASS native connection-test IPC traverses a local HTTP CONNECT proxy and TLS destination
+PASS actual Electron account Session proxy routing and disable-to-system-network isolation
+PASS bulk recipient reads exclude closed and unknown groups, track permission changes, preserve private chats and never send during reading
+PASS forwarding history and creation overlay the guest at four window sizes, with scrolling body and clickable fixed footer
+PASS centered bulk dialog, real recipient adapter, explicit confirmation, two synthetic sends, progress and history
+PASS multi-account targets remain distinct and an uncertain/failed send stops the queue without retry
+PASS stop button prevents subsequent recipients after the current send
+PASS native attachment picker copies media, media adapter records its message ID, revoke requests delete-for-everyone and updates revoke history
+PASS bulk settings persist on immediate close/reopen without carrying over recipient selection
+PASS compact two-line previews, concise success/failure details, creation during active sends, two simultaneous jobs and independent cancellation
+PASS actual bulk runtime: delayed ACK success, pending-ID reconciliation, immediate/delayed negative ACK skip/stop policies and no duplicate submissions
+PASS logout and errors keep historical card identity; new login replaces it without mixing the old avatar
+Error: Timed out: customer autosaved
+    at wait (file:///workspace/ZL-WA-rounded/scripts/account-tools-cdp.mjs:56:9)
+    at async file:///workspace/ZL-WA-rounded/scripts/verify-account-tools-ui.mjs:2067:3
+Fixture composer diagnostic {
+  status: '聊天已切换，消息未发送；请重新翻译',
+  busy: false,
+  pending: 0,
+  approved: false
+}
+Fixture composer diagnostic { busy: false, pending: 0, approved: false }
+Dialog diagnostic { notice: '' }
+Fixture account diagnostic {
+  id: 'd72344e4-dcf8-4749-b0be-d8743b4421b7',
+  enabled: true,
+  loading: false,
+  sleep: false,
+  snapshot: { status: 'online', unread: 7 }
+}
+Fixture page diagnostic {
+  url: 'https://web.whatsapp.com/',
+  online: true,
+  socket: 'CONNECTED',
+  count: 7
+}
+Fixture account diagnostic {
+  id: '553e937d-ffef-45e6-acee-618bf8427b5d',
+  enabled: true,
+  loading: false,
+  sleep: false,
+  snapshot: { status: 'online', unread: 0 }
+}
+Fixture page diagnostic {
+  url: 'https://web.whatsapp.com/',
+  online: true,
+  socket: 'CONNECTED',
+  count: 1
+}
+PASS original forwarding history restored after isolated GUI tests

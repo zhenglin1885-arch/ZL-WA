@@ -1,0 +1,88 @@
+{
+  "passed": true,
+  "lightBackground": "#e8edf4",
+  "darkBackgroundUnchanged": true,
+  "whiteInputsAndCardsUnchanged": true,
+  "geometryUnchanged": true,
+  "nativeGuestAndDraftUnchanged": true,
+  "cases": [
+    {
+      "dark": false,
+      "name": "customer",
+      "background": "rgb(232, 237, 244)",
+      "card": "rgb(255, 255, 255)",
+      "input": "rgb(255, 255, 255)",
+      "rect": {
+        "x": 882,
+        "y": 0,
+        "width": 340,
+        "height": 771
+      }
+    },
+    {
+      "dark": false,
+      "name": "proxy",
+      "background": "rgb(232, 237, 244)",
+      "card": "rgb(255, 255, 255)",
+      "input": "rgb(255, 255, 255)",
+      "rect": {
+        "x": 922,
+        "y": 0,
+        "width": 300,
+        "height": 771
+      }
+    },
+    {
+      "dark": false,
+      "name": "translation",
+      "background": "rgb(232, 237, 244)",
+      "card": "rgb(255, 255, 255)",
+      "input": "rgb(255, 255, 255)",
+      "rect": {
+        "x": 922,
+        "y": 0,
+        "width": 300,
+        "height": 771
+      }
+    },
+    {
+      "dark": true,
+      "name": "customer",
+      "background": "rgb(18, 22, 29)",
+      "card": "rgb(26, 31, 40)",
+      "input": "rgb(17, 21, 28)",
+      "rect": {
+        "x": 882,
+        "y": 0,
+        "width": 340,
+        "height": 771
+      }
+    },
+    {
+      "dark": true,
+      "name": "proxy",
+      "background": "rgba(0, 0, 0, 0)",
+      "card": "rgb(26, 31, 40)",
+      "input": "rgb(17, 21, 28)",
+      "rect": {
+        "x": 922,
+        "y": 0,
+        "width": 300,
+        "height": 771
+      }
+    },
+    {
+      "dark": true,
+      "name": "translation",
+      "background": "rgba(0, 0, 0, 0)",
+      "card": "rgb(26, 31, 40)",
+      "input": "rgb(17, 21, 28)",
+      "rect": {
+        "x": 922,
+        "y": 0,
+        "width": 300,
+        "height": 771
+      }
+    }
+  ]
+}

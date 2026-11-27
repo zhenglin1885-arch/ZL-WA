@@ -1,0 +1,107 @@
+{
+  "passed": true,
+  "themePanelChecks": 14,
+  "guestAndDraftUnchanged": true,
+  "illustrativeRowsOnly": true,
+  "results": [
+    {
+      "theme": "light",
+      "customer": {
+        "selected": {
+          "border": "1px",
+          "shadow": "rgb(47, 107, 222) 0px 0px 0px 1px inset, rgba(47, 107, 222, 0.2) 0px 4px 12px 0px",
+          "background": "rgb(232, 240, 255)"
+        },
+        "normal": {
+          "border": "1px",
+          "shadow": "none",
+          "background": "rgb(255, 255, 255)"
+        }
+      }
+    },
+    {
+      "theme": "light",
+      "panel": "bulk",
+      "options": 14
+    },
+    {
+      "theme": "light",
+      "panel": "groups",
+      "options": 3
+    },
+    {
+      "theme": "light",
+      "panel": "join",
+      "options": 0
+    },
+    {
+      "theme": "light",
+      "panel": "leave",
+      "options": 0
+    },
+    {
+      "theme": "light",
+      "panel": "reactions",
+      "options": 19
+    },
+    {
+      "theme": "light",
+      "panel": "reply",
+      "options": 14
+    },
+    {
+      "theme": "dark",
+      "customer": {
+        "selected": {
+          "border": "1px",
+          "shadow": "rgb(131, 173, 255) 0px 0px 0px 1px inset, rgba(0, 0, 0, 0.35) 0px 4px 12px 0px",
+          "background": "rgb(33, 59, 92)"
+        },
+        "normal": {
+          "border": "1px",
+          "shadow": "none",
+          "background": "rgb(26, 31, 40)"
+        }
+      }
+    },
+    {
+      "theme": "dark",
+      "panel": "bulk",
+      "options": 14
+    },
+    {
+      "theme": "dark",
+      "panel": "groups",
+      "options": 3
+    },
+    {
+      "theme": "dark",
+      "panel": "join",
+      "options": 0
+    },
+    {
+      "theme": "dark",
+      "panel": "leave",
+      "options": 0
+    },
+    {
+      "theme": "dark",
+      "panel": "reactions",
+      "options": 19
+    },
+    {
+      "theme": "dark",
+      "panel": "reply",
+      "options": 14
+    }
+  ],
+  "onlyApplicationFileChanged": [
+    "src/styles/account-tools.scss"
+  ],
+  "lintErrors": 0,
+  "lintWarnings": 0,
+  "typecheckPassed": true,
+  "unitTestsPassed": 989,
+  "unitTestsSkipped": 2,
+  "packaged": false
+}
