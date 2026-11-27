@@ -41,6 +41,11 @@ jobs:
             Get-Content typecheck.log -Tail 100
             exit 1
           }
+          pnpm lint *> lint.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content lint.log -Tail 100
+            exit 1
+          }
           pnpm test --runInBand --coverage=false *> tests.log
           if ($LASTEXITCODE -ne 0) {
             Get-Content tests.log -Tail 150
