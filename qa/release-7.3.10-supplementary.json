@@ -1,0 +1,191 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "send-mode",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.74,
+      "initialRunExitCode": 1,
+      "isolatedRecheckPassed": true,
+      "note": "Passed when rerun alone after native input focus/timing interference; no application logic changes."
+    },
+    {
+      "name": "notification-sound",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.65
+    },
+    {
+      "name": "backup-options",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.3
+    },
+    {
+      "name": "persistent-account-sleep",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 3.35
+    },
+    {
+      "name": "window-recovery",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 22.66
+    },
+    {
+      "name": "aggregate-conversations",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 7.25
+    },
+    {
+      "name": "aggregate-customer-header",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.95
+    },
+    {
+      "name": "aggregate-guest",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.38
+    },
+    {
+      "name": "customer-business",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 1.52
+    },
+    {
+      "name": "customer-row-identity",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.15
+    },
+    {
+      "name": "account-network",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.28
+    },
+    {
+      "name": "bulk-history-actions",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.95
+    },
+    {
+      "name": "bulk-corrections",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.81
+    },
+    {
+      "name": "bulk-media-preview",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.73
+    },
+    {
+      "name": "bulk-voice",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.89
+    },
+    {
+      "name": "caption-translation",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.47
+    },
+    {
+      "name": "media-downloads",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.32
+    },
+    {
+      "name": "voice-uploads",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.22
+    },
+    {
+      "name": "reaction-image",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.32
+    },
+    {
+      "name": "recipe-lifecycle",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 1.96
+    },
+    {
+      "name": "windows-layout",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.66
+    },
+    {
+      "name": "github-updates",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 1.24
+    },
+    {
+      "name": "login-readiness",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.43
+    },
+    {
+      "name": "pairing-diagnostics",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.31
+    },
+    {
+      "name": "whatsapp-storage",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 1.41
+    },
+    {
+      "name": "whatsapp-archive-width",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 13.91
+    },
+    {
+      "name": "whatsapp-drawer-seam",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.94,
+      "initialRunExitCode": 1,
+      "isolatedRecheckPassed": true,
+      "note": "Passed when rerun alone after native input focus/timing interference; no application logic changes."
+    },
+    {
+      "name": "whatsapp-nested-seams",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 0.79
+    },
+    {
+      "name": "whatsapp-split",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 1.77
+    },
+    {
+      "name": "new-session-startup",
+      "passed": true,
+      "exitCode": 0,
+      "seconds": 2.63
+    }
+  ]
+}

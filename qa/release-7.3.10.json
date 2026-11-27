@@ -1,0 +1,38 @@
+{
+  "version": "7.3.10",
+  "sourceBase": "bf56e41c495c64e5328fc223372463d2b9bda8e1",
+  "approvedUiBaseline": "36ef5cc4b0ebfca975ad3efce3075a61f8c46927",
+  "fullDesktopRegressionPassed": true,
+  "supplementaryRegressionsPassed": true,
+  "userConfirmedRealAccountsPassed": true,
+  "realAccountAcceptance": "User confirmed test25 login, messaging and main functions; developer automation uses synthetic accounts.",
+  "typecheckPassed": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "unitTests": {
+    "passed": 989,
+    "skipped": 2,
+    "total": 991,
+    "suitesPassed": 89
+  },
+  "packagingFiles": [
+    ".github/workflows/release-7.3.10.yml",
+    "docs/releases/7.3.10.md",
+    "qa/release-7.3.10-full-gui.txt",
+    "qa/release-7.3.10-supplementary.json",
+    "qa/release-7.3.10.json"
+  ],
+  "packagingHashes": {
+    ".github/workflows/release-7.3.10.yml": "a918d1abda67bd89e95a3091b773231b6eb0a0c70ffb506357e4f0628d1a9de3",
+    "docs/releases/7.3.10.md": "a63cc111c395a9e0c1ec77e567a5ee07776b63230ab8e8298c4e8ab3c9212f68",
+    "qa/release-7.3.10-full-gui.txt": "57074ea23a12d7eefb1bc47c9d0ba1b81e71141c1242f1014b38992812e74066",
+    "qa/release-7.3.10-supplementary.json": "c1b624514825104fa2e48c84af75c40ab8e400b8f8ff971f48e2dc968bcd28d8"
+  },
+  "productionChangesSinceTest25": [
+    "Version 7.3.10",
+    "Responsive CSS for compact bulk dialogs; no production JavaScript logic changes."
+  ],
+  "supplementaryFlakes": "Two native input checks passed alone after focus/timing interference; individual assertions retained."
+}

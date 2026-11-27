@@ -1,0 +1,414 @@
+name: ZL-WA 7.3.10 Windows and macOS stable
+'on':
+  push:
+    branches:
+    - release/7.3.10
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: zl-wa-stable-7.3.10
+  cancel-in-progress: false
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+      ZL_SOURCE_BASE: bf56e41c495c64e5328fc223372463d2b9bda8e1
+      FORCE_COLOR: '0'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Verify application sources match the approved UI adjustments
+      shell: pwsh
+      run: |
+        git diff --exit-code $env:ZL_SOURCE_BASE HEAD -- src scripts test build-helpers esbuild.mjs package.json pnpm-lock.yaml .eslintrc.js
+        if ($LASTEXITCODE -ne 0) { throw 'Application source changed after the approved UI adjustments' }
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.10') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm lint *> lint.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content lint.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+        $text = Get-Content tests.log -Raw
+        if ($text -notmatch 'Tests:\s+2 skipped,\s+989 passed,\s+991 total') { throw 'Unexpected test counts' }
+        if ($text -notmatch 'Test Suites:\s+89 passed,\s+89 total') { throw 'Unexpected test suite counts' }
+        $report = @{
+          commit = $env:GITHUB_SHA
+          platform = 'win32'
+          sourceBase = $env:ZL_SOURCE_BASE
+          typecheck = $true
+          lint = @{ errors = 0; warnings = 0 }
+          unitTests = @{ passed = 989; skipped = 2; total = 991; suitesPassed = 89 }
+        }
+        $report | ConvertTo-Json -Depth 8 | Set-Content windows-quality-verification.json -Encoding utf8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify compiled native login observation in Windows Electron
+      shell: pwsh
+      env:
+        ZL_LOGIN_DIAGNOSTICS_REPORT: out/windows-login-diagnostics-verification.json
+      run: |
+        pnpm exec electron scripts/verify-native-login-diagnostics.cjs --no-sandbox --disable-gpu *> login-diagnostics-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content login-diagnostics-test.log -Tail 80
+          exit 1
+        }
+        Get-Content login-diagnostics-test.log
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - name: Stage flat installer and verification assets
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force release-upload | Out-Null
+        Copy-Item out/*.exe release-upload/
+        foreach ($file in @('out/windows-startup-verification.json','out/windows-login-diagnostics-verification.json','windows-quality-verification.json')) { Copy-Item $file release-upload/ }
+        foreach ($name in @('lint','typecheck','tests','installer-test','startup-test','login-diagnostics-test')) { Copy-Item "$name.log" "release-upload/$name-windows.log" }
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.10-Windows-x64
+        path: release-upload/*
+        if-no-files-found: error
+  macos:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: x64
+          runner: macos-26-intel
+        - arch: arm64
+          runner: macos-26
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    env:
+      CI: true
+      ZL_SOURCE_BASE: bf56e41c495c64e5328fc223372463d2b9bda8e1
+      FORCE_COLOR: '0'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Verify the checked release source
+      shell: bash
+      run: |
+        set -euo pipefail
+        git diff --exit-code bf56e41c495c64e5328fc223372463d2b9bda8e1 HEAD -- src scripts test build-helpers esbuild.mjs package.json pnpm-lock.yaml .eslintrc.js
+    - name: Record stable source
+      shell: bash
+      run: |
+        set -euo pipefail
+        source_commit="$(git rev-parse HEAD)"
+        test "$source_commit" = "$GITHUB_SHA"
+        echo "ZL_SOURCE_COMMIT=$source_commit" >> "$GITHUB_ENV"
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Check architecture, version and signing configuration
+      shell: bash
+      env:
+        CSC_LINK: ${{ secrets.CSC_LINK }}
+        APPLEID: ${{ secrets.APPLEID }}
+        APPLEID_PASSWORD: ${{ secrets.APPLEID_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        set -euo pipefail
+        node -e "if(process.arch!=='${{ matrix.arch }}'||require('./package.json').version!=='7.3.10')throw Error('Unexpected host architecture/version')"
+        if [ -n "${CSC_LINK:-}" ]; then
+          echo 'ZL_MAC_SIGN_MODE=developer-id' >> "$GITHUB_ENV"
+          echo '::notice::Developer ID signing certificate is configured'
+          echo 'CSC_IDENTITY_AUTO_DISCOVERY=true' >> "$GITHUB_ENV"
+        else
+          echo 'ZL_MAC_SIGN_MODE=adhoc' >> "$GITHUB_ENV"
+          echo '::notice::No Apple Developer ID certificate is configured; this build uses ad-hoc signing'
+          echo 'CSC_IDENTITY_AUTO_DISCOVERY=false' >> "$GITHUB_ENV"
+        fi
+        if [ -n "${CSC_LINK:-}" ] && [ -n "${APPLEID:-}" ] && [ -n "${APPLEID_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+          echo 'GIT_BRANCH_NAME=release' >> "$GITHUB_ENV"
+          echo 'ZL_MAC_NOTARIZED=true' >> "$GITHUB_ENV"
+        else
+          echo 'GIT_BRANCH_NAME=mac-package' >> "$GITHUB_ENV"
+          echo 'ZL_MAC_NOTARIZED=false' >> "$GITHUB_ENV"
+        fi
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check source
+      run: |
+        set -euo pipefail
+        export TMPDIR="$(python3 -c 'import os,tempfile; print(os.path.realpath(tempfile.gettempdir()))')"
+        pnpm typecheck > typecheck.log 2>&1 || { node scripts/report-macos-ci-failure.cjs typecheck.log; exit 1; }
+        pnpm lint > lint.log 2>&1 || { node scripts/report-macos-ci-failure.cjs lint.log; exit 1; }
+        pnpm test --runInBand --coverage=false > tests.log 2>&1 || { node scripts/report-macos-ci-failure.cjs tests.log; exit 1; }
+        tail -8 tests.log
+        python3 - <<'QUALITY'
+        import json,os,pathlib
+        s=pathlib.Path('tests.log').read_text()
+        assert '2 skipped, 989 passed, 991 total' in s and '89 passed, 89 total' in s
+        pathlib.Path('quality.json').write_text(json.dumps({'version':'7.3.10','commit':os.environ['GITHUB_SHA'],'sourceBase':os.environ['ZL_SOURCE_BASE'],'typecheck':True,'lint':{'errors':0,'warnings':0},'unitTests':{'passed':989,'skipped':2,'total':991,'suitesPassed':89}},indent=2)+'\n')
+        QUALITY
+    - name: Build macOS DMG and ZIP
+      shell: bash
+      env:
+        CSC_LINK: ${{ secrets.CSC_LINK }}
+        CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        APPLEID: ${{ secrets.APPLEID }}
+        APPLEID_PASSWORD: ${{ secrets.APPLEID_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      run: |
+        set -euo pipefail
+        pnpm exec preval-build-info-cli
+        node esbuild.mjs
+        flags=()
+        if [ "$ZL_MAC_SIGN_MODE" = adhoc ]; then
+          unset CSC_LINK CSC_KEY_PASSWORD
+          flags+=('-c.mac.identity=-')
+        else
+          flags+=('-c.forceCodeSigning=true')
+        fi
+        pnpm exec electron-builder --mac dmg zip --${{ matrix.arch }} --publish never '-c.mac.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' '-c.dmg.artifactName=ZL-WA-macOS-${version}-${arch}.${ext}' "${flags[@]}" > mac-build.log 2>&1 || { node scripts/report-macos-ci-failure.cjs mac-build.log; exit 1; }
+    - name: Verify compiled native login observation
+      shell: bash
+      env:
+        ZL_LOGIN_DIAGNOSTICS_REPORT: out/native-login-${{ matrix.arch }}.json
+      run: |
+        set -euo pipefail
+        pnpm exec electron scripts/verify-native-login-diagnostics.cjs > native-login-test.log 2>&1 || { node scripts/report-macos-ci-failure.cjs native-login-test.log; exit 1; }
+    - name: Verify distributed bundle and native startup
+      shell: bash
+      run: |
+        set -euo pipefail
+        arch='${{ matrix.arch }}'
+        zip="out/ZL-WA-macOS-7.3.10-$arch.zip"
+        dmg="out/ZL-WA-macOS-7.3.10-$arch.dmg"
+        hdiutil verify "$dmg"
+        mkdir -p "$RUNNER_TEMP/zip-app" "$RUNNER_TEMP/dmg-app"
+        ditto -x -k "$zip" "$RUNNER_TEMP/zip-app"
+        hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg-app" "$dmg"
+        app="$RUNNER_TEMP/dmg-app/ZL-WA.app"
+        cmp "$app/Contents/Resources/app.asar" "$RUNNER_TEMP/zip-app/ZL-WA.app/Contents/Resources/app.asar"
+        codesign --verify --deep --strict "$app"
+        codesign -dv --verbose=4 "$app" > codesign-status.log 2>&1
+        if [ "$ZL_MAC_SIGN_MODE" = developer-id ]; then grep -q 'Authority=Developer ID Application' codesign-status.log; fi
+        if [ "$ZL_MAC_NOTARIZED" = true ]; then xcrun stapler validate "$app"; spctl --assess --type execute "$app"; fi
+        python3 - "$app" "$arch" <<'PY'
+        import plistlib,sys,subprocess
+        from pathlib import Path
+        app=Path(sys.argv[1]);arch=sys.argv[2]
+        info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
+        assert info['CFBundleShortVersionString']=='7.3.10' and info['CFBundleIdentifier']=='com.zl-wa.desktop'
+        binary=app/'Contents/MacOS/ZL-WA'
+        actual=subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip()
+        assert actual=={'arm64':'arm64','x64':'x86_64'}[arch],actual
+        PY
+        installed='/Applications/ZL-WA.app'
+        test ! -e "$installed"
+        ditto "$app" "$installed"
+        cmp "$app/Contents/Resources/app.asar" "$installed/Contents/Resources/app.asar"
+        codesign --verify --deep --strict "$installed"
+        node scripts/verify-whatsapp-library.cjs "$installed/Contents/Resources/app.asar"
+        node scripts/verify-macos-package.mjs "$installed/Contents/MacOS/ZL-WA" "$arch" "out/startup-$arch.json" > startup-test.log 2>&1 || { node scripts/report-macos-ci-failure.cjs startup-test.log; exit 1; }
+        python3 - "$arch" <<'PY'
+        import json,os,sys,hashlib
+        from pathlib import Path
+        arch=sys.argv[1];root=Path('out');files=[]
+        for ext in ['dmg','zip']:
+          p=root/f'ZL-WA-macOS-7.3.10-{arch}.{ext}'
+          files.append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+        result={'version':'7.3.10','arch':arch,'commit':os.environ['ZL_SOURCE_COMMIT'],'signing':os.environ['ZL_MAC_SIGN_MODE'],'notarized':os.environ['ZL_MAC_NOTARIZED']=='true','appAsarSha256':hashlib.sha256(Path('/Applications/ZL-WA.app/Contents/Resources/app.asar').read_bytes()).hexdigest(),'zipDmgPayloadIdentical':True,'signatureValid':True,'startup':json.loads((root/f'startup-{arch}.json').read_text()),'files':files}
+        (root/f'verification-{arch}.json').write_text(json.dumps(result,indent=2)+'\n')
+        PY
+        hdiutil detach "$RUNNER_TEMP/dmg-app"
+    - name: Stage native Mac packages and reports
+      shell: bash
+      run: |
+        set -euo pipefail
+        arch='${{ matrix.arch }}'
+        mkdir -p release-upload
+        cp out/*.dmg out/*.zip release-upload/
+        cp "out/verification-$arch.json" "out/startup-$arch.json" "out/native-login-$arch.json" release-upload/
+        cp quality.json "release-upload/quality-$arch.json"
+        for name in typecheck lint tests mac-build codesign-status startup-test native-login-test; do cp "$name.log" "release-upload/$name-$arch.log"; done
+    - uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: ZL-WA-7.3.10-macOS-${{ matrix.arch }}
+        path: release-upload/*
+        if-no-files-found: error
+    - name: Publish diagnostic status
+      if: always()
+      shell: bash
+      run: |
+        echo "Architecture: ${{ matrix.arch }}; signing: ${ZL_MAC_SIGN_MODE:-unknown}; notarized: ${ZL_MAC_NOTARIZED:-false}" >> "$GITHUB_STEP_SUMMARY"
+        if [ -f mac-build.log ]; then tail -60 mac-build.log >> "$GITHUB_STEP_SUMMARY"; fi
+  publish:
+    needs:
+    - windows
+    - macos
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Require verified desktop and real-account acceptance
+      run: |
+        set -euo pipefail
+        git diff --exit-code bf56e41c495c64e5328fc223372463d2b9bda8e1 HEAD -- src scripts test build-helpers esbuild.mjs package.json pnpm-lock.yaml .eslintrc.js
+        python3 - <<'ACCEPT'
+        import json,pathlib,hashlib,subprocess
+        r=json.load(open('qa/release-7.3.10.json'))
+        assert r['sourceBase']=='bf56e41c495c64e5328fc223372463d2b9bda8e1' and r['version']=='7.3.10'
+        assert r['fullDesktopRegressionPassed'] and r['supplementaryRegressionsPassed'] and r['userConfirmedRealAccountsPassed']
+        assert r['typecheckPassed'] and r['lint']=={'errors':0,'warnings':0} and r['unitTests']=={'passed':989,'skipped':2,'total':991,'suitesPassed':89}
+        assert set(subprocess.check_output(['git','diff','--name-only',r['sourceBase'],'HEAD'],text=True).splitlines())==set(r['packagingFiles'])
+        for f,h in r['packagingHashes'].items():assert hashlib.sha256(pathlib.Path(f).read_bytes()).hexdigest()==h,f
+        ACCEPT
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: ZL-WA-7.3.10-*
+        merge-multiple: true
+        path: release-assets
+    - name: Validate all packages and reports
+      run: |
+        python3 - <<'VERIFY'
+        import hashlib,json,os,pathlib
+        root=pathlib.Path('release-assets')
+        expected={'ZL-WA-win-AutoSetup-7.3.10-x64.exe','ZL-WA-win-Portable-7.3.10-x64.exe'}
+        expected|={f'ZL-WA-macOS-7.3.10-{arch}.{ext}' for arch in ['x64','arm64'] for ext in ['dmg','zip']}
+        actual={p.name for p in root.iterdir() if p.suffix in ['.exe','.dmg','.zip']}
+        assert actual==expected,(actual,expected)
+        commit=os.environ['GITHUB_SHA']
+        w=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert w['version']=='7.3.10' and w['commit']==commit and w['nativePackagedStartup'] and w['mainProcessResumeReload'] and w['tools']['dialogsAndThemesVerified'] and w['tools']['uncaughtRendererErrors']==0
+        quality=json.loads((root/'windows-quality-verification.json').read_text(encoding='utf-8-sig'))
+        assert quality['commit']==commit and quality['typecheck'] and quality['lint']=={'errors':0,'warnings':0} and quality['unitTests']=={'passed':989,'skipped':2,'total':991,'suitesPassed':89}
+        for arch in ['x64','arm64']:
+         q=json.loads((root/f'quality-{arch}.json').read_text());assert q['commit']==commit and q['typecheck'] and q['lint']=={'errors':0,'warnings':0} and q['unitTests']==quality['unitTests']
+        for file,platform in [('windows-login-diagnostics-verification.json','win32'),('native-login-x64.json','darwin'),('native-login-arm64.json','darwin')]:
+         n=json.loads((root/file).read_text(encoding='utf-8-sig'));assert n['commit']==commit and n['platform']==platform and n['compiledGuestVerified'] and n['browserApisUnchanged'] and n['officialCloseCategories']==47 and n['registrationStages']==12
+        notes=pathlib.Path('docs/releases/7.3.10.md').read_text()+'\n## macOS 签名状态\n'
+        for arch in ['x64','arm64']:
+         v=json.loads((root/f'verification-{arch}.json').read_text())
+         assert v['version']=='7.3.10' and v['arch']==arch and v['commit']==commit
+         assert v['signatureValid'] and v['zipDmgPayloadIdentical'] and v['startup']['nativePackagedStartup'] and v['startup']['tools']['dialogsAndThemesVerified'] and v['startup']['tools']['uncaughtRendererErrors']==0
+         for f in v['files']:
+          p=root/f['name']
+          with p.open('rb') as stream: assert hashlib.file_digest(stream,'sha256').hexdigest()==f['sha256']
+         label='Intel' if arch=='x64' else 'Apple 芯片（M 系列）'
+         notes+=f"- {label}：签名方式 {v['signing']}；Apple 公证：{'已完成' if v['notarized'] else '未配置，尚未公证'}。\n"
+         if not v['notarized']: notes+='  首次打开如被 macOS 阻止，请在“系统设置 → 隐私与安全性”中查看并允许打开。\n'
+        import shutil
+        shutil.copyfile('qa/release-7.3.10.json',root/'release-acceptance.json')
+        shutil.copyfile('qa/release-7.3.10-full-gui.txt',root/'desktop-regression.log')
+        shutil.copyfile('qa/release-7.3.10-supplementary.json',root/'supplementary-regressions.json')
+        checksums=[]
+        for name in sorted(p.name for p in root.iterdir() if p.is_file()):
+         p=root/name
+         assert p.stat().st_size>0
+         if name in expected: assert p.stat().st_size>1000000
+         with p.open('rb') as stream: digest=hashlib.file_digest(stream,'sha256').hexdigest()
+         checksums.append(f'{digest}  {name}')
+        (root/'SHA256SUMS.txt').write_text('\n'.join(checksums)+'\n')
+        pathlib.Path('release-notes.md').write_text(notes+f'\n源码提交：`{commit}`。\n')
+        VERIFY
+    - name: Publish verified Windows and macOS stable 7.3.10
+      run: |
+        set -euo pipefail
+        if ! gh api repos/$GH_REPO/git/ref/tags/v7.3.10 > tag.json 2>/dev/null; then
+          gh api --method POST repos/$GH_REPO/git/refs -f ref=refs/tags/v7.3.10 -f sha="$GITHUB_SHA" > /dev/null
+        fi
+        gh api repos/$GH_REPO/git/ref/tags/v7.3.10 > tag.json
+        python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["GITHUB_SHA"]'
+        gh release create v7.3.10 release-assets/* --verify-tag --target "$GITHUB_SHA" --draft --title 'ZL-WA 7.3.10' --notes-file release-notes.md
+        gh api repos/$GH_REPO/git/ref/tags/v7.3.10 > tag.json
+        python3 -c 'import json,os; t=json.load(open("tag.json")); assert t["object"]["type"]=="commit" and t["object"]["sha"]==os.environ["GITHUB_SHA"]'
+        gh release edit v7.3.10 --draft=false --prerelease=false --latest
