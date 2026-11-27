@@ -2261,3 +2261,135 @@ body .group-tools-dialog.zl-dialog {
     overflow-x: auto;
   }
 }
+body .bulk-dialog.zl-dialog {
+  .bulk-columns {
+    display: grid;
+    grid-template-columns: 320px minmax(260px, 1fr) 520px;
+    padding: 0;
+    gap: 0;
+    min-height: 0;
+  }
+  .bulk-columns > fieldset {
+    padding: 20px;
+    border: 0;
+    border-right: 1px solid var(--zl-line);
+    min-width: 0;
+    background: transparent;
+    border-radius: 0;
+    margin: 0;
+  }
+  .bulk-columns > fieldset:last-child {
+    border-right: 0;
+  }
+  .bulk-account-list,
+  .bulk-recipient-list {
+    max-height: none;
+    min-height: 100px;
+  }
+  .zl-read-targets {
+    width: 100%;
+    margin-top: 12px;
+  }
+  .zl-read-hint {
+    text-align: center;
+  }
+  .zl-inline-count {
+    display: inline;
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .zl-recipient-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .bulk-type-tabs {
+    margin: 12px 0;
+  }
+  .bulk-message-types {
+    button {
+      flex: 0 0 auto;
+    }
+  }
+  .zl-match-rule {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) minmax(0, 1.2fr);
+    gap: 12px;
+    align-items: center;
+    margin: 12px 0;
+    p {
+      margin: 0;
+    }
+    select {
+      margin: 0;
+    }
+  }
+  .zl-upload {
+    width: 100%;
+    height: 64px;
+    background: var(--zl-field) !important;
+    border: 1.5px dashed var(--zl-field-line) !important;
+    border-radius: 16px;
+    color: var(--zl-text-2) !important;
+  }
+  .bulk-media {
+    border: 0;
+    padding: 0;
+  }
+  .zl-compose-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    margin-top: 16px;
+    section {
+      min-width: 0;
+      padding: 0;
+      border: 0;
+    }
+    h4 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--zl-text-2);
+    }
+    label {
+      margin: 0;
+    }
+    .bulk-interval {
+      display: flex;
+      gap: 8px;
+      label {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+  }
+  .tools-check {
+    border: 0;
+  }
+  .zl-compose-settings > label {
+    border: 0;
+  }
+  textarea {
+    min-height: 76px;
+  }
+  #bulk-reply-match {
+    height: 88px;
+  }
+  .bulk-dialog__close {
+    margin-left: 0;
+  }
+}
+@media (max-width: 1280px) {
+  body .bulk-dialog.zl-dialog .bulk-columns {
+    grid-template-columns: 240px minmax(240px, 1fr) 440px;
+  }
+}
+@media (max-width: 1000px) {
+  body .bulk-dialog.zl-dialog .bulk-columns {
+    grid-template-columns: 220px 280px 400px;
+  }
+  body .bulk-dialog.zl-dialog .MuiDialogContent-root {
+    overflow-x: auto;
+  }
+}

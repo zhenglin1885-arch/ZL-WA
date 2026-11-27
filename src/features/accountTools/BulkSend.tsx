@@ -363,7 +363,11 @@ const BulkSend = observer(
                 ? '创建群发'
                 : '批量发送'}
             <span className="tools-muted">
-              {creating ? '选择账号和对象，再设置要回复的消息' : ''}
+              {creating
+                ? replyMode
+                  ? '选择账号和对象，再设置要回复的消息'
+                  : '选择账号和对象，再配置要发送的消息'
+                : ''}
             </span>
           </span>
           {!creating && (
@@ -411,7 +415,7 @@ const BulkSend = observer(
         <DialogContent>
           {creating ? (
             <div className="bulk-columns">
-              <fieldset disabled={disabled}>
+              <fieldset className="zl-compose-accounts" disabled={disabled}>
                 <h3>选择账号</h3>
                 <p className="tools-muted">仅显示在线账号，支持多选</p>
                 <input
@@ -425,7 +429,7 @@ const BulkSend = observer(
                   {accounts.filter(id => online.some(s => s.id === id)).length}{' '}
                   / {online.length} 个账号
                 </p>
-                <div className="bulk-account-list">
+                <div className="bulk-account-list zl-account-list">
                   {visibleAccounts.map(s => (
                     <label
                       htmlFor={`bulk-account-${s.id}`}
@@ -452,9 +456,9 @@ const BulkSend = observer(
                       <span>
                         {displayName(s)}
                         <small>
-                          {s.accountSnapshot.phone || '未读取到手机号'}
+                          {s.accountSnapshot.phone || '未读取到手机号'} ·{' '}
+                          {profiles[s.id]?.remark || '暂无备注'}
                         </small>
-                        <small>{profiles[s.id]?.remark || '暂无备注'}</small>
                       </span>
                     </label>
                   ))}
@@ -463,36 +467,55 @@ const BulkSend = observer(
                   <p>暂无在线账号，请先登录 WhatsApp。</p>
                 )}
                 <Button
+                  className="zl-btn zl-btn--primary zl-read-targets"
+                  title={
+                    accounts.length === 0
+                      ? '先选择至少一个账号'
+                      : disabled
+                        ? '正在读取或提交，请稍候'
+                        : undefined
+                  }
                   disabled={accounts.length === 0 || disabled}
                   onClick={() => void refresh()}
                 >
                   {loading ? '读取中…' : '读取聊天对象'}
                 </Button>
+                {accounts.length === 0 && (
+                  <small className="zl-read-hint">先选择至少一个账号</small>
+                )}
               </fieldset>
-              <fieldset disabled={disabled}>
-                <h3>群发对象（已选 {chosen.length}）</h3>
-                <select
-                  aria-label="筛选对象所属账号"
-                  value={recipientAccount}
-                  onChange={e => setRecipientAccount(e.target.value)}
-                >
-                  <option value="all">全部所选账号</option>
-                  {online
-                    .filter(s => accounts.includes(s.id))
-                    .map(s => (
-                      <option key={s.id} value={s.id}>
-                        {displayName(s)}
-                      </option>
-                    ))}
-                </select>
-                <input
-                  aria-label="搜索聊天对象"
-                  placeholder="搜索名称或 ID"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
+              <fieldset className="zl-compose-targets" disabled={disabled}>
+                <h3>
+                  {replyMode ? '回复对象' : '群发对象'}{' '}
+                  <small className="zl-inline-count">
+                    已选 {chosen.length}
+                  </small>
+                </h3>
+                <div className="zl-recipient-filters">
+                  {' '}
+                  <select
+                    aria-label="筛选对象所属账号"
+                    value={recipientAccount}
+                    onChange={e => setRecipientAccount(e.target.value)}
+                  >
+                    <option value="all">全部所选账号</option>
+                    {online
+                      .filter(s => accounts.includes(s.id))
+                      .map(s => (
+                        <option key={s.id} value={s.id}>
+                          {displayName(s)}
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    aria-label="搜索聊天对象"
+                    placeholder="搜索名称或 ID"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>{' '}
                 <div
-                  className="bulk-type-tabs"
+                  className="bulk-type-tabs zl-segmented"
                   role="group"
                   aria-label="聊天类型"
                 >
@@ -504,6 +527,7 @@ const BulkSend = observer(
                     ['archived', '已归档'],
                   ].map(([value, label]) => (
                     <button
+                      title={disabled ? '正在读取或提交，请稍候' : undefined}
                       type="button"
                       aria-pressed={kind === value}
                       key={value}
@@ -543,12 +567,13 @@ const BulkSend = observer(
                   />
                   全选当前列表（{visible.length}）
                 </label>
-                <div className="bulk-recipient-list">
+                <div className="bulk-recipient-list zl-group-list">
                   {visible.map(r => (
                     <label
                       htmlFor={`bulk-recipient-${key(r)}`}
                       className="tools-check"
                       key={key(r)}
+                      title={r.id}
                     >
                       <input
                         id={`bulk-recipient-${key(r)}`}
@@ -565,7 +590,8 @@ const BulkSend = observer(
                       <span>
                         {r.name}
                         <small>
-                          {r.group ? '群聊' : '私聊'} · {r.id}
+                          {r.group ? '群聊' : '私聊'}
+                          {r.group ? '' : ` · ${r.id}`}
                         </small>
                         <small>
                           来自账号：
@@ -578,49 +604,56 @@ const BulkSend = observer(
                   ))}
                 </div>
                 {visible.length === 0 && (
-                  <p className="tools-muted">
-                    暂无对象。选择账号后点击「读取聊天对象」。
-                  </p>
+                  <div className="zl-empty">
+                    <strong>暂无{replyMode ? '回复对象' : '群发对象'}</strong>
+                    <p>
+                      在左边选好账号，点“读取聊天对象”，这里会列出它们的群聊和私聊。
+                    </p>
+                  </div>
                 )}
               </fieldset>
-              <fieldset disabled={disabled}>
-                <h3>群发设置</h3>
+              <fieldset className="zl-compose-settings" disabled={disabled}>
+                <h3>{replyMode ? '回复设置' : '群发设置'}</h3>
                 {replyMode && (
                   <>
                     <label htmlFor="bulk-reply-match">
-                      匹配内容
+                      要引用的消息
                       <textarea
                         id="bulk-reply-match"
                         aria-label="回复匹配内容"
-                        rows={4}
+                        rows={3}
                         maxLength={20_000}
                         value={replyText}
                         onChange={e => setReplyText(e.target.value)}
                         placeholder="输入要引用的目标消息内容"
                       />
                     </label>
-                    <select
-                      aria-label="回复匹配规则"
-                      value={replyMatch}
-                      onChange={e =>
-                        setReplyMatch(e.target.value as typeof replyMatch)
-                      }
-                    >
-                      <option value="exact">完全相同</option>
-                      <option value="contains">包含文字</option>
-                      <option value="normalized">
-                        忽略标点和空格后完全相同
-                      </option>
-                    </select>
-                    <p className="tools-muted">
-                      执行时查找每个会话最新一条匹配消息，带原消息引用框回复。未找到时记录失败原因，不发送普通消息。
-                    </p>
+                    <div className="zl-match-rule">
+                      {' '}
+                      <select
+                        aria-label="回复匹配规则"
+                        value={replyMatch}
+                        onChange={e =>
+                          setReplyMatch(e.target.value as typeof replyMatch)
+                        }
+                      >
+                        <option value="exact">完全相同</option>
+                        <option value="contains">包含文字</option>
+                        <option value="normalized">
+                          忽略标点和空格后完全相同
+                        </option>
+                      </select>
+                      <p className="tools-muted">
+                        执行时查找每个会话最新一条匹配消息，带原消息引用框回复。未找到时记录失败原因，不发送普通消息。
+                      </p>
+                    </div>{' '}
                   </>
                 )}
-                <p>消息类型</p>
-                <div className="bulk-type-tabs bulk-message-types">
+                <h4>{replyMode ? '回复内容' : '消息内容'}</h4>
+                <div className="bulk-type-tabs bulk-message-types zl-segmented">
                   {messageTypes.map(([value, label]) => (
                     <button
+                      title={disabled ? '正在读取或提交，请稍候' : undefined}
                       type="button"
                       key={value}
                       aria-pressed={type === value}
@@ -637,9 +670,12 @@ const BulkSend = observer(
                 </div>
                 {!['text', 'contact'].includes(type) && (
                   <div className="bulk-media">
-                    <Button onClick={() => void pickMedia()}>
-                      选择{messageTypes.find(([value]) => value === type)?.[1]}
-                      附件
+                    <Button
+                      className="zl-btn zl-upload"
+                      onClick={() => void pickMedia()}
+                    >
+                      选择{messageTypes.find(([value]) => value === type)?.[1]}{' '}
+                      · 单个文件最大 50 MB
                     </Button>
                     {media && <BulkMediaPreview media={media} type={type} />}
                     {media ? (
@@ -649,7 +685,10 @@ const BulkSend = observer(
                           {(media.size / 1024 / 1024).toFixed(2)} MB ·
                           已复制到软件数据目录
                         </small>
-                        <Button onClick={() => setMedia(undefined)}>
+                        <Button
+                          className="zl-btn zl-btn--small"
+                          onClick={() => setMedia(undefined)}
+                        >
                           移除附件
                         </Button>
                       </p>
@@ -702,97 +741,123 @@ const BulkSend = observer(
                     </>
                   )
                 )}
-                <h4>发送时间</h4>
-                <div className="bulk-type-tabs">
-                  <button
-                    type="button"
-                    aria-pressed={!scheduled}
-                    onClick={() => setScheduled(false)}
-                  >
-                    立即发送
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={scheduled}
-                    onClick={() => setScheduled(true)}
-                  >
-                    定时发送
-                  </button>
-                </div>
-                {scheduled && (
-                  <>
-                    <input
-                      type="datetime-local"
-                      aria-label="定时发送时间"
-                      value={scheduledAt}
-                      onChange={e => setScheduledAt(e.target.value)}
-                    />
-                    <p className="tools-muted">
-                      按本机时间执行。软件须保持运行、账号在线；关闭后错过的任务不会自动补发。
-                    </p>
-                  </>
-                )}
-                <h4>会话发送间隔（秒）</h4>
-                <label className="tools-check" htmlFor="bulk-random">
-                  <input
-                    id="bulk-random"
-                    type="checkbox"
-                    checked={randomInterval}
-                    onChange={e => setRandomInterval(e.target.checked)}
-                  />
-                  使用随机范围
-                </label>
-                <div className="bulk-interval">
-                  <label htmlFor="bulk-min">
-                    {randomInterval ? '最小间隔' : '固定间隔'}
-                    <input
-                      id="bulk-min"
-                      type="number"
-                      min="0.5"
-                      max="3600"
-                      step="0.5"
-                      value={intervalMin}
-                      onChange={e => setIntervalMin(Number(e.target.value))}
-                    />
-                  </label>
-                  {randomInterval && (
-                    <label htmlFor="bulk-max">
-                      最大间隔
+                <div className="zl-compose-grid">
+                  <section className="zl-compose-time">
+                    {' '}
+                    <h4>发送时间</h4>
+                    <div className="bulk-type-tabs zl-segmented">
+                      <button
+                        title={disabled ? '正在读取或提交，请稍候' : undefined}
+                        type="button"
+                        aria-pressed={!scheduled}
+                        onClick={() => setScheduled(false)}
+                      >
+                        立即发送
+                      </button>
+                      <button
+                        title={disabled ? '正在读取或提交，请稍候' : undefined}
+                        type="button"
+                        aria-pressed={scheduled}
+                        onClick={() => setScheduled(true)}
+                      >
+                        定时发送
+                      </button>
+                    </div>
+                    {scheduled && (
+                      <>
+                        <input
+                          type="datetime-local"
+                          aria-label="定时发送时间"
+                          value={scheduledAt}
+                          onChange={e => setScheduledAt(e.target.value)}
+                        />
+                        <p className="tools-muted">
+                          按本机时间执行。软件须保持运行、账号在线；关闭后错过的任务不会自动补发。
+                        </p>
+                      </>
+                    )}
+                  </section>
+                  <section className="zl-compose-gap">
+                    {' '}
+                    <h4>每个会话间隔（秒）</h4>
+                    <div className="bulk-interval">
+                      <label htmlFor="bulk-min">
+                        {randomInterval ? '最小间隔' : '固定间隔'}
+                        <input
+                          id="bulk-min"
+                          type="number"
+                          min="0.5"
+                          max="3600"
+                          step="0.5"
+                          value={intervalMin}
+                          onChange={e => setIntervalMin(Number(e.target.value))}
+                        />
+                      </label>
+                      {randomInterval && (
+                        <label htmlFor="bulk-max">
+                          最大间隔
+                          <input
+                            id="bulk-max"
+                            type="number"
+                            min={intervalMin}
+                            max="3600"
+                            step="0.5"
+                            value={intervalMax}
+                            onChange={e =>
+                              setIntervalMax(Number(e.target.value))
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </section>
+                  <section className="zl-compose-random">
+                    {' '}
+                    <label className="tools-check" htmlFor="bulk-random">
                       <input
-                        id="bulk-max"
+                        id="bulk-random"
+                        type="checkbox"
+                        checked={randomInterval}
+                        onChange={e => setRandomInterval(e.target.checked)}
+                      />
+                      间隔用随机范围
+                    </label>
+                  </section>
+                  <section className="zl-compose-typing">
+                    {' '}
+                    <label htmlFor="bulk-typing">
+                      发送前显示“正在输入”（秒，0 为关闭）
+                      <input
+                        id="bulk-typing"
                         type="number"
-                        min={intervalMin}
-                        max="3600"
-                        step="0.5"
-                        value={intervalMax}
-                        onChange={e => setIntervalMax(Number(e.target.value))}
+                        min="0"
+                        max="30"
+                        value={typingSeconds}
+                        onChange={e => setTypingSeconds(Number(e.target.value))}
                       />
                     </label>
-                  )}
-                </div>
-                <label htmlFor="bulk-typing">
-                  发送前显示输入状态（秒，0 为关闭）
-                  <input
-                    id="bulk-typing"
-                    type="number"
-                    min="0"
-                    max="30"
-                    value={typingSeconds}
-                    onChange={e => setTypingSeconds(Number(e.target.value))}
-                  />
-                </label>
+                  </section>
+                </div>{' '}
                 <label htmlFor="bulk-mention" className="tools-check">
                   <input
                     id="bulk-mention"
                     type="checkbox"
+                    title={
+                      ['image', 'audio', 'contact'].includes(type)
+                        ? '当前消息类型不支持提及所有成员'
+                        : undefined
+                    }
                     disabled={['image', 'audio', 'contact'].includes(type)}
                     checked={mentionAll}
                     onChange={e => setMentionAll(e.target.checked)}
                   />
-                  提及所有成员（仅群聊，含管理员；正文不显示名单）
+                  提及所有成员{' '}
+                  <small className="zl-inline-count">
+                    · 仅群聊可用，含管理员，正文不显示名单
+                  </small>
                 </label>
                 <label htmlFor="bulk-failure">
-                  消息失败策略
+                  失败时
                   <select
                     id="bulk-failure"
                     value={failure}
@@ -866,6 +931,24 @@ const BulkSend = observer(
           </p>
         </DialogContent>
         <DialogActions>
+          {creating && (
+            <span className="zl-footer-hint">
+              {disabled
+                ? '正在读取设置或提交，请稍候'
+                : [
+                      accounts.length === 0 && '选择账号',
+                      chosen.length === 0 &&
+                        (replyMode ? '选择回复对象' : '选择群发对象'),
+                      replyMode && !replyText.trim() && '填写要引用的消息',
+                      !['text', 'contact'].includes(type) &&
+                        !media &&
+                        '添加附件',
+                      type === 'text' && !text.trim() && '填写消息内容',
+                    ].some(Boolean)
+                  ? `还差：${[accounts.length === 0 && '选择账号', chosen.length === 0 && (replyMode ? '选择回复对象' : '选择群发对象'), replyMode && !replyText.trim() && '填写要引用的消息', !['text', 'contact'].includes(type) && !media && '添加附件', type === 'text' && !text.trim() && '填写消息内容'].filter(Boolean).join('、')}`
+                  : ''}
+            </span>
+          )}
           <Button
             className="bulk-dialog__close zl-btn"
             onPointerDown={closeFromPointer}
@@ -876,6 +959,7 @@ const BulkSend = observer(
           {activeIds.size === 1 &&
             ['send', 'revoke'].includes(queue.activeOperation) && (
               <Button
+                className="zl-btn"
                 onClick={() =>
                   void queue
                     .stop(queue.activeId)
@@ -887,8 +971,18 @@ const BulkSend = observer(
             )}
           {creating && (
             <>
-              <Button onClick={() => setCreating(false)}>返回记录</Button>
+              <Button className="zl-btn" onClick={() => setCreating(false)}>
+                返回记录
+              </Button>
               <Button
+                className="zl-btn zl-btn--primary zl-btn--action"
+                title={
+                  disabled
+                    ? '正在读取或提交，请稍候'
+                    : chosen.length === 0
+                      ? '先选择回复或群发对象'
+                      : undefined
+                }
                 variant="contained"
                 disabled={disabled || chosen.length === 0}
                 onClick={prepare}
@@ -946,8 +1040,12 @@ const BulkSend = observer(
             此操作会实际发送 WhatsApp 消息。
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setConfirm(undefined)}>返回修改</Button>
+            <Button className="zl-btn" onClick={() => setConfirm(undefined)}>
+              返回修改
+            </Button>
             <Button
+              className="zl-btn zl-btn--primary"
+              title={disabled ? '正在读取或提交，请稍候' : undefined}
               variant="contained"
               disabled={submitting}
               onClick={() => void submit()}
