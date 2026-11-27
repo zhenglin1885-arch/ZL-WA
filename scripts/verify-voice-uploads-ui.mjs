@@ -22,7 +22,7 @@ try {
           'https',
           () =>
             new Response(
-              '<!doctype html><input type="file" accept="audio/*"><button>Send audio</button>',
+              '<!doctype html><main id="main"><input type="file" accept="audio/*"><button>Send audio</button></main>',
               { headers: { 'Content-Type': 'text/html' } },
             ),
         );
@@ -49,6 +49,7 @@ try {
           let loaded=false;window.require=name=>!loaded?undefined:name==='WAWebPrepRawMedia'?native:name==='WAWebMediaPrep'?Object.freeze({default:NativePrep}):undefined;
           if(configure())throw Error('Unavailable native modules must not report ready');
           loaded=true;
+          if(!configure())throw Error('Available native modules did not install the upload adapter');
           const samples=8000,bytes=new ArrayBuffer(44+samples*2),v=new DataView(bytes);
           const ascii=(offset,text)=>[...text].forEach((c,i)=>v.setUint8(offset+i,c.charCodeAt(0)));
           ascii(0,'RIFF');v.setUint32(4,36+samples*2,true);ascii(8,'WAVE');ascii(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ascii(36,'data');v.setUint32(40,samples*2,true);

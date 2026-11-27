@@ -120,6 +120,21 @@ try {
   sidebarBefore = await evaluate(
     'JSON.parse(JSON.stringify(window.ferdium.stores.settings.app.accountSidebar || {}))',
   );
+  if (
+    await evaluate(
+      '!!document.querySelector(".bulk-dialog__close-icon,.group-tools-close")',
+    )
+  ) {
+    await click(
+      await evaluate(
+        'document.querySelector(".bulk-dialog__close-icon") ? ".bulk-dialog__close-icon" : ".group-tools-close"',
+      ),
+    );
+    await wait(
+      '!document.querySelector(".account-tools-dialog")',
+      'previous isolated dialog closed',
+    );
+  }
   if (await evaluate('!!document.querySelector(".account-dialog")'))
     await clickText('取消');
   bulkPreferencesBefore = await evaluate(
@@ -1698,7 +1713,7 @@ try {
         );
         assert(
           layout.scrolls && layout.noHorizontalOverflow,
-          'body scrolls without hiding footer or overflowing horizontally',
+          `body scrolls without hiding footer or overflowing horizontally: ${JSON.stringify(layout)}`,
         );
       }
       await evaluate(
@@ -2607,7 +2622,7 @@ try {
   console.error(
     'Dialog diagnostic',
     await evaluate(
-      `({notice:document.querySelector('.tools-notice')?.textContent,latest:document.querySelector('.bulk-history tbody tr:first-child')?.textContent,groups:document.querySelector('.group-tools-results')?.textContent})`,
+      `({customerStatus:document.querySelector('.customer-panel [role=status]')?.textContent,customerFields:[...document.querySelectorAll('.customer-panel input,.customer-panel textarea')].map(n=>({id:n.id,value:n.value})),notice:document.querySelector('.tools-notice')?.textContent,latest:document.querySelector('.bulk-history tbody tr:first-child')?.textContent,groups:document.querySelector('.group-tools-results')?.textContent})`,
     ),
   );
   for (const id of ids) {
@@ -2631,6 +2646,26 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  // Release only this run's synthetic deferred sends before restoring test data.
+  for (const id of ids) {
+    try {
+      await guest(
+        id,
+        'fixture.holdBulk=false;fixture.bulkReleases?.splice(0).forEach(resolve=>resolve("OK"));true',
+      );
+    } catch {
+      /* A disposed synthetic guest has already cancelled its pending work. */
+    }
+  }
+  if (historyBefore) {
+    try {
+      await evaluate(
+        `(async()=>{const q=${queueExpression};for(const record of q.records){if(q.activeIds.has(record.id)&&record.spec?.targets.every(t=>${JSON.stringify(ids)}.includes(t.accountId)))await q.stop(record.id)}return true})()`,
+      );
+    } catch {
+      /* Keep the original failure and restoration diagnostics visible. */
+    }
+  }
   if (groupStateBefore) {
     try {
       await evaluate(

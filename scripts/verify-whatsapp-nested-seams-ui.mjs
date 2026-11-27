@@ -29,6 +29,7 @@ try {
           webPreferences: { session: isolated },
         });
         const execute = code => win.webContents.executeJavaScript(code);
+        const frame = () => execute('new Promise(r=>requestAnimationFrame(r))');
         const reports = [];
         try {
           for (const mode of ['light', 'dark']) {
@@ -46,8 +47,11 @@ try {
               `localStorage.removeItem('zl-chat-list-width');(${layout.toString()})();true`,
             );
             const point = await execute(
-              `(()=>{const r=document.querySelector('[data-zl-chat-divider]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+180}})()`,
+              `(()=>{const r=document.querySelector('[data-zl-chat-resize]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`,
             );
+            win.webContents.focus();
+            win.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+            await frame();
             for (const event of [
               { type: 'mouseDown', ...point, button: 'left', clickCount: 1 },
               {
@@ -64,8 +68,10 @@ try {
                 button: 'left',
                 clickCount: 1,
               },
-            ])
+            ]) {
               win.webContents.sendInputEvent(event);
+              await frame();
+            }
             await execute(
               'new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))',
             );

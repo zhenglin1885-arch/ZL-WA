@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { verifyPackagedTools } from './verify-packaged-tools.mjs';
 
 const expectedVersion = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
@@ -121,9 +122,10 @@ try {
     `Packaged UI did not initialize: ${JSON.stringify(state)} ${logs}`,
   );
   assert.equal(state.errorFallback, false);
+  const tools = await verifyPackagedTools(evaluate);
   writeFileSync(
     output,
-    `${JSON.stringify({ nativePackagedStartup: true, ...state }, null, 2)}\n`,
+    `${JSON.stringify({ nativePackagedStartup: true, tools, ...state }, null, 2)}\n`,
   );
   console.log(JSON.stringify(state));
 } finally {

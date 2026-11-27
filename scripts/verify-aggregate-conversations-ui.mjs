@@ -72,7 +72,7 @@ try {
     await wait(()=>first.closest('.conversation-row').classList.contains('is-active')&&!first.closest('.conversation-row').classList.contains('is-opening'));
     const activeRow=first.closest('.conversation-row');
     const darkSelected=getComputedStyle(activeRow).backgroundColor;
-    check(darkSelected==='rgba(77, 141, 255, 0.13)'&&getComputedStyle(activeRow).boxShadow==='none'&&first.getAttribute('aria-pressed')==='true','Opened conversation lost its persistent dark-mode highlight');
+    check(darkSelected==='rgba(77, 141, 255, 0.15)'&&getComputedStyle(activeRow).boxShadow==='none'&&first.getAttribute('aria-pressed')==='true','Opened conversation lost its persistent dark-mode highlight');
     document.body.classList.remove('theme__dark');await new Promise(r=>setTimeout(r,220));
     check(getComputedStyle(activeRow).backgroundColor==='rgba(255, 255, 255, 0.22)'&&getComputedStyle(activeRow).boxShadow==='none','Light-mode selected highlight did not adapt: '+JSON.stringify({background:getComputedStyle(activeRow).backgroundColor,shadow:getComputedStyle(activeRow).boxShadow}));
     document.body.classList.add('theme__dark');

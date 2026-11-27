@@ -59,9 +59,16 @@ const click = async selector => {
   await wait(`!!document.querySelector(${JSON.stringify(selector)})`, selector);
   await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 };
+// Normalize only presentation additions; functional result/count assertions stay explicit.
+const normaliseAction = value =>
+  value
+    .trim()
+    .replace(/^\+\s*/u, '')
+    .replace(/（\d+ 个群）$/u, '')
+    .trim();
 const clickText = async text => {
   await evaluate(
-    `(()=>{const b=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].find(b=>b.textContent.trim()===${JSON.stringify(text)});if(!b)throw Error('Missing button '+${JSON.stringify(text)});b.click()})()`,
+    `(()=>{const wanted=${JSON.stringify(text)};const clean=(${normaliseAction.toString()});const b=[...document.querySelectorAll('button,summary,[role="menuitem"],[role="option"]')].find(n=>clean(n.textContent)===wanted||(wanted==='选择图片附件'&&n.textContent.trim().startsWith('选择图片 ·')));if(!b)throw Error('Missing button '+wanted);b.click()})()`,
   );
 };
 const fill = async value => {

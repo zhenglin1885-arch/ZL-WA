@@ -42,16 +42,16 @@ export async function verifyReactions({
         `getComputedStyle(document.querySelector('[aria-label="点赞匹配文字"]')).color`,
       ),
       (await evaluate(`document.body.classList.contains('theme__dark')`))
-        ? 'rgb(238, 241, 246)'
-        : 'rgb(38, 50, 71)',
+        ? 'rgb(236, 237, 238)'
+        : 'rgb(31, 35, 40)',
       'themed inputs retain the requested readable foreground',
     );
     assert.equal(
       await evaluate(
         `getComputedStyle(document.querySelector('.reaction-accounts button')).fontSize`,
       ),
-      '14px',
-      'action buttons remain readable',
+      '13px',
+      'small account refresh icon retains the specified readable size',
     );
     assert.equal(
       await evaluate(
@@ -111,7 +111,7 @@ export async function verifyReactions({
       );
     await clickText('查找匹配消息');
     await wait(
-      `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 12 项') && document.querySelector('.reaction-find-progress').textContent.includes('14/14')`,
+      `document.querySelector('.reaction-match-summary').textContent.includes('找到 12 个任务') && document.querySelector('.reaction-find-progress').textContent.includes('14/14')`,
       'two-account matching task sum excludes misses',
     );
     assert.equal(
@@ -147,11 +147,11 @@ export async function verifyReactions({
       10,
     );
     await evaluate(
-      `document.querySelector('.reaction-execution-actions').scrollIntoView({block:'center'})`,
+      `document.querySelector('.reaction-execution-actions .MuiButton-contained').scrollIntoView({block:'center'})`,
     );
     assert(
       await evaluate(
-        `(()=>{const b=document.querySelector('.reaction-execution-actions button'),r=b.getBoundingClientRect();return !b.disabled&&r.top>=0&&r.bottom<=innerHeight})()`,
+        `(()=>{const b=document.querySelector('.reaction-execution-actions .MuiButton-contained'),r=b.getBoundingClientRect();return !b.disabled&&r.top>=0&&r.bottom<=innerHeight})()`,
       ),
       'execute remains reachable',
     );
@@ -163,7 +163,7 @@ export async function verifyReactions({
     );
     await clickText('查找匹配消息');
     await wait(
-      `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 6 项') && document.querySelector('.reaction-find-progress').textContent.includes('7/7')`,
+      `document.querySelector('.reaction-match-summary').textContent.includes('找到 6 个任务') && document.querySelector('.reaction-find-progress').textContent.includes('7/7')`,
       'single-account total',
     );
     await click(`.reaction-accounts [data-account-id="${second}"] input`);
@@ -183,7 +183,7 @@ export async function verifyReactions({
     );
     await clickText('查找匹配消息');
     await wait(
-      `document.querySelectorAll('.reaction-preview article').length===4 && document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 4 项')`,
+      `document.querySelectorAll('.reaction-preview article').length===4 && document.querySelector('.reaction-match-summary').textContent.includes('找到 4 个任务')`,
       'original preview restored',
     );
     console.log(
@@ -326,7 +326,7 @@ export async function verifyReactions({
     );
     assert.equal(
       await evaluate(
-        `[...document.querySelectorAll('.reaction-tools-dialog button')].find(b=>b.textContent==='开始点赞').nextElementSibling.textContent`,
+        `[...document.querySelectorAll('.reaction-tools-dialog button')].find(b=>b.textContent==='开始点赞').previousElementSibling.textContent`,
       ),
       '终止执行',
     );
@@ -452,7 +452,7 @@ export async function verifyReactions({
       );
       await clickText('查找匹配消息');
       await wait(
-        `document.querySelector('.reaction-match-summary').textContent.includes('匹配任务 4 项') && [...document.querySelectorAll('.reaction-tools-dialog button')].some(b=>b.textContent==='查找匹配消息'&&!b.disabled)`,
+        `document.querySelector('.reaction-match-summary').textContent.includes('找到 4 个任务') && [...document.querySelectorAll('.reaction-tools-dialog button')].some(b=>b.textContent==='查找匹配消息'&&!b.disabled)`,
         `indexed welcome text found using ${mode}`,
       );
       assert.equal(

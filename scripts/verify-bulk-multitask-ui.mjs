@@ -60,13 +60,14 @@ export async function verifyBulkMultitask({
     'two jobs executing concurrently',
   );
   const preview = await evaluate(
-    `(()=>{const n=[...document.querySelectorAll('.bulk-history__text')].find(e=>e.textContent===${JSON.stringify(longText)});const style=getComputedStyle(n);return {height:n.getBoundingClientRect().height,lineHeight:parseFloat(style.lineHeight),clamp:style.webkitLineClamp,overflow:style.overflowY}})()`,
+    `(()=>{const n=[...document.querySelectorAll('.bulk-history__text')].find(e=>e.textContent===${JSON.stringify(longText)});const style=getComputedStyle(n);return {height:n.getBoundingClientRect().height,lineHeight:parseFloat(style.lineHeight),clamp:style.webkitLineClamp,overflow:style.overflowY,whiteSpace:style.whiteSpace}})()`,
   );
-  assert.equal(preview.clamp, '2');
+  assert.equal(preview.clamp, 'none');
+  assert.equal(preview.whiteSpace, 'nowrap');
   assert.equal(preview.overflow, 'hidden');
   assert(
-    preview.height <= preview.lineHeight * 2 + 1,
-    'history content occupies at most two lines',
+    preview.height <= preview.lineHeight + 1,
+    'history content occupies one ellipsized line',
   );
   await shot('/workspace/ZL-WA-bulk-concurrent.png');
   await evaluate(
@@ -134,6 +135,6 @@ export async function verifyBulkMultitask({
   await clickText('关闭详情');
   await clickText('关闭');
   console.log(
-    'PASS compact two-line previews, concise success/failure details, creation during active sends, two simultaneous jobs and independent cancellation',
+    'PASS compact single-line previews, concise success/failure details, creation during active sends, two simultaneous jobs and independent cancellation',
   );
 }

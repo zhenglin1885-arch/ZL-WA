@@ -13,12 +13,26 @@ try {
         const path = `${process.cwd()}/build/features/accounts/layout.js`;
         delete req.cache[req.resolve(path)];
         const fixed = req(path).configureWhatsAppLayout;
-        const released = req(
-          '/tmp/zl-test6-inspect/app.asar/features/accounts/layout.js',
-        ).configureWhatsAppLayout;
-        const released733 = req(
-          '/tmp/zl733-inspect/app.asar/features/accounts/layout.js',
-        ).configureWhatsAppLayout;
+        // Read the immutable repository baseline instead of an ephemeral /tmp extraction.
+        const legacyLayout = revision => {
+          const source = req('node:child_process').execFileSync(
+            'git',
+            ['show', `${revision}:src/features/accounts/layout.ts`],
+            { cwd: process.cwd(), encoding: 'utf8' },
+          );
+          const compiled = req('esbuild').transformSync(source, {
+            loader: 'ts',
+            format: 'cjs',
+          }).code;
+          const legacy = { exports: {} };
+          req('node:vm').runInNewContext(compiled, {
+            module: legacy,
+            exports: legacy.exports,
+          });
+          return legacy.exports.configureWhatsAppLayout;
+        };
+        const released = legacyLayout('0807b46');
+        const released733 = legacyLayout('v7.3.3');
         const isolated = session.fromPartition(
           `zl-archive-width-${Date.now()}`,
         );

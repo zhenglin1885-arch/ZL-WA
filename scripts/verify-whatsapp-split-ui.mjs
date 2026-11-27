@@ -35,9 +35,9 @@ try {
           if (!reply.ok) throw new Error(reply.error);
           return reply.value;
         };
-        const drag = async (delta, fromDivider = false) => {
+        const drag = async delta => {
           const p = await exec(
-            `(()=>{const r=document.querySelector(${JSON.stringify(fromDivider ? '[data-zl-chat-divider]' : '[data-zl-chat-resize]')}).getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
+            `(()=>{const r=document.querySelector(${JSON.stringify('[data-zl-chat-resize]')}).getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`,
           );
           win.webContents.sendInputEvent({
             type: 'mouseDown',
@@ -134,7 +134,7 @@ try {
             await exec(
               `document.querySelector('header,.wa-head').replaceChildren();window.__qaConfigure();true`,
             );
-            await drag(-35, true);
+            await drag(-35);
             const rerendered = await geometry();
             win.setContentSize(850, 750);
             await exec(
@@ -225,7 +225,7 @@ try {
     if (variant === 'grid-welcome') assert.equal(after.grid, 'true');
   }
   console.log(
-    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, hover reveal at top of divider, hidden away from divider, invisible seam and hover strip during/after full-divider drag, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
+    'PASS native internal-only WhatsApp split drag: padded/fixed flex columns, grid welcome screen, chat pane, missing header tag, alternate list root, clipped containers, hover reveal at top of divider, hidden away from divider, invisible seam and hover strip during/after handle drag, automatic remount, replacement header, persisted width and responsive clamp; software sidebars and guest bounds unchanged',
   );
   console.log(
     JSON.stringify(

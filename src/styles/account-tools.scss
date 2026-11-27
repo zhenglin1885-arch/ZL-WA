@@ -2620,3 +2620,37 @@ body .account-tools-dialog.zl-dialog .zl-task-heading select {
   height: 30px !important;
   min-height: 30px;
 }
+// Keep compact task dialogs usable without scrolling the entire form sideways.
+@media (max-width: 1000px) {
+  body .bulk-dialog.zl-dialog {
+    .bulk-history__filters {
+      flex-wrap: wrap;
+    }
+    .bulk-history__filters input:first-child {
+      flex: 1 1 180px;
+    }
+    .bulk-columns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .bulk-columns > fieldset:last-child {
+      grid-column: 1 / -1;
+    }
+  }
+}
+@media (max-width: 760px) {
+  body .bulk-dialog.zl-dialog {
+    .bulk-columns {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .bulk-columns > fieldset:last-child {
+      grid-column: auto;
+    }
+    .bulk-history__filters input[type='date'] {
+      flex-basis: 140px;
+      width: 140px;
+    }
+    .bulk-dialog__header {
+      flex-wrap: wrap;
+    }
+  }
+}

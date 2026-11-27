@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { verifyPackagedTools } from './verify-packaged-tools.mjs';
 import verifyMessageTranslation from './verify-message-translation-native.cjs';
 import verifyTranslationCache from './verify-translation-cache-native.cjs';
 
@@ -180,11 +181,13 @@ try {
     `window.__zlPackagedBeforeReload=true;require('electron').ipcRenderer.send('zl-window-reload-requested','system-resume');true`,
   );
   const afterResumeReload = await ready(true);
+  const tools = await verifyPackagedTools(evaluate);
   const asar = join(dirname(executable), 'resources', 'app.asar');
   const report = {
     version: expectedVersion,
     commit: process.env.GITHUB_SHA,
     nativePackagedStartup: true,
+    tools,
     mainProcessResumeReload: true,
     zeroFilledConfigurationRebuilt: true,
     zeroFilledOriginalPreserved: true,

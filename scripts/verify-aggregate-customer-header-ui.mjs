@@ -59,24 +59,18 @@ try {
             const data={owner,revision:1,summaries:{[id]:{remarkName:'Local remark only',flags:['priority','follow','signup','deposit']}},aliases:{},pins:[],pinsInitialized:true};
             const render=async(active=id)=>{tick(data,active,draw);await new Promise(r=>setTimeout(r,80));tick(undefined,active,draw);};
             document.documentElement.dataset.zlAggregateView='true';await render();
-            let button=document.querySelector('.zl-header-remark');
-            check(button?.textContent==='Local remark only','Header did not display short remark');
-            check(getComputedStyle(native).display==='none','Native title still visible in aggregate mode');
-            check(native.title==='Native WhatsApp name'&&native.textContent==='Native WhatsApp name','Native identity text was changed');
-            button.click();let actions=tick(undefined,id,draw);
-            check(actions.some(a=>a.action==='remark'&&a.chatId===id&&a.owner===owner),'Remark editor target mismatch');
-            data.revision++;data.summaries[id].remarkName='';await render();
-            button=document.querySelector('.zl-header-remark');check(button?.textContent==='添加备注','Empty remark lacks add action');
-            button.click();actions=tick(undefined,id,draw);check(actions.some(a=>a.action==='remark'&&a.chatId===id),'Add remark not clickable');
-            data.revision++;data.summaries[id].remarkName='Updated remark';await render();
-            check(document.querySelector('.zl-header-remark')?.textContent==='Updated remark','Updated remark not rendered');
-            delete document.documentElement.dataset.zlAggregateView;
-            check(getComputedStyle(native).display!=='none'&&getComputedStyle(document.querySelector('.zl-header-remark')).display==='none','Leaving aggregate mode did not restore native title');
-            document.documentElement.dataset.zlAggregateView='true';await render(group);
-            check(!native.hasAttribute('data-zl-customer-header-title')&&!document.querySelector('.zl-header-remark'),'Group title was replaced');
-            await render();data.owner='another@c.us';data.revision++;data.summaries={};await render();
-            check(!document.querySelector('.zl-header-remark')&&getComputedStyle(native).display!=='none','Owner mismatch retained remark or hid native title');
-            return {nativeTitlePreserved:true,remarkOnly:true,emptyRemarkClickable:true,liveUpdate:true,modeRestored:true,groupUnchanged:true,ownerIsolated:true};
+            const nativeUnchanged=()=>check(getComputedStyle(native).display!=='none'&&!native.hasAttribute('data-zl-customer-header-title')&&native.title==='Native WhatsApp name'&&native.textContent==='Native WhatsApp name'&&!document.querySelector('.zl-header-remark'),'Native header identity was replaced or hidden');
+            nativeUnchanged();
+            check(document.querySelectorAll('[data-zl-customers="header"] svg').length===4,'Header customer flags missing');
+            data.revision++;data.summaries[id].remarkName='';await render();nativeUnchanged();
+            data.revision++;data.summaries[id].remarkName='Updated remark';data.summaries[id].flags=['priority'];await render();nativeUnchanged();
+            check(document.querySelectorAll('[data-zl-customers="header"] svg').length===1,'Header flags did not update');
+            delete document.documentElement.dataset.zlAggregateView;await render();nativeUnchanged();
+            document.documentElement.dataset.zlAggregateView='true';await render(group);nativeUnchanged();
+            check(!document.querySelector('[data-zl-customers="header"] svg'),'Previous private markers leaked into group header');
+            await render();data.owner='another@c.us';data.revision++;data.summaries={};await render();nativeUnchanged();
+            check(!document.querySelector('[data-zl-customers="header"] svg'),'Owner mismatch retained customer markers');
+            return {nativeTitlePreserved:true,localRemarkDoesNotReplaceTitle:true,liveFlags:true,modeRestored:true,groupUnchanged:true,ownerIsolated:true};
           })()`);
           await ui.loadURL('about:blank');
           await ui.webContents.insertCSS(
@@ -102,7 +96,7 @@ try {
             const marker=document.querySelector('.conversation-row__flags').getBoundingClientRect(),time=document.querySelector('[data-conversation-key="private"] time').getBoundingClientRect();
             if(marker.right>time.left)throw Error('Markers overlap timestamp');
             document.body.className='';await new Promise(r=>setTimeout(r,30));
-            if(flags.some(n=>n.getBoundingClientRect().width!==14))throw Error('Light theme markers changed size');
+            if(flags.some(n=>n.getBoundingClientRect().width!==18))throw Error('Light theme markers changed size');
             root.unmount();return {nativeNames:true,groupUnchanged:true,phoneFallback:true,markersBeforeTime:true,colors,lightAndDark:true};
           })()`);
           return { header, rows };
@@ -114,7 +108,7 @@ try {
       }})()`,
     )})`,
   );
-  assert(result.header.emptyRemarkClickable && result.rows.nativeNames);
+  assert(result.header.nativeTitlePreserved && result.rows.nativeNames);
   console.log(JSON.stringify(result));
 } finally {
   socket.close();

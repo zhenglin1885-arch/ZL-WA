@@ -13,9 +13,25 @@ try {
         const path = `${process.cwd()}/build/features/accounts/layout.js`;
         delete req.cache[req.resolve(path)];
         const current = req(path).configureWhatsAppLayout;
-        const released = req(
-          '/tmp/zl-test5-inspect/app.asar/features/accounts/layout.js',
-        ).configureWhatsAppLayout;
+        // Read the immutable repository baseline instead of an ephemeral /tmp extraction.
+        const legacyLayout = revision => {
+          const source = req('node:child_process').execFileSync(
+            'git',
+            ['show', `${revision}:src/features/accounts/layout.ts`],
+            { cwd: process.cwd(), encoding: 'utf8' },
+          );
+          const compiled = req('esbuild').transformSync(source, {
+            loader: 'ts',
+            format: 'cjs',
+          }).code;
+          const legacy = { exports: {} };
+          req('node:vm').runInNewContext(compiled, {
+            module: legacy,
+            exports: legacy.exports,
+          });
+          return legacy.exports.configureWhatsAppLayout;
+        };
+        const released = legacyLayout('3eb2915');
         const isolated = session.fromPartition(`zl-drawer-seam-${Date.now()}`);
         let html = '';
         await isolated.protocol.handle(
@@ -51,7 +67,7 @@ try {
                 );
                 for (const target of [342, 580]) {
                   const start = await execute(
-                    `(()=>{const r=document.querySelector('[data-zl-chat-divider]').getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:180,width:document.querySelector('#list').getBoundingClientRect().width}})()`,
+                    `(()=>{const r=document.querySelector('[data-zl-chat-resize]').getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),width:document.querySelector('#list').getBoundingClientRect().width}})()`,
                   );
                   const endX = Math.round(start.x + target - start.width);
                   const events = [
