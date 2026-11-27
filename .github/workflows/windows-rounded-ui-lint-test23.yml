@@ -1,0 +1,216 @@
+name: Windows rounded UI and lint cleanup test23
+'on':
+  push:
+    branches:
+    - build/rounded-ui-lint-test23
+permissions:
+  contents: read
+jobs:
+  windows:
+    permissions:
+      contents: read
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      CI: true
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+      ZL_SOURCE_BASE: 09b75735da985c1d30f589d2401bef1f187866c1
+      FORCE_COLOR: '0'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Verify application sources match the approved lint cleanup
+      shell: pwsh
+      run: |
+        git diff --exit-code $env:ZL_SOURCE_BASE HEAD -- src scripts test build-helpers esbuild.mjs package.json pnpm-lock.yaml .eslintrc.js
+        if ($LASTEXITCODE -ne 0) { throw 'Application source changed after the approved lint cleanup' }
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - uses: pnpm/action-setup@v4
+    - name: Validate release version
+      run: node -e "if (require('./package.json').version !== '7.3.9') throw Error('Version mismatch')"
+    - name: Install dependencies and Electron
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm exec install-electron
+    - name: Package service recipes
+      working-directory: recipes
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm package
+    - name: Check types and tests
+      shell: pwsh
+      run: |
+        pnpm typecheck *> typecheck.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content typecheck.log -Tail 100
+          exit 1
+        }
+        pnpm lint *> lint.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content lint.log -Tail 100
+          exit 1
+        }
+        pnpm test --runInBand --coverage=false *> tests.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content tests.log -Tail 150
+          exit 1
+        }
+        Get-Content tests.log -Tail 8
+        $text = Get-Content tests.log -Raw
+        if ($text -notmatch 'Tests:\s+2 skipped,\s+989 passed,\s+991 total') { throw 'Unexpected test counts' }
+        if ($text -notmatch 'Test Suites:\s+89 passed,\s+89 total') { throw 'Unexpected test suite counts' }
+        $report = @{
+          commit = $env:GITHUB_SHA
+          platform = 'win32'
+          sourceBase = $env:ZL_SOURCE_BASE
+          typecheck = $true
+          lint = @{ errors = 0; warnings = 0 }
+          unitTests = @{ passed = 989; skipped = 2; total = 991; suitesPassed = 89 }
+        }
+        $report | ConvertTo-Json -Depth 8 | Set-Content windows-quality-verification.json -Encoding utf8
+    - name: Prepare the production NSIS compiler and plugins
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = Join-Path $env:RUNNER_TEMP 'zl-nsis'
+        New-Item -ItemType Directory -Path $root | Out-Null
+        foreach ($item in @('nsis-3.0.4.1', 'nsis-resources-3.4.1')) {
+          $file = Join-Path $root ($item + '.7z')
+          Invoke-WebRequest -UseBasicParsing "https://github.com/electron-userland/electron-builder-binaries/releases/download/$item/$item.7z" -OutFile $file
+          & 'C:\Program Files\7-Zip\7z.exe' x $file "-o$root\$item" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS extraction failed' }
+        }
+        "ZL_NSIS_HOME=$root\nsis-3.0.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+        "ZL_NSIS_RESOURCES=$root\nsis-resources-3.4.1" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+    - name: Verify process isolation and installation from the old app directory
+      shell: powershell
+      run: |
+        try {
+          ./scripts/test-windows-installer.ps1 *>&1 | Tee-Object -FilePath installer-test.log
+        } catch {
+          $message = ($_ | Out-String).Trim()
+          Write-Output ("::error::" + $message.Replace("`r", '').Replace("`n", '%0A'))
+          throw
+        } finally {
+          if (Test-Path installer-test.log) {
+            '```text' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            Get-Content installer-test.log | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+            '```' | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+        }
+    - name: Build Windows x64
+      run: pnpm build:windows
+    - name: Verify compiled native login observation in Windows Electron
+      shell: pwsh
+      env:
+        ZL_LOGIN_DIAGNOSTICS_REPORT: out/windows-login-diagnostics-verification.json
+      run: |
+        pnpm exec electron scripts/verify-native-login-diagnostics.cjs --no-sandbox --disable-gpu *> login-diagnostics-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content login-diagnostics-test.log -Tail 80
+          exit 1
+        }
+        Get-Content login-diagnostics-test.log
+    - name: Verify tested WhatsApp adapter inside packaged application
+      run: node scripts/verify-whatsapp-library.cjs out/win-unpacked/resources/app.asar
+    - name: Verify packaged Windows startup and resume reload
+      shell: pwsh
+      run: |
+        node scripts/verify-windows-package.mjs out/win-unpacked/ZL-WA.exe *> startup-test.log
+        if ($LASTEXITCODE -ne 0) {
+          Get-Content startup-test.log -Tail 80
+          exit 1
+        }
+        Get-Content startup-test.log
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-rounded-ui-test23-Windows-x64
+        path: |
+          out/*.exe
+          out/windows-startup-verification.json
+          out/windows-login-diagnostics-verification.json
+
+          windows-quality-verification.json
+          lint.log
+          typecheck.log
+          tests.log
+          installer-test.log
+        if-no-files-found: error
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Verify exact approved application and packaging evidence
+      run: |
+        set -euo pipefail
+        git diff --exit-code 09b75735da985c1d30f589d2401bef1f187866c1 HEAD -- src scripts test build-helpers esbuild.mjs package.json pnpm-lock.yaml .eslintrc.js
+        git diff --name-only 09b75735da985c1d30f589d2401bef1f187866c1 HEAD > changed.txt
+        python3 - <<'VERIFY'
+        import json,pathlib,hashlib
+        r=json.load(open('qa/rounded-ui-lint-test23.json'))
+        assert r['sourceBase']=='09b75735da985c1d30f589d2401bef1f187866c1'
+        assert set(pathlib.Path('changed.txt').read_text().splitlines())==set(r['packagingFiles'])
+        assert r['typecheck'] and r['lint']=={'errors':0,'warnings':0}
+        assert r['unitTests']=={'suitesPassed':89,'passed':989,'skipped':2,'total':991}
+        assert r['roundedVisualChecksPassed'] and r['aggregateConversationChecksPassed']
+        assert r['originalWebUiPreserved'] and not r['realPhonePairingVerified']
+        assert not r['fullGuiRegressionPassed'] and r['knownGuiFailure']
+        for p,d in r['packagingHashes'].items(): assert hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()==d,p
+        for p in ['src/features/protocol','src/electron/ProtocolConnections.ts','src/electron/OfficialWhatsAppLogin.ts','tools/protocol-backend']: assert not pathlib.Path(p).exists(),p
+        VERIFY
+    - uses: actions/download-artifact@v4
+      with:
+        name: ZL-WA-7.3.9-rounded-ui-test23-Windows-x64
+        path: release-assets
+    - name: Verify Windows quality and native reports and hash assets
+      run: |
+        python3 - <<'VERIFY'
+        import pathlib,json,hashlib,shutil,os
+        root=pathlib.Path('release-assets')
+        report=json.loads((root/'windows-startup-verification.json').read_text(encoding='utf-8-sig'))
+        assert report['commit']==os.environ['GITHUB_SHA'] and report['nativePackagedStartup'] and report['mainProcessResumeReload']
+        login=json.loads((root/'windows-login-diagnostics-verification.json').read_text(encoding='utf-8-sig'))
+        assert login['commit']==os.environ['GITHUB_SHA'] and login['platform']=='win32'
+        assert login['officialCloseCategories']==47 and login['transportCloseCategories']==22 and login['applicationCloseCategories']==25
+        assert login['passkeyEvents']==4 and login['passkeySurfaceStates']==7 and login['compiledGuestVerified'] and login['browserApisUnchanged'] and not login['realPhonePairingVerified']
+        assert login['structuredClosePayloadVerified'] and login['missingPayloadKindVerified'] and login['registrationObserverVerified'] and login['registrationStages']==12
+        quality=json.loads((root/'windows-quality-verification.json').read_text(encoding='utf-8-sig'))
+        assert quality['commit']==os.environ['GITHUB_SHA'] and quality['platform']=='win32' and quality['sourceBase']=='09b75735da985c1d30f589d2401bef1f187866c1'
+        assert quality['typecheck'] and quality['lint']=={'errors':0,'warnings':0}
+        assert quality['unitTests']=={'passed':989,'skipped':2,'total':991,'suitesPassed':89}
+        names={'ZL-WA-win-AutoSetup-7.3.9-x64.exe','ZL-WA-win-Portable-7.3.9-x64.exe'}
+        assert {p.name for p in root.glob('*.exe')}==names
+        for n in names:
+         p=root/n;assert p.stat().st_size>1000000 and p.open('rb').read(2)==b'MZ';p.rename(root/n.replace('7.3.9-x64','7.3.9-ui-test23-x64'))
+        for source,target in [('qa/rounded-ui-lint-test23.json','QA-summary.json'),('qa/rounded-ui-lint-gui-test23.txt','GUI-regression.log'),('docs/ROUNDED-UI-LINT-TEST23.md','README-test23.md')]:shutil.copyfile(source,root/target)
+        (root/'SHA256SUMS.txt').write_text(''.join(hashlib.file_digest(p.open('rb'),'sha256').hexdigest()+'  '+p.name+'\n' for p in sorted(root.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt'))
+        VERIFY
+    - name: Publish a separate Windows prerelease
+      run: |
+        set -euo pipefail
+        cat > /tmp/notes.md <<'NOTES'
+        Windows 7.3.9 圆润 UI 与 lint 清理测试版 test23。
+
+        调整账号卡片、菜单、弹窗、输入框的圆角、配色、字号与间距，统一九个工具栏线条图标和红底白字未读徽标。保留原字体家族和中间 WhatsApp 区域尺寸。包含已核对的 lint 清理，Windows 构建必须通过类型检查、零错误零警告 lint、989 通过/2 跳过的测试，以及安装升级、成品启动和恢复检查。
+
+        沿用 test22 的群发权限筛选与失败策略，不加入新连接测试或官方登录窗口。打包相对已批准的 lint 清理提交不修改应用源文件。
+
+        已知限制：完整合成界面回归在客户备注自动保存检查处超时，不能宣称全部界面功能通过；本次未修复该项，也未确认修复此前的账号关联失败。原始回归记录、Windows 检查报告、测试日志及 SHA256 随包提供。
+
+        完全退出旧软件后安装，先使用少量测试对象验证。独立未签名 Windows 测试包，不更新正式版、不发布 Mac。
+        NOTES
+        gh release create test-7.3.9-rounded-ui-lint-23 release-assets/* --target "$GITHUB_SHA" --prerelease --latest=false --title 'ZL-WA 7.3.9 Windows 圆润 UI 与 lint 清理 test23' --notes-file /tmp/notes.md
