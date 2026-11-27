@@ -1498,7 +1498,7 @@ body:not(.theme__dark) {
 body.theme__dark {
   .account-tools-panel,
   .account-tools-dialog {
-    --zl-control-surface: #1a1f28;
+    --zl-control-surface: var(--zl-card);
     --zl-control-border: #46546a;
     --zl-control-text: #eef1f6;
     --zl-control-hover: #252f3e;
