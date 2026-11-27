@@ -1,0 +1,46 @@
+{
+  "sourceBase": "97241ffbdeb18b3e902c7a59f35224c229c3c5ec",
+  "purpose": "Package the approved second-round neutral UI without additional app changes",
+  "typecheck": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "unitTests": {
+    "suitesPassed": 89,
+    "passed": 989,
+    "skipped": 2,
+    "total": 991
+  },
+  "visualChecksPassed": true,
+  "sourceAuditPassed": true,
+  "syntheticRequiredOperationsPassed": true,
+  "fullGuiRegressionPassed": false,
+  "realPhonePairingVerified": false,
+  "knownGuiFailure": "Extended group UI fixture timed out at the visible account refresh result in the join scenario; see extended-groups-attempt.log",
+  "bulkOpenGroupsOnly": true,
+  "bulkFailurePolicyPreserved": true,
+  "packagingFiles": [
+    ".github/workflows/windows-neutral-ui-test25.yml",
+    "docs/NEUTRAL-UI-TEST25.md",
+    "qa/neutral-ui-test25.json",
+    "qa/neutral-ui-visual-test25.json",
+    "qa/neutral-ui-source-test25.json",
+    "qa/neutral-ui-operations-test25.json",
+    "qa/neutral-ui-steps-test25.json",
+    "qa/neutral-ui-operations-test25.txt",
+    "qa/neutral-ui-extended-test25.txt",
+    "qa/neutral-ui-review-test25.txt"
+  ],
+  "packagingHashes": {
+    ".github/workflows/windows-neutral-ui-test25.yml": "6ed9f750d707f186322de7b86223190a919b9f82949017ea06a182707ca4b19e",
+    "docs/NEUTRAL-UI-TEST25.md": "7fef918b1318e5258fb44a2a03f245b22f8d497cce4f2ef2783ab1d1ce9a946a",
+    "qa/neutral-ui-visual-test25.json": "15eed2f31f01e96a0575f1e08aae731d0c3606df043401ff013384dc9e5d39af",
+    "qa/neutral-ui-source-test25.json": "bbc4c03f6d3466edb3c67df3401ed26767ccea1e377f987eb79cb07c7c447164",
+    "qa/neutral-ui-operations-test25.json": "84370b2ea7a430e6243a4a038b27f949a5d48d31d06af45152834b4849cfdd4e",
+    "qa/neutral-ui-steps-test25.json": "ca94e4487e0a40894fa6e48c3938146265cad3867bbbdbbf1aa5f6e75e6d75c7",
+    "qa/neutral-ui-operations-test25.txt": "1e1775d08d5b9eee30cbaf4a1bca862cfd06fb6df67bca5d0ccc9ec3a2d5d1e5",
+    "qa/neutral-ui-extended-test25.txt": "913ba5b655915a8a76f0dcb4b266e199015faa6b6cb7a0b264355c10dc22e837",
+    "qa/neutral-ui-review-test25.txt": "62a95fbc69a16a680826b0acd4dbb967a6583c5b0b2c0616563b7c248fd1ef40"
+  }
+}

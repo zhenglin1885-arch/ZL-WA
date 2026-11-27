@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "realPhoneOperationsVerified": false,
+  "syntheticOnly": true,
+  "bulkReceiptAndSkipPolicyRegression": true,
+  "groupMuteAndOpenRegression": true,
+  "extendedJoinRefreshHarnessPassed": false,
+  "singleReactionConfirmed": true
+}

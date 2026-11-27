@@ -1,0 +1,70 @@
+{
+  "noBusinessOrWebviewChanges": true,
+  "changes": [
+    "src/features/accountTools/BulkHistory.tsx",
+    "src/features/accountTools/BulkSend.tsx",
+    "src/features/accounts/AccountSidebar.tsx",
+    "src/features/groups/GroupTools.tsx",
+    "src/features/reactions/ReactionTools.tsx",
+    "src/styles/_zl-tokens.scss",
+    "src/styles/account-tools.scss",
+    "src/styles/accounts.scss"
+  ],
+  "report": [
+    {
+      "path": "src/features/accounts/AccountSidebar.tsx",
+      "unchangedDisabledConditions": true,
+      "originalHandlersPreserved": true,
+      "originalAriaAndDataPreserved": true,
+      "missing": {
+        "disabled": [],
+        "handlers": [],
+        "identity": []
+      }
+    },
+    {
+      "path": "src/features/accountTools/BulkSend.tsx",
+      "unchangedDisabledConditions": true,
+      "originalHandlersPreserved": true,
+      "originalAriaAndDataPreserved": true,
+      "missing": {
+        "disabled": [],
+        "handlers": [],
+        "identity": []
+      }
+    },
+    {
+      "path": "src/features/accountTools/BulkHistory.tsx",
+      "unchangedDisabledConditions": true,
+      "originalHandlersPreserved": true,
+      "originalAriaAndDataPreserved": true,
+      "missing": {
+        "disabled": [],
+        "handlers": [],
+        "identity": []
+      }
+    },
+    {
+      "path": "src/features/groups/GroupTools.tsx",
+      "unchangedDisabledConditions": true,
+      "originalHandlersPreserved": true,
+      "originalAriaAndDataPreserved": true,
+      "missing": {
+        "disabled": [],
+        "handlers": [],
+        "identity": []
+      }
+    },
+    {
+      "path": "src/features/reactions/ReactionTools.tsx",
+      "unchangedDisabledConditions": true,
+      "originalHandlersPreserved": true,
+      "originalAriaAndDataPreserved": true,
+      "missing": {
+        "disabled": [],
+        "handlers": [],
+        "identity": []
+      }
+    }
+  ]
+}

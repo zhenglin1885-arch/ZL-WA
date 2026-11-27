@@ -1,0 +1,39 @@
+以下为打包前的本地 UI 复查记录；之后用户另行授权发布独立 test25 测试包。
+
+ZL-WA 第二轮界面复查
+
+基准：test24，7253da7a6f37084a7e3d85c1b03bf6e7a79794b7。
+工作分支：style/rounded-ui。按照指定顺序保留 7 个本地提交，见 commits.txt。
+没有合并 main/release，没有推送，没有生成或发布安装包。
+
+本轮改动
+- 颜色改为 CSS 变量，深色侧栏采用 #1D1F1F 中性灰。浅色主侧栏继续使用用户主题色。
+- 保留中间 WhatsApp 区域；新增分组和修改备注弹窗的锚点、尺寸和 4px 间距沿用 test24。
+- 弹窗统一按钮、字体、字段、分段筛选、账号/群组列表、空状态、状态统计和结果列表。
+- 发送/撤回记录使用整表和隔行底色；保留窄窗口横向滚动，完整进度及失败策略提供悬停说明。三点菜单保留所有原操作，可显示在表格外而不被末行裁切。
+- 群编号移至悬停提示，按编号搜索的条件未改；筛选数量来自已加载列表，不新增请求。
+- 群发与引用回复只按当前操作阶段切换主按钮的外观：读取阶段突出“读取聊天对象”，已有选中对象后突出“检查并发送”；原禁用条件和处理回调不变。
+- 进群组件没有现成的链接解析数量，按文档约定省略“识别到 N 个链接”，没有在渲染中额外执行启动任务的校验。
+
+验证
+- 改前基准：89 个测试套件，989 项通过、2 项跳过、共 991 项；lint 0 错误、0 警告。
+- 每个提交均检查 typecheck、989/2 测试和严格 lint。逐项结果及原始日志见 step-results.json、typecheck-stepN.txt、test-stepN.txt、lint-stepN.txt。
+- lint-ui2-before.txt 与 lint-ui2-after.txt 为要求的完整 lint --format unix 输出，保持 --max-warnings 0。
+- 原有 disabled 表达式、事件回调、aria-*、data-* 的 AST 核对见 source-audit.json；业务、队列、IPC 和 src/webview 文件未改。
+- 指定旧颜色字面量检查见 legacy-color-search.txt。
+- index.html 可切换深浅主题及 11 个页面/状态，共 22 张真实 Electron 渲染截图。模拟记录只用于展示，不连接 WhatsApp 服务器。
+- 界面检查覆盖中性灰背景、两套 color-scheme、选中样式、禁用按钮提示、无 700 字重、整表隔行色、标题内记录切换、0 数量中性字色、多行输入、64px 上传区、最后一行菜单不被裁切。
+- 模拟聊天 webview 的页面、未发草稿和几何尺寸在界面检查前后保持一致，见 visual-verification.json。
+- 隔离夹具运行了原 bulk runtime 的延迟 ACK、负 ACK 跳过/停止、待确认核对与不重复提交；运行禁言、重试、重新开启发言；完成单次点赞并核验，见 synthetic-operations.txt/json。
+
+未通过或未验证
+- 额外的完整群组夹具在进群场景的“刷新账号”结果提示处超时；原始记录保留在 extended-groups-attempt.txt。不能据此宣称全部 GUI 回归通过，也没有为使测试通过而改业务逻辑。
+- 未登录真实手机账号，未在真实群里群发、禁言或点赞；文档中的真实对象验收项仍待用户验证。本轮不涉及此前的关联失败修复。
+- 没有直接发送给 Claude 的工具；截图、差异及两份 lint 结果已整理为可转交的复查材料。
+
+本轮界面核验采用 Cloud Desktop 技能：
+skill://plugin_connector_1p_c5b7d5df5d7081918f2c4be5a633ed5d/cloud-desktop/SKILL.md
+
+最终源码提交：97241ffbdeb18b3e902c7a59f35224c229c3c5ec
+最终检查：typecheck、989/2 测试、完整版 lint 全部退出码为 0；改前、改后均 0 错误、0 警告。
+原 lint 清理提交已包含在基准的祖先中，本地 chore/lint-cleanup 已同步到本轮 UI，无需重复应用旧 lint 补丁。

@@ -1,0 +1,5 @@
+PASS actual bulk runtime: delayed ACK success, pending-ID reconciliation, immediate/delayed negative ACK skip/stop policies and no duplicate submissions
+PASS synthetic mute, unconfirmed-result retry and reopen with unchanged request pacing
+PASS UI2 synthetic send receipts, group operations and one verified reaction; no real WhatsApp accounts used
+PASS visual review-only run; full business regression is reported separately
+PASS original forwarding history restored after isolated GUI tests

@@ -1,0 +1,360 @@
+{
+  "passed": true,
+  "syntheticAccounts": true,
+  "screenshotRecordsAreIllustrative": true,
+  "realPhoneOperationsVerified": false,
+  "nativeGuestAndDraftUnchanged": true,
+  "nativeGuestGeometryUnchanged": true,
+  "results": [
+    {
+      "theme": "dark",
+      "panel": "main",
+      "sidebar": "rgb(29, 31, 31)",
+      "rail": "rgb(29, 31, 31)",
+      "accent": "#2f6bde"
+    },
+    {
+      "theme": "dark",
+      "panel": "history",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "上一页",
+          "title": "已经是第一页",
+          "opacity": "0.45"
+        },
+        {
+          "text": "下一页",
+          "title": "已经是最后一页",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false,
+      "table": {
+        "spacing": "0px",
+        "first": "rgb(34, 36, 36)",
+        "second": "rgb(49, 52, 52)",
+        "heights": [
+          72,
+          72,
+          72,
+          72
+        ],
+        "tabsInHeader": true
+      }
+    },
+    {
+      "theme": "dark",
+      "panel": "speech",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "panel": "join",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [
+        {
+          "text": "开始进群",
+          "title": "先粘贴邀请链接",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "panel": "leave",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "panel": "reply",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [
+        {
+          "text": "检查并发送",
+          "title": "先选择回复或群发对象",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "panel": "reactions",
+      "scheme": "dark",
+      "background": "rgb(29, 31, 31)",
+      "disabled": [
+        {
+          "text": "查找匹配消息",
+          "title": "先填写匹配内容",
+          "opacity": "0.45"
+        },
+        {
+          "text": "终止执行",
+          "title": "没有正在执行的任务",
+          "opacity": "0.45"
+        },
+        {
+          "text": "开始点赞",
+          "title": "先查找匹配消息",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "panel": "main",
+      "sidebar": "rgb(115, 103, 240)",
+      "rail": "rgba(0, 0, 0, 0)",
+      "accent": "#2f6bde"
+    },
+    {
+      "theme": "light",
+      "panel": "history",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "核对发送结果",
+          "title": "没有可操作的消息对象",
+          "opacity": "0.45"
+        },
+        {
+          "text": "撤回已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "编辑已发消息",
+          "title": "此记录缺少可核对的发送对象或消息编号",
+          "opacity": "0.45"
+        },
+        {
+          "text": "上一页",
+          "title": "已经是第一页",
+          "opacity": "0.45"
+        },
+        {
+          "text": "下一页",
+          "title": "已经是最后一页",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false,
+      "table": {
+        "spacing": "0px",
+        "first": "rgb(255, 255, 255)",
+        "second": "rgb(235, 238, 243)",
+        "heights": [
+          72,
+          72,
+          72,
+          72
+        ],
+        "tabsInHeader": true
+      }
+    },
+    {
+      "theme": "light",
+      "panel": "speech",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "panel": "join",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [
+        {
+          "text": "开始进群",
+          "title": "先粘贴邀请链接",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "panel": "leave",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "panel": "reply",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [
+        {
+          "text": "检查并发送",
+          "title": "先选择回复或群发对象",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "panel": "reactions",
+      "scheme": "light",
+      "background": "rgb(255, 255, 255)",
+      "disabled": [
+        {
+          "text": "查找匹配消息",
+          "title": "先填写匹配内容",
+          "opacity": "0.45"
+        },
+        {
+          "text": "终止执行",
+          "title": "没有正在执行的任务",
+          "opacity": "0.45"
+        },
+        {
+          "text": "开始点赞",
+          "title": "先查找匹配消息",
+          "opacity": "0.45"
+        }
+      ],
+      "bold": [],
+      "overflow": false
+    }
+  ],
+  "sourceCommit": "97241ffbdeb18b3e902c7a59f35224c229c3c5ec",
+  "screenshots": 22,
+  "lastRowMoreMenuVisibleOutsideTable": true,
+  "composerHasOnePrimaryActionPerStage": true,
+  "uploadAreaHeightPx": 64,
+  "uploadAreaRadiusPx": 16
+}

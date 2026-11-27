@@ -1,0 +1,72 @@
+[
+  {
+    "step": 1,
+    "commit": "117146b0332e4012505457907cf3c6d51b4bdda8",
+    "title": "style(ui): move color tokens to CSS variables with dark and light values",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 2,
+    "commit": "f737bdf214c3ab226934ca306b96113ae8dd4f71",
+    "title": "style(ui): refine main sidebars for neutral dark theme",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 3,
+    "commit": "bd50d2ed722592b6b9f7bfea431e71db2e8c6fb2",
+    "title": "style(ui): add shared dialog button, field and list styles",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 4,
+    "commit": "6bbe3a5ba43e6f87f71ce03e96bd0aedd3da8718",
+    "title": "style(ui): redesign bulk send records table",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 5,
+    "commit": "8459b838bd7dcc3f0e5073583d6297bc7095d83b",
+    "title": "style(ui): unify group tool dialogs",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 6,
+    "commit": "2801c72470cd958e9c38fa0c099aa5d5a433c66e",
+    "title": "style(ui): tidy quote reply and forward dialogs",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  },
+  {
+    "step": 7,
+    "commit": "97241ffbdeb18b3e902c7a59f35224c229c3c5ec",
+    "title": "style(ui): tidy reaction dialog",
+    "typecheckPassed": true,
+    "testsPassed": 989,
+    "testsSkipped": 2,
+    "lintErrors": 0,
+    "lintWarnings": 0
+  }
+]

@@ -1,0 +1,39 @@
+PASS actual bulk runtime: delayed ACK success, pending-ID reconciliation, immediate/delayed negative ACK skip/stop policies and no duplicate submissions
+Error: Timed out: account refresh has a visible result
+    at wait (file:///workspace/ZL-WA-rounded/scripts/account-tools-cdp.mjs:56:9)
+    at async verifyAccountRefresh (file:///workspace/ZL-WA-rounded/scripts/verify-groups-ui.mjs:32:5)
+    at async verifyGroups (file:///workspace/ZL-WA-rounded/scripts/verify-groups-ui.mjs:174:3)
+    at async Module.smoke (file:///tmp/ui2-smoke.mjs:8:2)
+    at async file:///tmp/ui2-smoke-runner.mjs:178:3
+Fixture composer diagnostic { busy: false, pending: 0, approved: false }
+Fixture composer diagnostic { busy: false, pending: 0, approved: false }
+Dialog diagnostic {
+  groups: '进群执行间隔（秒）开始进群重试失败 / 核验未确认刷新执行结果全部群先执行一次，首轮结束后再将确认未加入的失败项重试一次。等待管理员审批的申请不重复提交。暂无执行记录'
+}
+Fixture account diagnostic {
+  id: '0a264183-0d7d-48ce-ba2b-b30c973d8fa6',
+  enabled: true,
+  loading: false,
+  sleep: false,
+  snapshot: { status: 'online', unread: 0 }
+}
+Fixture page diagnostic {
+  url: 'https://web.whatsapp.com/',
+  online: true,
+  socket: 'CONNECTED',
+  count: 0
+}
+Fixture account diagnostic {
+  id: '63ef9b7d-e285-4edd-a66a-58d1f1a81a47',
+  enabled: true,
+  loading: false,
+  sleep: false,
+  snapshot: { status: 'online', unread: 0 }
+}
+Fixture page diagnostic {
+  url: 'https://web.whatsapp.com/',
+  online: true,
+  socket: 'CONNECTED',
+  count: 0
+}
+PASS original forwarding history restored after isolated GUI tests
