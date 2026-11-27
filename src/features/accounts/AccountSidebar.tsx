@@ -930,13 +930,20 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                       );
                     }}
                   >
-                    <Icon icon={mdiDragVertical} size={0.65} />
+                    <Icon
+                      className="account-group__drag-handle"
+                      icon={mdiDragVertical}
+                      size={0.65}
+                    />
                     <Icon
                       icon={group.collapsed ? mdiChevronRight : mdiChevronDown}
                       size={0.7}
                     />
                     <span>
-                      {group.name}（{accounts.length}）
+                      {group.name}
+                      <span className="account-group__count">
+                        （{accounts.length}）
+                      </span>
                     </span>
                     {unreadTotal > 0 && (
                       <span

@@ -1525,3 +1525,11 @@ body:not(.theme__dark) .account-tools-dialog {
 body:not(.theme__dark) .account-tools-panel {
   background: $zl-light-tool-panel;
 }
+
+body.theme__dark {
+  .account-tools,
+  .account-tools-rail,
+  .account-tools-panel {
+    background: var(--zl-surface);
+  }
+}

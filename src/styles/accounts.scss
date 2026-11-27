@@ -1128,3 +1128,48 @@ body:not(.theme__dark) .account-sidebar {
   border-radius: $zl-radius-xl;
   box-shadow: $zl-shadow-popup;
 }
+
+// UI2: retain the user-selected sidebar color in light mode.
+body.theme__dark {
+  .account-sidebar {
+    background: var(--zl-surface);
+  }
+  .account-card {
+    background: var(--zl-card);
+    &:hover {
+      background: var(--zl-control);
+    }
+    &.is-active {
+      background: var(--zl-selected);
+      box-shadow: inset 0 0 0 1.5px var(--zl-selected-ring);
+    }
+  }
+  .account-status {
+    box-shadow: 0 0 0 2.5px var(--zl-card);
+  }
+  .account-group__toggle {
+    color: var(--zl-text) !important;
+  }
+  .account-group__count {
+    color: var(--zl-text-3);
+    font-weight: 400;
+  }
+  .account-group__add {
+    height: 28px;
+    padding: 4px 8px;
+    background: var(--zl-control) !important;
+    color: var(--zl-text) !important;
+    font-size: 12px !important;
+  }
+  .account-sidebar__footer {
+    border-color: var(--zl-line);
+  }
+}
+.account-group__drag-handle {
+  opacity: 0;
+  flex-shrink: 0;
+}
+.account-group__header:hover .account-group__drag-handle,
+.account-group__header:focus-within .account-group__drag-handle {
+  opacity: 1;
+}
