@@ -218,13 +218,19 @@ export default class AccountSidebar extends Component<StoresProps, State> {
 
   openDialog = (kind: DialogKind, id = '', value = ''): void => {
     const anchor =
-      kind === 'remark'
-        ? [
-            ...document.querySelectorAll<HTMLElement>(
-              '.account-card[data-service-id]',
-            ),
-          ].find(card => card.dataset.serviceId === id)
-        : undefined;
+      kind === 'group'
+        ? (document.querySelector<HTMLElement>('.account-sidebar__new-group') ??
+          undefined)
+        : kind === 'remark'
+          ? ([
+              ...document.querySelectorAll<HTMLElement>(
+                '.account-card[data-service-id]',
+              ),
+            ]
+              .find(card => card.dataset.serviceId === id)
+              ?.querySelector<HTMLElement>('.account-card__remark') ??
+            undefined)
+          : undefined;
     this.setState({
       dialog: { kind, id, value, anchor },
       menu: null,
@@ -670,7 +676,11 @@ export default class AccountSidebar extends Component<StoresProps, State> {
           ) : (
             <TextField
               autoFocus
-              size={dialog.kind === 'remark' ? 'small' : 'medium'}
+              size={
+                dialog.kind === 'remark' || dialog.kind === 'group'
+                  ? 'small'
+                  : 'medium'
+              }
               fullWidth
               margin="dense"
               label={
@@ -692,7 +702,9 @@ export default class AccountSidebar extends Component<StoresProps, State> {
                   ? '仅修改本地显示昵称；留空恢复 WhatsApp 昵称。'
                   : dialog.kind === 'remark'
                     ? '留空显示“暂无备注”。'
-                    : undefined
+                    : dialog.kind === 'group'
+                      ? ' '
+                      : undefined
               }
             >
               {dialog.kind === 'move'
@@ -728,21 +740,38 @@ export default class AccountSidebar extends Component<StoresProps, State> {
         </DialogActions>
       </form>
     );
-    if (dialog.kind === 'remark')
+    if (dialog.kind === 'remark' || dialog.kind === 'group') {
+      const reference = document
+        .querySelector('.account-sidebar__new-group')
+        ?.getBoundingClientRect();
+      const anchor = dialog.anchor?.getBoundingClientRect();
       return (
         <Popover
-          className="account-dialog account-remark-dialog"
+          className={`account-dialog ${dialog.kind === 'group' ? 'account-group-create-popover' : 'account-remark-dialog'}`}
           open
           anchorEl={dialog.anchor}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
           transformOrigin={{ vertical: 'top', horizontal: 'left' }}
           marginThreshold={8}
           onClose={close}
-          slotProps={{ paper: { role: 'dialog', 'aria-label': '编辑备注' } }}
+          slotProps={{
+            paper: {
+              role: 'dialog',
+              'aria-label': dialog.kind === 'group' ? '新增分组' : '编辑备注',
+              style: {
+                width: reference?.width || 300,
+                marginLeft:
+                  reference?.width && anchor
+                    ? reference.left - anchor.left
+                    : undefined,
+              },
+            },
+          }}
         >
           {content}
         </Popover>
       );
+    }
     return (
       <Dialog
         className="account-dialog"

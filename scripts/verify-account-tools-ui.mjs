@@ -449,6 +449,25 @@ try {
       assert.equal(await evaluate('document.activeElement.value'), text);
     };
     await click('.account-sidebar__new-group');
+    await wait(
+      `!!document.querySelector('.account-group-create-popover .MuiPopover-paper')`,
+      'account create-group popup anchored to its button',
+    );
+    const groupPopupPosition = await evaluate(
+      `(()=>{const button=document.querySelector('.account-sidebar__new-group').getBoundingClientRect();const paper=document.querySelector('.account-group-create-popover .MuiPopover-paper').getBoundingClientRect();const sidebar=document.querySelector('.account-sidebar').getBoundingClientRect();return {left:Math.abs(paper.left-button.left),gap:paper.top-button.bottom,right:paper.right,sidebarRight:sidebar.right,width:paper.width,height:paper.height}})()`,
+    );
+    assert(
+      groupPopupPosition.left < 2,
+      'create group aligns with its sidebar button',
+    );
+    assert(
+      groupPopupPosition.gap >= 0 && groupPopupPosition.gap <= 12,
+      'create group stays below its button',
+    );
+    assert(
+      groupPopupPosition.right <= groupPopupPosition.sidebarRight + 1,
+      'create group stays inside the account sidebar',
+    );
     await typeInVisibleDialog('GUI测试分组');
     await clickText('保存');
     await wait(
@@ -483,14 +502,30 @@ try {
       'compact card remark popup',
     );
     const remarkBounds = await evaluate(
-      `(()=>{const c=document.querySelector('[data-service-id="${first}"]').getBoundingClientRect();const p=document.querySelector('.account-remark-dialog [role="dialog"]').getBoundingClientRect();return{cardBottom:c.bottom,cardLeft:c.left,top:p.top,left:p.left,width:p.width,height:p.height}})()`,
+      `(()=>{const c=document.querySelector('[data-service-id="${first}"]').getBoundingClientRect();const trigger=document.querySelector('[data-service-id="${first}"] .account-card__remark').getBoundingClientRect();const p=document.querySelector('.account-remark-dialog [role="dialog"]').getBoundingClientRect();return{triggerBottom:trigger.bottom,cardBottom:c.bottom,cardLeft:c.left,top:p.top,left:p.left,width:p.width,height:p.height}})()`,
     );
     assert(Math.abs(remarkBounds.left - remarkBounds.cardLeft) < 2);
     assert(
-      remarkBounds.top >= remarkBounds.cardBottom &&
-        remarkBounds.top - remarkBounds.cardBottom < 12,
+      remarkBounds.top >= remarkBounds.triggerBottom &&
+        remarkBounds.top - remarkBounds.triggerBottom < 12,
     );
     assert(remarkBounds.width <= 302 && remarkBounds.height < 180);
+    assert(
+      Math.abs(remarkBounds.width - groupPopupPosition.width) < 1,
+      'group and remark popup widths match',
+    );
+    assert(
+      Math.abs(remarkBounds.height - groupPopupPosition.height) < 1,
+      'group and remark popup heights match',
+    );
+    assert(
+      Math.abs(groupPopupPosition.gap - 4) < 1,
+      'create-group popup gap is 4px',
+    );
+    assert(
+      Math.abs(remarkBounds.top - remarkBounds.triggerBottom - 4) < 1,
+      'remark popup gap is 4px',
+    );
     await typeInVisibleDialog('GUI测试备注');
     await clickText('保存');
     await wait(

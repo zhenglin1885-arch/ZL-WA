@@ -473,7 +473,8 @@
   }
 }
 
-.account-remark-dialog {
+.account-remark-dialog,
+.account-group-create-popover {
   .MuiPopover-paper {
     width: $zl-size-300;
     max-width: calc(100vw - $zl-size-16);
@@ -1120,4 +1121,10 @@ body:not(.theme__dark) .account-sidebar {
   .account-sidebar__footer button:hover {
     background: $zl-light-hover;
   }
+}
+
+.account-remark-dialog .MuiPopover-paper,
+.account-group-create-popover .MuiPopover-paper {
+  border-radius: $zl-radius-xl;
+  box-shadow: $zl-shadow-popup;
 }

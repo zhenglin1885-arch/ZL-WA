@@ -1280,7 +1280,9 @@ body:not(.theme__dark) {
       border-color: $zl-light-line;
       color: $zl-light-text;
     }
-    button:not(.MuiButton-root):not(.tools-primary):not(.tools-link) {
+    button:not(.MuiButton-root):not(.tools-primary):not(.tools-link):not(
+        [aria-pressed]
+      ) {
       background: $zl-light-hover;
       color: $zl-light-text;
     }
@@ -1346,4 +1348,180 @@ body:not(.theme__dark) {
 
 body:not(.theme__dark) .account-tools-panel .tools-current {
   color: $zl-accent;
+}
+
+// Clear control boundaries and persistent selection feedback inside tool surfaces.
+// Theme variables are scoped to app tools; the WhatsApp guest is unaffected.
+body.theme__dark,
+body:not(.theme__dark) {
+  .account-tools-panel,
+  .account-tools-dialog {
+    --zl-control-surface: #fff;
+    --zl-control-border: #c5d0e0;
+    --zl-control-text: #263247;
+    --zl-control-hover: #f0f5fc;
+    --zl-control-selected: #e8f0ff;
+    --zl-control-ring: #2f6bde;
+    --zl-control-shadow: rgba(47, 107, 222, 0.2);
+    --zl-control-muted: #e8edf4;
+  }
+  .account-tools-dialog {
+    .group-tools-columns > section {
+      border-color: var(--zl-control-border);
+    }
+    :where(
+        button:not(.MuiIconButton-root):not(.group-tools-close):not(
+            .bulk-dialog__close-icon
+          ):not(.tools-link)
+      ) {
+      border: $zl-size-1 solid var(--zl-control-border);
+    }
+    .bulk-type-tabs button,
+    .group-tools-tabs button,
+    .reaction-match-tabs button,
+    .reaction-emojis button {
+      border: $zl-size-1 solid var(--zl-control-border);
+      background: var(--zl-control-surface);
+      color: var(--zl-control-text);
+      box-shadow: none;
+      box-sizing: border-box;
+    }
+    .bulk-type-tabs button[aria-pressed='true'],
+    .group-tools-tabs button[aria-pressed='true'],
+    .reaction-match-tabs button[aria-pressed='true'],
+    .reaction-emojis button[aria-pressed='true'] {
+      background: var(--zl-control-selected);
+      border-color: var(--zl-control-ring);
+      box-shadow:
+        inset 0 0 0 $zl-size-1 var(--zl-control-ring),
+        0 $zl-size-4 $zl-size-12 var(--zl-control-shadow);
+    }
+    .bulk-account-list > label,
+    .bulk-recipient-list > label,
+    .group-tools-account,
+    .group-tools-group,
+    .group-tools-log article,
+    .reaction-preview article,
+    .bulk-delivery,
+    .bulk-media {
+      border: $zl-size-1 solid var(--zl-control-border);
+      border-radius: $zl-radius-md;
+      background: var(--zl-control-surface);
+      padding: $zl-size-12;
+      margin: $zl-size-8 0;
+      box-sizing: border-box;
+    }
+    .bulk-account-list > label:has(input:checked),
+    .bulk-recipient-list > label:has(input:checked),
+    .group-tools-account:has(input:checked),
+    .group-tools-group:has(input:checked) {
+      background: var(--zl-control-selected);
+      border-color: var(--zl-control-ring);
+      box-shadow: inset 0 0 0 $zl-size-1 var(--zl-control-ring);
+    }
+    .group-tools-counts > span {
+      border: $zl-size-1 solid var(--zl-control-border);
+      background: var(--zl-control-surface);
+    }
+    .bulk-history__table {
+      border-color: var(--zl-control-border);
+      background: var(--zl-control-surface);
+    }
+    .bulk-history td,
+    .bulk-history th {
+      border-color: var(--zl-control-border);
+    }
+    .bulk-history table {
+      border-collapse: separate;
+      border-spacing: 0 $zl-size-8;
+    }
+    .bulk-history tbody td {
+      background: var(--zl-control-surface);
+      border-top: $zl-size-1 solid var(--zl-control-border);
+      border-bottom: $zl-size-1 solid var(--zl-control-border);
+    }
+    .bulk-history tbody td:first-child {
+      border-left: $zl-size-1 solid var(--zl-control-border);
+      border-radius: $zl-radius-md 0 0 $zl-radius-md;
+    }
+    .bulk-history tbody td:last-child {
+      border-right: $zl-size-1 solid var(--zl-control-border);
+      border-radius: 0 $zl-radius-md $zl-radius-md 0;
+    }
+    .bulk-history tbody tr:nth-child(even) td {
+      background: var(--zl-control-hover);
+    }
+    .bulk-history tbody tr:hover td {
+      background: var(--zl-control-selected);
+    }
+  }
+  .account-tools-panel.customer-panel {
+    .customer-flag-grid button[aria-pressed],
+    .customer-choice button[aria-pressed] {
+      border: $zl-size-1 solid var(--zl-control-border);
+      background: var(--zl-control-surface);
+      box-shadow: none;
+      border-radius: $zl-radius-md;
+    }
+    .customer-choice button[aria-pressed] {
+      color: var(--zl-control-text);
+    }
+    .customer-flag-grid button[aria-pressed='true'],
+    .customer-choice button[aria-pressed='true'] {
+      background: var(--zl-control-selected);
+      border-color: var(--zl-control-ring);
+      box-shadow:
+        inset 0 0 0 $zl-size-1 var(--zl-control-ring),
+        0 $zl-size-4 $zl-size-12 var(--zl-control-shadow);
+    }
+    .customer-overview {
+      border-color: var(--zl-control-border);
+    }
+  }
+  .account-tools-panel,
+  .account-tools-dialog {
+    button[aria-pressed]:not(:disabled):hover {
+      border-color: var(--zl-control-ring);
+    }
+    button[aria-pressed]:focus-visible {
+      outline: $zl-size-2 solid var(--zl-control-ring);
+      outline-offset: $zl-size-2;
+    }
+    button[aria-pressed]:disabled {
+      background: var(--zl-control-muted);
+      border-color: var(--zl-control-border);
+      box-shadow: none;
+      opacity: 0.6;
+    }
+  }
+}
+body.theme__dark {
+  .account-tools-panel,
+  .account-tools-dialog {
+    --zl-control-surface: #1a1f28;
+    --zl-control-border: #46546a;
+    --zl-control-text: #eef1f6;
+    --zl-control-hover: #252f3e;
+    --zl-control-selected: #213b5c;
+    --zl-control-ring: #83adff;
+    --zl-control-shadow: rgba(0, 0, 0, 0.35);
+    --zl-control-muted: #282e39;
+  }
+}
+body:not(.theme__dark) .account-tools-dialog {
+  .group-tools-success {
+    color: #157347;
+  }
+  .group-tools-failed {
+    color: #b62e40;
+  }
+  .group-tools-uncertain,
+  .group-tools-approval {
+    color: #8b620c;
+  }
+}
+
+// Distinguish only the three light-mode tool panels from the chat surface.
+body:not(.theme__dark) .account-tools-panel {
+  background: $zl-light-tool-panel;
 }
