@@ -83,6 +83,16 @@ module.exports = {
         'sonar/no-try-promise': 0,
       },
     },
+    {
+      files: ['test/**/*.ts', 'test/**/*.tsx', '**/*.test.ts', '**/*.test.tsx'],
+      rules: {
+        'global-require': 0,
+        'max-classes-per-file': 0,
+        '@typescript-eslint/no-extraneous-class': 0,
+        '@typescript-eslint/no-implied-eval': 0,
+        'unicorn/consistent-function-scoping': 0,
+      },
+    },
   ],
   rules: {
     // eslint
@@ -97,7 +107,11 @@ module.exports = {
         allow: ['warn', 'error'],
       },
     ],
-    'no-param-reassign': 1,
+    'no-param-reassign': [
+      'warn',
+      { props: true, ignorePropertyModificationsFor: ['event', 'e'] },
+    ],
+    'no-void': ['error', { allowAsStatement: true }],
     'no-restricted-syntax': 0,
     'no-underscore-dangle': 0,
     'prefer-destructuring': 1,
@@ -138,6 +152,8 @@ module.exports = {
     ],
     'jsx-a11y/control-has-associated-label': 0,
     // eslint-plugin-unicorn
+    'unicorn/no-useless-undefined': 0,
+    'unicorn/prefer-event-target': 0,
     'unicorn/filename-case': 0,
     'unicorn/no-null': 0,
     'unicorn/prefer-module': 0,
